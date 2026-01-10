@@ -1,0 +1,429 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Fox Programming Language - الجدول الزمني وقواعد إدارة الذاكرة</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            line-height: 1.8;
+            color: #333;
+            background-color:darkgrey;
+            /*background: linear-gradient(135deg, #f5f7fa 0%, #c3cfe2 100%);*/
+            min-height: 100vh;
+            padding: 20px;
+            direction: rtl;
+        }
+        
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            background: white;
+            border-radius: 20px;
+            box-shadow: 0 10px 40px rgba(0,0,0,0.1);
+            overflow: hidden;
+        }
+        
+        .header {
+            background: linear-gradient(135deg, #4A00E0 0%, #8E2DE2 100%);
+            color: white;
+            padding: 40px;
+            text-align: center;
+            border-bottom: 5px solid #2D00CC;
+        }
+        
+        .header h1 {
+            font-size: 2.8em;
+            margin-bottom: 10px;
+            font-weight: 800;
+        }
+        
+        .header .subtitle {
+            font-size: 1.2em;
+            opacity: 0.9;
+            margin-top: 10px;
+        }
+        
+        .content {
+            padding: 40px;
+        }
+        
+        .section {
+            margin-bottom: 50px;
+            padding: 30px;
+            background: #f8f9fa;
+            border-radius: 15px;
+            border-right: 5px solid #4A00E0;
+        }
+        
+        .section h2 {
+            color: #4A00E0;
+            margin-bottom: 25px;
+            padding-bottom: 15px;
+            border-bottom: 2px solid #e0e0e0;
+            font-size: 1.8em;
+        }
+        
+        .section h3 {
+            color: #2D00CC;
+            margin: 25px 0 15px;
+            font-size: 1.4em;
+        }
+        
+        .timeline {
+            margin: 30px 0;
+        }
+        
+        .timeline-item {
+            background: white;
+            padding: 20px;
+            margin-bottom: 15px;
+            border-radius: 10px;
+            border-left: 5px solid #8E2DE2;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.08);
+            transition: transform 0.3s ease;
+        }
+        
+        .timeline-item:hover {
+            transform: translateX(-5px);
+        }
+        
+        .total-time {
+            background: linear-gradient(135deg, #4A00E0 0%, #8E2DE2 100%);
+            color: white;
+            padding: 25px;
+            border-radius: 15px;
+            text-align: center;
+            font-size: 1.4em;
+            font-weight: bold;
+            margin-top: 30px;
+        }
+        
+        .rules-container {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 30px;
+            margin-top: 30px;
+        }
+        
+        @media (max-width: 768px) {
+            .rules-container {
+                grid-template-columns: 1fr;
+            }
+        }
+        
+        .rules-arabic, .rules-english {
+            background: white;
+            padding: 25px;
+            border-radius: 15px;
+            box-shadow: 0 6px 20px rgba(0,0,0,0.1);
+        }
+        
+        .rules-arabic {
+            border-top: 5px solid #FF5722;
+        }
+        
+        .rules-english {
+            border-top: 5px solid #2196F3;
+            direction: ltr;
+            text-align: left;
+        }
+        
+        .rule {
+            margin-bottom: 20px;
+            padding: 15px;
+            background: #f8f9fa;
+            border-radius: 8px;
+            border-right: 3px solid #4CAF50;
+        }
+        
+        .rule h4 {
+            color: #2D00CC;
+            margin-bottom: 10px;
+            font-size: 1.1em;
+        }
+        
+        .rule ul {
+            padding-right: 20px;
+            margin-top: 10px;
+        }
+        
+        .rule li {
+            margin-bottom: 8px;
+            color: #555;
+        }
+        
+        .footer {
+            text-align: center;
+            padding: 30px;
+            background: #2c3e50;
+            color: white;
+            margin-top: 40px;
+            border-top: 5px solid #4A00E0;
+        }
+        
+        .note {
+            background: linear-gradient(135deg, #FF9800 0%, #FF5722 100%);
+            color: white;
+            padding: 20px;
+            border-radius: 10px;
+            margin-top: 40px;
+            text-align: center;
+            font-size: 1.1em;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>Fox Programming Language</h1>
+            <p class="subtitle">لغة برمجة جديدة مع نظام إدارة ذاكرة مبتكر</p>
+        </div>
+        
+        <div class="content">
+            <div class="section">
+                <h2>📅 الجدول الزمني للمشروع</h2>
+                <div class="timeline">
+                    <div class="timeline-item">
+                        <strong>لغة دنيا قابلة للترجمة</strong> — 8 أسابيع
+                    </div>
+                    <div class="timeline-item">
+                        <strong>تحليل الأعمار + حقن free</strong> — 18 أسبوعًا
+                    </div>
+                    <div class="timeline-item">
+                        <strong>تحليل التزامن</strong> — 10 أسابيع
+                    </div>
+                    <div class="timeline-item">
+                        <strong>بناء FFI</strong> — 6 أسابيع
+                    </div>
+                    <div class="timeline-item">
+                        <strong>تغليف مكتبات C الأساسية</strong> — 10 أسابيع
+                    </div>
+                    <div class="timeline-item">
+                        <strong>الوصول إلى 0.9.0 تجريبي (أول إعلان)</strong> — 6 أسابيع
+                    </div>
+                </div>
+                
+                <div class="total-time">
+                    ⏱️ الوقت الكلي — 58 أسبوعًا
+                </div>
+            </div>
+            
+            <div class="section">
+                <h2>📋 قواعد إدارة الذاكرة في Fox</h2>
+                <p style="text-align: center; margin-bottom: 30px; font-size: 1.1em; color: #666;">
+                    نسخة مختصرة لكل قواعد إدارة الذاكرة مع إضافة قاعدة الـ return بصيغة مرجع سريع
+                </p>
+                
+                <div class="rules-container">
+                    <div class="rules-arabic">
+                        <h3>العربية — خلاصة قواعد إدارة الذاكرة في Fox</h3>
+                        
+                        <div class="rule">
+                            <h4>1. لا free يدوي</h4>
+                            <ul>
+                                <li>المطور لا يكتب free().</li>
+                                <li>المترجم يحدد آخر استعمال ويحقن free تلقائيًا.</li>
+                            </ul>
+                        </div>
+                        
+                        <div class="rule">
+                            <h4>2. إثبات أو فشل</h4>
+                            <ul>
+                                <li>إذا لم يثبت المترجم عمر كائن:
+                                    <ul>
+                                        <li>تفشل الترجمة، أو</li>
+                                        <li>يصرح المطور بأن الكائن خالد.</li>
+                                    </ul>
+                                </li>
+                            </ul>
+                        </div>
+                        
+                        <div class="rule">
+                            <h4>3. قاعدة المؤشرات الخارجية</h4>
+                            <ul>
+                                <li>لا يجوز قراءة أو تعديل مؤشرات خارجية إلا إذا مرّت في توقيع الدالة.</li>
+                            </ul>
+                        </div>
+                        
+                        <div class="rule">
+                            <h4>4. منع هروب المؤشر</h4>
+                            <ul>
+                                <li>لا يمكن إرجاع أو تخزين مؤشر إلا إذا كان مصرحًا به في توقيع الإرجاع.</li>
+                            </ul>
+                        </div>
+                        
+                        <div class="rule">
+                            <h4>5. القراءة فقط من الخارج</h4>
+                            <ul>
+                                <li>يُسمح بالقراءة فقط من مؤشرات خارجية غير ممررة في التوقيع،</li>
+                                <li>لكنها تطيل عمر الكائن ويأخذها المترجم في الاعتبار عند الحقن.</li>
+                            </ul>
+                        </div>
+                        
+                        <div class="rule">
+                            <h4>6. عناصر الحزمة الخاصة</h4>
+                            <ul>
+                                <li>يمكن لمس العناصر غير المصدّرة داخل الحزمة نفسها،</li>
+                                <li>بشرط عدم تسريبها خارج الحزمة.</li>
+                            </ul>
+                        </div>
+                        
+                        <div class="rule">
+                            <h4>7. النسخ والإنشاء</h4>
+                            <ul>
+                                <li>x := A{} إنشاء مثيل جديد</li>
+                                <li>p := &x إنشاء مؤشر جديد</li>
+                                <li>y = x نسخ عميق</li>
+                                <li>q = &p نسخ مؤشر (صريح)</li>
+                            </ul>
+                        </div>
+                        
+                        <div class="rule">
+                            <h4>8. حقن free</h4>
+                            <ul>
+                                <li>الحقن عند:
+                                    <ul>
+                                        <li>آخر استعمال مؤكد</li>
+                                        <li>التقاء المسارات</li>
+                                        <li>الإرجاع المبكر (إذا كان الكائن محليًا وغير مصرح بإرجاعه)</li>
+                                        <li>الحلقات، بشكل محافظ</li>
+                                    </ul>
+                                </li>
+                            </ul>
+                        </div>
+                        
+                        <div class="rule">
+                            <h4>9. قاعدة return</h4>
+                            <ul>
+                                <li>الـ return ليست دائمًا مكان التحرير.</li>
+                                <li>تمثل نقطة مناسبة لتحرير الكائنات المحلية غير المصرح بإرجاعها، إذا ثبت انتهاء عمرها.</li>
+                            </ul>
+                        </div>
+                        
+                        <div class="rule">
+                            <h4>10. التزامن</h4>
+                            <ul>
+                                <li>المترجم يتتبع المؤشرات المشتركة بين الخيوط.</li>
+                                <li>أي وصول متزامن بدون حماية يؤدي لفشل الترجمة.</li>
+                                <li>الحماية باستخدام: locks أو atomic.</li>
+                            </ul>
+                        </div>
+                    </div>
+                    
+                    <div class="rules-english">
+                        <h3>English — Fox Memory Management Rules (Quick Reference)</h3>
+                        
+                        <div class="rule">
+                            <h4>1. No manual free</h4>
+                            <ul>
+                                <li>Developers never write free().</li>
+                                <li>Compiler finds last use and injects free automatically.</li>
+                            </ul>
+                        </div>
+                        
+                        <div class="rule">
+                            <h4>2. Proof or failure</h4>
+                            <ul>
+                                <li>If compiler cannot prove lifetime:
+                                    <ul>
+                                        <li>Compilation fails, or</li>
+                                        <li>Developer marks object as immortal.</li>
+                                    </ul>
+                                </li>
+                            </ul>
+                        </div>
+                        
+                        <div class="rule">
+                            <h4>3. External pointer rule</h4>
+                            <ul>
+                                <li>Cannot read or modify external pointers unless explicitly passed in the function signature.</li>
+                            </ul>
+                        </div>
+                        
+                        <div class="rule">
+                            <h4>4. No pointer escape</h4>
+                            <ul>
+                                <li>Cannot return or store a pointer unless declared in the return type.</li>
+                            </ul>
+                        </div>
+                        
+                        <div class="rule">
+                            <h4>5. Read-only external access</h4>
+                            <ul>
+                                <li>Allowed to read external pointers not passed in signature,</li>
+                                <li>but extends lifetime and is considered in free injection.</li>
+                            </ul>
+                        </div>
+                        
+                        <div class="rule">
+                            <h4>6. Package-private access</h4>
+                            <ul>
+                                <li>Allowed to touch non-exported symbols inside the same package,</li>
+                                <li>as long as they do not escape the package.</li>
+                            </ul>
+                        </div>
+                        
+                        <div class="rule">
+                            <h4>7. Creation and copy rules</h4>
+                            <ul>
+                                <li>x := A{} create new value</li>
+                                <li>p := &x create new pointer</li>
+                                <li>y = x deep copy</li>
+                                <li>q = &p pointer copy (explicit)</li>
+                            </ul>
+                        </div>
+                        
+                        <div class="rule">
+                            <h4>8. Free injection points</h4>
+                            <ul>
+                                <li>Inject free at:
+                                    <ul>
+                                        <li>Last proven use</li>
+                                        <li>Control-flow merge points</li>
+                                        <li>Early returns (for local, non-returned objects)</li>
+                                        <li>Loops, conservatively</li>
+                                    </ul>
+                                </li>
+                            </ul>
+                        </div>
+                        
+                        <div class="rule">
+                            <h4>9. Return rule</h4>
+                            <ul>
+                                <li>return is not always a free point.</li>
+                                <li>It is suitable for freeing local objects not declared to escape, if lifetime is proven finished.</li>
+                            </ul>
+                        </div>
+                        
+                        <div class="rule">
+                            <h4>10. Concurrency</h4>
+                            <ul>
+                                <li>Compiler tracks pointers shared between threads.</li>
+                                <li>Any unprotected concurrent access → compilation failure.</li>
+                                <li>Protection via locks or atomic operations.</li>
+                            </ul>
+                        </div>
+                    </div>
+                </div>
+                
+                <div class="note">
+                    <p><strong>ملاحظة:</strong> يمكن بعد ذلك إنشاء نسخة بصيغة مرجع مصور/جدول سريع، بحيث يكون كل قاعدة في سطر واحد مع مثال قصير، بالعربي والإنجليزي معًا، جاهزة للطباعة أو للاستخدام في README.</p>
+                </div>
+            </div>
+        </div>
+        
+        <div class="footer">
+            <p>Fox Programming Language Documentation © 2024</p>
+            <p style="margin-top: 10px; opacity: 0.8;">تصميم مستجيب يعمل على جميع الأجهزة</p>
+        </div>
+    </div>
+</body>
+</html>
