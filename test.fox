@@ -1,0 +1,13 @@
+package testfox 
+
+import ()
+
+type X struct {
+    a int
+    b int
+}
+
+func Update(x *X) {
+    x.a = x.a + 1
+    x.b = x.b + 2
+}
