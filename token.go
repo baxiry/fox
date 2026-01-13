@@ -34,7 +34,7 @@ func tokenize(input string) []Token {
 	}
 
 	for _, r := range input {
-		if unicode.IsSpace(r) || r == '{' || r == '}' || r == '(' || r == ')' || r == ':' || r == ',' || r == '/' || r == '*' || r == '-' || r == '+' {
+		if unicode.IsSpace(r) || r == '{' || r == '}' || r == '(' || r == ')' || r == ':' || r == ',' {
 			addToken()
 			if !unicode.IsSpace(r) {
 				tokens = append(tokens, Token{Type: "SYMBOL", Value: string(r)})

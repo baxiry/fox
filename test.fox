@@ -11,7 +11,8 @@ type X struct {
     b int
 }
 
-func Update(x *X) {
-    x.a = x.a + 1
-    x.b = x.b + 2
+func Update(name Name, age Age, info *Info) {
+   name  = "adam"
+   age = 34
+   info  = "someInfo" 
 }
