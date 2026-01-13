@@ -17,7 +17,7 @@ func main() {
 
 	// Print tokens
 	for i, t := range tokens {
-		fmt.Printf("%03d:  Type: `%s`\t Value: `%s`\n", i+1, t.Type, t.Value)
+		fmt.Printf("%03d  `%s`:\t `%s`\n", i+1, t.Type, t.Value)
 	}
 
 	astBuilder(tokens)
