@@ -1,8 +1,10 @@
 package testfox 
 
-import "fmt" 
-import "os" 
-import "io" 
+import(
+   "fmt" 
+   "os" 
+   "io" 
+)
 
 type X struct {
     a int

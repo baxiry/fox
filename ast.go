@@ -17,7 +17,7 @@ func astBuilder(tokens []Token) {
 			ast.PackageName = parsePackage(tokens, pos)
 
 		case "import":
-			ast.Imports = append(ast.Imports, parseImport(tokens, pos))
+			ast.Imports = parseImport(tokens, pos)
 
 		case "type":
 			ast.Structs = append(ast.Structs, parseStruct(tokens, pos))
@@ -35,18 +35,31 @@ func astBuilder(tokens []Token) {
 
 type ImportNode []string
 
-func parseImport(tokens []Token, pos *int) string {
+func parseImport(tokens []Token, pos *int) ImportNode {
 
 	/*
 		read import
-		read libName
-		for ex:
-		import "fmt"
+		read (
+		read "fmt"
+		my read ,
+		read "io"
+		read )
 	*/
 	expect(tokens, pos, "import")
-	pkg := expectIdent(tokens, pos)
+	expect(tokens, pos, "(")
 
-	return pkg.Value
+	var libs = ImportNode{}
+
+	for tokens[*pos].Value != ")" {
+
+		pkg := expectIdent(tokens, pos)
+		libs = append(libs, pkg.Value)
+
+	}
+
+	expect(tokens, pos, ")") // consume closing brace
+
+	return libs
 }
 
 func parseStruct(tokens []Token, pos *int) StructNode {
