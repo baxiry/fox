@@ -33,7 +33,13 @@ func astBuilder(tokens []Token) {
 	dump(ast)
 }
 
-type ImportNode []string
+func parsePackage(tokens []Token, pos *int) string {
+	// read "package"
+	// read package name
+	expect(tokens, pos, "package")
+	pkg := tokens[*pos].Value
+	return pkg
+}
 
 func parseImport(tokens []Token, pos *int) ImportNode {
 
@@ -140,47 +146,64 @@ func expect(tokens []Token, pos *int, value string) {
 
 	tok := tokens[*pos]
 	if tok.Value != value {
-		panic(fmt.Sprintf(
-			"syntax error at line %d, col %d: expected '%s', got '%s'",
-			tok.Line, tok.Column, value, tok.Value,
-		))
+		// TODO add error posision, line number
+		panic(fmt.Sprintf("syntax error At expect func: expected '%s', got '%s'", value, tok.Value))
 	}
 	*pos++
 }
 
-type AST struct {
-	PackageName string
-	Imports     []string
-	Structs     []StructNode
-	Funcs       []FuncNode
+func parseFunc(tokens []Token, pos *int) FuncNode {
+	funcNode := FuncNode{}
+
+	// read "func"
+	// read func name
+	expect(tokens, pos, "func")
+	funcNode.Name = expectIdent(tokens, pos).Value
+
+	// parse function's Params
+	// read "("
+	// parse params
+	// read ")"
+	expect(tokens, pos, "(")
+
+	for tokens[*pos].Value != ")" {
+		fmt.Println("we here ")
+		if tokens[*pos].Value == "," {
+			*pos++
+		}
+		name := expectIdent(tokens, pos).Value
+		typ := expectIdent(tokens, pos).Value
+		param := ParamNode{name, typ}
+		funcNode.Params = append(funcNode.Params, param)
+	}
+
+	expect(tokens, pos, ")")
+
+	parseExpr(tokens, pos)
+
+	expect(tokens, pos, "{")
+
+	for tokens[*pos].Value != "}" {
+
+		if tokens[*pos].Value == "," || tokens[*pos].Value == ":" {
+			*pos++
+		}
+
+		name := expectIdent(tokens, pos).Value
+		fmt.Println("ret: ", tokens[*pos].Value)
+		typ := expectIdent(tokens, pos).Value
+		//ret := ReturnNode{Name: name, Type: typ}
+		funcNode.Body += name + ":" + typ //append(funcNode.Budy, ret)
+	}
+
+	return funcNode
 }
 
-type StructNode struct {
-	Name   string
-	Fields []FieldNode
+func parseRetSign(tokens []Token, pos *int) {
+	tok := expectIdent(tokens, pos)
+
+	var retSigns = []RetSignsNode{}
+	retSigns = append(retSigns, RetSignsNode{tok.Value, tok.Type})
 }
 
-type FieldNode struct {
-	Name string
-	Type string
-}
-
-type FuncNode struct {
-	Name    string
-	Params  []ParamNode
-	Returns []ReturnNode
-	Body    string // keep body as raw string
-}
-
-type ParamNode struct {
-	Name string
-	Type string
-}
-
-func parsePackage(tokens []Token, pos *int) string {
-	// read "package"
-	// read package name
-	*pos++
-	pkg := tokens[*pos].Value
-	return pkg
-}
+type RetSignsNode []string
