@@ -1,0 +1,157 @@
+
+Fox Language — Plain Summary
+
+Definition
+Fox is an experimental systems programming language.
+Its goal is to make low-level programming predictable, analyzable, and safer by moving memory and concurrency reasoning from the developer to the compiler.
+Fox has no garbage collector and no runtime memory manager.
+Memory is managed deterministically at compile time.
+
+---
+
+Memory Model — Core Rules
+
+1. No manual free
+   Developers never write free().
+   The compiler analyzes code, finds last use of each object, and injects free automatically.
+
+2. Proof or failure
+   If the compiler cannot prove the lifetime of an object with certainty:
+
+* Compilation fails, or
+* The developer explicitly accepts a leak (object becomes immortal).
+
+3. External pointer rule
+   A function cannot read or modify an external pointer unless it is explicitly passed in its signature.
+
+4. No pointer escape
+   A function cannot return or store a pointer unless that pointer is declared in the return type.
+
+5. Read-only exception
+   Reading from external pointers without passing them in the signature is allowed, but only for reading.
+   This still extends the object’s lifetime and is considered in free injection.
+
+6. Package-private access
+   Non-exported symbols inside the same package can be freely accessed without passing them in signatures,
+   as long as they do not escape the package.
+
+7. Copy rules
+   x := A{}     creates a new value
+   p := &x      creates a new pointer
+   y = x        deep copy
+   q = &p       pointer copy
+   Pointer copying must be explicit.
+
+8. Free injection
+   The compiler injects free at:
+
+* Last proven use
+* Control-flow merge points
+* Early returns
+* Conservatively around loops
+
+---
+
+Concurrency Model
+
+1. Static race detection
+   The compiler tracks pointers shared between threads.
+
+2. No unprotected sharing
+   Any concurrent access without protection causes compilation failure.
+
+3. Required protection
+   Shared data must be accessed using:
+
+* Locks, or
+* Atomic operations
+
+Goal: detect data races at compile time, not runtime.
+
+---
+
+Temporary Escape Hatch
+
+Analysis can be disabled for selected packages:
+
+fox build -no-analyze fmt math http
+
+Those packages:
+
+* Are built without analysis or free injection
+* Can leak temporarily
+* Are meant only for experimentation without breaking flow
+
+---
+
+Philosophy
+
+Fox does not try to be:
+
+* The easiest language
+* The fastest language
+* The most feature-rich language
+
+Fox tries to be:
+A systems language whose behavior can be reasoned about, predicted, and partially proven.
+
+Rust says:
+“Write it the right way or I will not allow it.”
+
+Fox says:
+“Let me try to prove your code is right.
+If I fail, I will tell you why.”
+
+---
+
+Goals
+
+* Deterministic memory management
+* No GC, no runtime
+* Strong static reasoning
+* Predictable performance
+* Fewer hidden costs
+* Suitable for engines, systems, and low-level tools
+
+---
+
+Implementation Plan
+
+Language design:
+
+* Go-like syntax
+* Minimal feature set at first
+* No generics initially
+* Simple error model (like Go)
+
+Compiler:
+
+* Written in Go
+* Frontend: parsing, AST, type checking
+* Static analysis: lifetimes, escapes, concurrency
+* Summary generation per function and per package
+* Incremental rebuild using summaries
+
+Backend:
+
+* QBE for code generation
+* C ABI compatibility
+* Use Zig cc or as+ld for final build
+
+Standard Library:
+
+* Built mainly by wrapping mature C libraries
+* Strict FFI rules
+* Explicit ownership contracts
+
+Development Stages
+
+1. Minimal language that can compile
+2. Implement memory analysis
+3. Implement free injection
+4. Add concurrency analysis
+5. Build C FFI
+6. Wrap core C libraries
+7. Reach experimental 0.9.0
+8. Stabilize rules and errors
+9. Public testing and feedback

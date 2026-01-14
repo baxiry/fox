@@ -1,0 +1,320 @@
+
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+  <meta charset="UTF-8">
+  <title>مواصفات لغة fox</title>
+
+  <style>
+    :root {
+      --bg: #0f1117;
+      --fg: #e6e6e6;
+      --muted: #a0a0a0;
+      --border: #2a2f3a;
+      --code-bg: #161b22;
+      --accent: #f0c000;
+    }
+
+    body {
+      background: var(--bg);
+      color: var(--fg);
+      font-family: system-ui, -apple-system, BlinkMacSystemFont,
+                   "Segoe UI", Arial, sans-serif;
+      line-height: 1.9;
+      margin: 0;
+      padding: 0;
+    }
+
+    main {
+      max-width: 900px;
+      margin: 0 auto;
+      padding: 40px 72px;
+    }
+
+    h1, h2, h3 {
+      color: #ffffff;
+      border-bottom: 1px solid var(--border);
+      padding-bottom: 6px;
+    }
+
+    ul {
+      margin-right: 24px;
+    }
+
+    pre {
+      background: var(--code-bg);
+      padding: 14px;
+      overflow-x: auto;
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      direction: ltr;
+    }
+
+    code {
+      direction: ltr;
+      font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+      color: #dcdcdc;
+    }
+
+    .note {
+      background: #1c1f26;
+      border-right: 4px solid var(--accent);
+      padding: 12px 16px;
+      margin: 20px 0;
+      color: var(--muted);
+    }
+
+    hr {
+      border: none;
+      border-top: 1px solid var(--border);
+      margin: 48px 0;
+    }
+  </style>
+</head>
+
+<body>
+<main>
+
+<h1>مواصفات لغة fox</h1>
+
+<p>
+fox هي لغة أنظمة ذات إدارة ذاكرة ساكنة، حتمية، وشفافة.
+المترجم مسؤول عن التحليل وحقن <code>free</code> وقت الترجمة.
+</p>
+
+<hr>
+
+<h2>1. المبادئ الأساسية</h2>
+
+<ul>
+  <li>لا aliasing ضمني</li>
+  <li>لا تسريب مؤشرات غير مصرح به</li>
+  <li>كل تأثير يجب أن يظهر في توقيع الدالة</li>
+  <li>تحليل ساكن كامل</li>
+  <li>عدم القدرة على الإثبات ⇒ فشل الترجمة</li>
+</ul>
+
+<hr>
+
+<h2>2. القيم والمؤشرات</h2>
+
+<pre><code>
+x := A{}     // إنشاء
+y = x        // نسخ عميق
+p := &x      // إنشاء مؤشر
+q = &p       // نسخ مؤشر (alias صريح)
+</code></pre>
+
+<div class="note">
+لا يوجد اشتراك في الذاكرة إلا عبر <code>&</code>.
+</div>
+
+<hr>
+
+<h2>3. الدوال</h2>
+
+<ul>
+  <li>لا لمس لمؤشر لم يُمرر في التوقيع</li>
+  <li>لا هروب لمؤشر لم يُصرّح في الإرجاع</li>
+</ul>
+
+<pre><code>
+func id(a *A) *A {
+    return a
+}
+</code></pre>
+
+<hr>
+
+<h2>4. إدارة الذاكرة</h2>
+
+<ul>
+  <li>حقن <code>free</code> عند آخر استعمال</li>
+  <li>الحقن عند التقاء المسارات</li>
+  <li>الحقن قبل <code>return</code> في الإرجاع المبكر</li>
+</ul>
+
+<hr>
+
+<h2>X. الوصول إلى العناصر غير المُصدّرة داخل الحزمة</h2>
+
+<p>
+يسمح في fox بالوصول إلى العناصر <strong>غير القابلة للتصدير</strong>
+(المعرّفة داخل نفس الحزمة / الموديول)
+من داخل جسم أي دالة في تلك الحزمة
+<strong>دون تمريرها صراحة في توقيع الدالة</strong>.
+</p>
+
+<p>
+يُعتبر هذا الوصول وصولًا محليًا (module-local)
+ولا يُعامل كتعامل مع مؤشرات خارجية.
+</p>
+
+<h3>النطاق</h3>
+
+<ul>
+  <li>ينطبق فقط على العناصر غير المُصدّرة</li>
+  <li>العنصر يجب أن يكون معرّفًا داخل نفس الحزمة</li>
+  <li>لا ينطبق على عناصر مستوردة من حزم أخرى</li>
+</ul>
+
+<h3>العمليات المسموحة</h3>
+
+<ul>
+  <li>القراءة</li>
+  <li>الكتابة</li>
+  <li>التعديل</li>
+  <li>التمرير لدوال داخل نفس الحزمة</li>
+</ul>
+
+<h3>مثال مسموح</h3>
+
+<pre><code>
+var internalState State
+
+func step() {
+    internalState.counter++
+}
+</code></pre>
+
+<h3>العمليات الممنوعة</h3>
+
+<ul>
+  <li>إرجاع العنصر أو مؤشر إليه خارج الحزمة</li>
+  <li>تخزينه في بنية مُصدّرة</li>
+  <li>تمريره لدالة خارج الحزمة</li>
+  <li>إنشاء alias له يعبر حدود الحزمة</li>
+</ul>
+
+<h3>مثال غير مسموح</h3>
+
+<pre><code>
+func leak() *State {
+    return &internalState   // خطأ: تسريب عنصر محلي
+}
+</code></pre>
+
+<h3>الأثر على إدارة الذاكرة</h3>
+
+<ul>
+  <li>يتم تحليل أعمار العناصر غير المُصدّرة على مستوى الحزمة</li>
+  <li>لا يُطلب توسيع تواقيع الدوال</li>
+  <li>لا يُنشئ هذا الوصول alias جديدًا</li>
+  <li>لا يُضعف قدرة المترجم على حقن <code>free</code></li>
+</ul>
+
+<h3>الأثر على التزامن</h3>
+
+<ul>
+  <li>تُطبق نفس قواعد التزامن داخل الحزمة</li>
+  <li>أي وصول متزامن غير محمي ⇒ فشل الترجمة</li>
+  <li>لا توجد استثناءات خاصة للعناصر غير المُصدّرة</li>
+</ul>
+
+<div class="note">
+يُعامل الوصول إلى العناصر غير المُصدّرة
+كجزء من الحالة الداخلية للحزمة،
+ويهدف هذا الاستثناء إلى الحفاظ على
+بساطة التواقيع وقابلية التعبير
+دون الإضرار بالتحليل الساكن أو السلامة.
+</div>
+<h2>5. التزامن</h2>
+
+<ul>
+  <li>تتبع المؤشرات المشتركة بين الخيوط</li>
+  <li>فرض قفل أو atomic على كل وصول</li>
+  <li>أي data race ⇒ فشل الترجمة</li>
+</ul>
+
+<pre><code>
+lock(m) {
+    shared.x = 1
+}
+</code></pre>
+
+<hr>
+
+<h2>6. تعطيل التحليل الساكن (Analysis Opt-Out)</h2>
+
+<p>
+fox تسمح بتعطيل التحليل الساكن وحقن الذاكرة بشكل صريح
+من أجل تسهيل prototyping والتحقق من منطق الكود
+دون قطع حبل تفكير المطور.
+</p>
+
+<h3>6.1 آلية التعطيل</h3>
+
+<pre><code>
+fox build -no-analyze fmt math http
+</code></pre>
+
+<ul>
+  <li>التعطيل يكون <strong>بأسماء الحزم</strong></li>
+  <li>الحزم المعطلة:
+    <ul>
+      <li>لا يجري عليها تحليل أعمار</li>
+      <li>لا يتم حقن <code>free</code></li>
+      <li>يسمح بالتسريب المؤقت</li>
+    </ul>
+  </li>
+</ul>
+
+<h3>6.2 حدود التعطيل</h3>
+
+<ul>
+  <li>التعطيل محصور بالحزم المحددة فقط</li>
+  <li>باقي الحزم تبقى محللة بالكامل</li>
+  <li>لا يمكن لحزمة محللة الاعتماد على خلاصات حزمة معطلة</li>
+  <li>لا ينتقل التعطيل عبر حدود الحزم</li>
+</ul>
+
+<div class="note">
+التعطيل أداة تطوير، وليس نمط تشغيل دائم.
+الهدف هو التفكير أولًا، ثم التدقيق لاحقًا.
+</div>
+
+<hr>
+
+<h2>7. نظام الأخطاء</h2>
+
+<pre><code>
+func read() (Data, error) {
+    if bad {
+        return Data{}, err
+    }
+    return d, nil
+}
+</code></pre>
+
+<hr>
+
+<h2>8. FFI مع C</h2>
+
+<ul>
+  <li>الاعتماد على C ABI عبر qbe</li>
+  <li>الملكية يجب التصريح بها</li>
+</ul>
+
+<pre><code>
+extern func strdup(s cstr) *own[byte]
+extern func free(p *own[byte])
+</code></pre>
+
+<hr>
+
+<h2>9. ما لا تدعمه fox (حتى 0.9.0)</h2>
+
+<ul>
+  <li>Generics</li>
+  <li>Polymorphism</li>
+  <li>GC</li>
+</ul>
+
+<hr>
+
+<p><strong>fox specification – version 0.9.0</strong></p>
+
+</main>
+</body>
+</html>
+

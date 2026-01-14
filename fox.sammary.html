@@ -1,0 +1,130 @@
+
+تمام، إليك نسخة مختصرة **لكل قواعد إدارة الذاكرة في Fox** مع إضافة قاعدة الـ `return` بصيغة مرجع سريع، باللغتين العربية والإنجليزية:
+
+---
+
+## العربية — خلاصة قواعد إدارة الذاكرة في Fox
+
+1. **لا free يدوي**
+
+* المطور لا يكتب `free()`.
+* المترجم يحدد آخر استعمال ويحقن `free` تلقائيًا.
+
+2. **إثبات أو فشل**
+
+* إذا لم يثبت المترجم عمر كائن:
+
+  * تفشل الترجمة، أو
+  * يصرح المطور بأن الكائن خالد.
+
+3. **قاعدة المؤشرات الخارجية**
+
+* لا يجوز قراءة أو تعديل مؤشرات خارجية إلا إذا مرّت في توقيع الدالة.
+
+4. **منع هروب المؤشر**
+
+* لا يمكن إرجاع أو تخزين مؤشر إلا إذا كان مصرحًا به في توقيع الإرجاع.
+
+5. **القراءة فقط من الخارج**
+
+* يُسمح بالقراءة فقط من مؤشرات خارجية غير ممررة في التوقيع،
+  لكنها تطيل عمر الكائن ويأخذها المترجم في الاعتبار عند الحقن.
+
+6. **عناصر الحزمة الخاصة**
+
+* يمكن لمس العناصر غير المصدّرة داخل الحزمة نفسها،
+  بشرط عدم تسريبها خارج الحزمة.
+
+7. **النسخ والإنشاء**
+
+* `x := A{}` إنشاء مثيل جديد
+* `p := &x` إنشاء مؤشر جديد
+* `y = x` نسخ عميق
+* `q = &p` نسخ مؤشر (صريح)
+
+8. **حقن free**
+
+* الحقن عند:
+
+  * آخر استعمال مؤكد
+  * التقاء المسارات
+  * الإرجاع المبكر (إذا كان الكائن **محليًا وغير مصرح بإرجاعه**)
+  * الحلقات، بشكل محافظ
+
+9. **قاعدة return**
+
+* الـ `return` **ليست دائمًا مكان التحرير**.
+* تمثل نقطة مناسبة لتحرير الكائنات المحلية غير المصرح بإرجاعها، إذا ثبت انتهاء عمرها.
+
+10. **التزامن**
+
+* المترجم يتتبع المؤشرات المشتركة بين الخيوط.
+* أي وصول متزامن بدون حماية يؤدي لفشل الترجمة.
+* الحماية باستخدام: locks أو atomic.
+
+---
+
+## English — Fox Memory Management Rules (Quick Reference)
+
+1. **No manual free**
+
+* Developers never write `free()`.
+* Compiler finds last use and injects `free` automatically.
+
+2. **Proof or failure**
+
+* If compiler cannot prove lifetime:
+
+  * Compilation fails, or
+  * Developer marks object as immortal.
+
+3. **External pointer rule**
+
+* Cannot read or modify external pointers unless explicitly passed in the function signature.
+
+4. **No pointer escape**
+
+* Cannot return or store a pointer unless declared in the return type.
+
+5. **Read-only external access**
+
+* Allowed to read external pointers not passed in signature,
+  but extends lifetime and is considered in free injection.
+
+6. **Package-private access**
+
+* Allowed to touch non-exported symbols inside the same package,
+  as long as they do not escape the package.
+
+7. **Creation and copy rules**
+
+* `x := A{}` create new value
+* `p := &x` create new pointer
+* `y = x` deep copy
+* `q = &p` pointer copy (explicit)
+
+8. **Free injection points**
+
+* Inject free at:
+
+  * Last proven use
+  * Control-flow merge points
+  * Early returns (for **local, non-returned** objects)
+  * Loops, conservatively
+
+9. **Return rule**
+
+* `return` is **not always a free point**.
+* It is suitable for freeing local objects **not declared to escape**, if lifetime is proven finished.
+
+10. **Concurrency**
+
+* Compiler tracks pointers shared between threads.
+* Any unprotected concurrent access → compilation failure.
+* Protection via locks or atomic operations.
+
+---
+
+إذا أحببت، أستطيع بعد ذلك أن أصنع **نسخة بصيغة مرجع مصور/جدول سريع**، بحيث يكون كل قاعدة في سطر واحد مع مثال قصير، بالعربي والإنجليزي معًا، جاهزة للطباعة أو للاستخدام في README.
+
+هل تريد أن أفعل ذلك؟

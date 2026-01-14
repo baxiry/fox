@@ -2,51 +2,6 @@ package main
 
 import "fmt"
 
-func parseFunc(tokens []Token, pos *int) FuncNode {
-	funcNode := FuncNode{}
-	// read "func"
-	// read func name
-	// read "("
-	// parse params
-	// read ")"
-	// read "{"
-	// parse body
-	// read "}"
-	expect(tokens, pos, "func")
-	funcNode.Name = expectIdent(tokens, pos).Value
-	expect(tokens, pos, "(")
-
-	for tokens[*pos].Value != ")" {
-		fmt.Println("here : ", tokens[*pos].Value)
-		fmt.Println("len params : ", len(funcNode.Params))
-		fmt.Println(" params : ", funcNode.Params)
-
-		if tokens[*pos].Value == "," {
-			*pos++
-			//continue
-		}
-
-		name := expectIdent(tokens, pos).Value
-
-		typ := expectIdent(tokens, pos).Value
-
-		param := ParamNode{name, typ}
-
-		funcNode.Params = append(funcNode.Params, param)
-	}
-
-	expect(tokens, pos, ")") // consume closing brace
-
-	return funcNode
-}
-
-func parseStatement(tokens []Token, pos *int) StatementNode {
-	// detect statement type by lookahead
-
-	*pos++
-	return StatementNode{}
-}
-
 // AST nodes
 func astBuilder(tokens []Token) {
 	p := 0
@@ -119,7 +74,6 @@ func parseStruct(tokens []Token, pos *int) StructNode {
 	       a int
 	       b int
 	   }
-
 	*/
 
 	expect(tokens, pos, "type")
@@ -212,9 +166,10 @@ type FieldNode struct {
 }
 
 type FuncNode struct {
-	Name   string
-	Params []ParamNode
-	Body   string // keep body as raw string
+	Name    string
+	Params  []ParamNode
+	Returns []ReturnNode
+	Body    string // keep body as raw string
 }
 
 type ParamNode struct {
@@ -229,5 +184,3 @@ func parsePackage(tokens []Token, pos *int) string {
 	pkg := tokens[*pos].Value
 	return pkg
 }
-
-type StatementNode struct{}
