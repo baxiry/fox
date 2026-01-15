@@ -25,7 +25,7 @@ type FuncNode struct {
 	Name    string
 	Params  []ParamNode
 	Returns []ReturnNode
-	Body    string // keep body as raw string
+	Body    []StatementNode // keep body as raw string
 }
 
 type ParamNode struct {

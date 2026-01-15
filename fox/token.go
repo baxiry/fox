@@ -5,6 +5,8 @@ import (
 	"unicode"
 )
 
+// TODO: disambiguate '*' between pointer and multiplication
+
 // Token represents a simple token in Fox code
 type Token struct {
 	Type  string

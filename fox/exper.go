@@ -1,51 +1,16 @@
 package main
 
+import "fmt"
+
 type ExpressionNode interface {
 	isExpr()
 }
-
-type StatementNode interface {
-	isStatement()
-}
-
 type ReturnNode struct {
 	Value ExpressionNode
 }
 
-func (ReturnNode) isStatement() {}
-
 type NumberNode struct {
 	Value int
-}
-
-func (NumberNode) isExpr() {}
-
-func parseStatement(tokens []Token, pos *int) StatementNode {
-	stmntNode := ReturnNode{}
-	tok := tokens[*pos].Value
-	if tok == "return" {
-		stmntNode = parseReturn(tokens, pos)
-		return stmntNode
-	}
-
-	return nil
-}
-
-func parseReturn(tokens []Token, pos *int) ReturnNode {
-	expect(tokens, pos, "return")
-	val := parseExpr(tokens, pos)
-	return ReturnNode{Value: val}
-}
-
-func parseExpr(tokens []Token, pos *int) ExpressionNode {
-	var exprNode ExpressionNode
-	expect(tokens, pos, "return")
-	for tokens[*pos].Value != "}" {
-
-		exprNode = parseExpr(tokens, pos)
-	}
-
-	return exprNode
 }
 
 type IdentNode struct {
@@ -63,6 +28,67 @@ type CallExprNode struct {
 	Args []ExpressionNode
 }
 
+type IdentExpr struct {
+	Value string
+}
+
+type NumberExpr struct {
+	Value string
+}
+
+func (NumberExpr) isExpr()     {}
+func (NumberNode) isExpr()     {}
 func (CallExprNode) isExpr()   {}
 func (BinaryExprNode) isExpr() {}
 func (IdentNode) isExpr()      {}
+func (IdentExpr) isExpr()      {}
+
+func parseExprStatement(tokens []Token, pos *int) StatementNode {
+	fmt.Println("parseExprStatement.")
+	expr := parseExpr(tokens, pos)
+	return ExprStatementNode{Expr: expr}
+}
+
+func parseExpr(tokens []Token, pos *int) ExpressionNode {
+	return parsePrimary(tokens, pos)
+}
+
+func parseExprOrAssign(tokens []Token, pos *int) StatementNode {
+
+	if lookAheadIsAssign(tokens, *pos) {
+		return parseAssign(tokens, pos)
+	}
+
+	expr := parseExpr(tokens, pos)
+	return ExprStatementNode{Expr: expr}
+}
+
+func parseAssign(tokens []Token, pos *int) StatementNode {
+	// ex : x = expr
+	name := expectIdent(tokens, pos).Value
+	op := tokens[*pos].Value //
+	*pos++
+
+	value := parseExpr(tokens, pos)
+
+	return AssignNode{
+		Name:  name,
+		Op:    op,
+		Value: value,
+	}
+}
+
+func lookAheadIsAssign(tokens []Token, pos int) bool {
+	if pos+1 >= len(tokens) {
+		return false
+	}
+	// ex: IDENT "="
+	if tokens[pos].Type == "IDENT" && tokens[pos+1].Value == "=" {
+		return true
+	}
+	// ex: IDENT ":="
+	if tokens[pos].Type == "IDENT" && tokens[pos+1].Value == ":=" {
+		return true
+	}
+	return false
+}

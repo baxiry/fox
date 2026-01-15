@@ -1,6 +1,78 @@
 package main
 
-import "fmt"
+import (
+	"encoding/json"
+	"fmt"
+	"time"
+)
+
+type RetSignsNode []string
+
+func parseFunc(tokens []Token, pos *int) FuncNode {
+	funcNode := FuncNode{}
+
+	// read "func"
+	// read func name
+	expect(tokens, pos, "func")
+	funcNode.Name = expectIdent(tokens, pos).Value
+
+	// parse function's Params
+	// read "("
+	// parse params
+	// read ")"
+	expect(tokens, pos, "(")
+
+	fmt.Println("   parse func params")
+	for tokens[*pos].Value != ")" {
+		if tokens[*pos].Value == "," {
+			*pos++
+		}
+		name := expectIdent(tokens, pos).Value
+		typ := expectIdent(tokens, pos).Value
+		param := ParamNode{name, typ}
+		funcNode.Params = append(funcNode.Params, param)
+	}
+	// close func param
+	expect(tokens, pos, ")")
+
+	fmt.Println("   parse returnsSign")
+	parseRetSign(tokens, pos)
+
+	fmt.Println("   parse budy func")
+	expect(tokens, pos, "{")
+
+	tok := tokens[*pos].Value
+	for tok != "}" {
+		//stmt := parseExpr(tokens, pos)
+		parseExpr(tokens, pos)
+		//	funcNode.Body = append(funcNode.Body, stmt)
+		time.Sleep(time.Second / 2)
+	}
+
+	return funcNode
+}
+
+func parsePrimary(tokens []Token, pos *int) ExpressionNode {
+	tok := tokens[*pos]
+	fmt.Println("tok", tok)
+	time.Sleep(time.Second / 2)
+
+	switch tok.Type {
+	case "IDENT":
+		*pos++
+		return IdentExpr{Value: tok.Value}
+
+	case "NUMBER":
+		*pos++
+		return NumberExpr{Value: tok.Value}
+
+	default:
+		panic(fmt.Sprintf(
+			"expected expression at %d:%d, got '%s'",
+			tok.Line, tok.Column, tok.Value,
+		))
+	}
+}
 
 // AST nodes
 func astBuilder(tokens []Token) {
@@ -42,7 +114,6 @@ func parsePackage(tokens []Token, pos *int) string {
 }
 
 func parseImport(tokens []Token, pos *int) ImportNode {
-
 	/*
 		read import
 		read (
@@ -67,7 +138,6 @@ func parseImport(tokens []Token, pos *int) ImportNode {
 }
 
 func parseStruct(tokens []Token, pos *int) StructNode {
-
 	/*
 	   expect "type" or "struct"
 	   read "struct"
@@ -81,7 +151,6 @@ func parseStruct(tokens []Token, pos *int) StructNode {
 	       b int
 	   }
 	*/
-
 	expect(tokens, pos, "type")
 
 	name := expectIdent(tokens, pos)
@@ -104,19 +173,28 @@ func parseStruct(tokens []Token, pos *int) StructNode {
 }
 
 func parseField(tokens []Token, pos *int) FieldNode {
-
 	if *pos >= len(tokens) {
 		panic("unexpected end of file, expected Ident")
 	}
-
 	//ex: a int
 	nameTok := expectIdent(tokens, pos)
 	typeTok := expectIdent(tokens, pos)
-
 	return FieldNode{
 		Name: nameTok.Value,
 		Type: typeTok.Value,
 	}
+}
+func parseRetSign(tokens []Token, pos *int) []RetSignsNode {
+
+	var retSigns = []RetSignsNode{}
+
+	for tokens[*pos].Value != "{" {
+		tok := expectIdent(tokens, pos)
+		fmt.Println(" tok", tok)
+		retSigns = append(retSigns, RetSignsNode{tok.Value, tok.Type})
+	}
+	return retSigns
+
 }
 
 func expectIdent(tokens []Token, pos *int) Token {
@@ -139,7 +217,6 @@ func expectIdent(tokens []Token, pos *int) Token {
 }
 
 func expect(tokens []Token, pos *int, value string) {
-
 	if *pos >= len(tokens) {
 		panic("unexpected end of file, expected " + value)
 	}
@@ -152,58 +229,29 @@ func expect(tokens []Token, pos *int, value string) {
 	*pos++
 }
 
-func parseFunc(tokens []Token, pos *int) FuncNode {
-	funcNode := FuncNode{}
-
-	// read "func"
-	// read func name
-	expect(tokens, pos, "func")
-	funcNode.Name = expectIdent(tokens, pos).Value
-
-	// parse function's Params
-	// read "("
-	// parse params
-	// read ")"
-	expect(tokens, pos, "(")
-
-	for tokens[*pos].Value != ")" {
-		fmt.Println("we here ")
-		if tokens[*pos].Value == "," {
-			*pos++
-		}
-		name := expectIdent(tokens, pos).Value
-		typ := expectIdent(tokens, pos).Value
-		param := ParamNode{name, typ}
-		funcNode.Params = append(funcNode.Params, param)
-	}
-
-	expect(tokens, pos, ")")
-
-	parseExpr(tokens, pos)
-
-	expect(tokens, pos, "{")
-
-	for tokens[*pos].Value != "}" {
-
-		if tokens[*pos].Value == "," || tokens[*pos].Value == ":" {
-			*pos++
-		}
-
-		name := expectIdent(tokens, pos).Value
-		fmt.Println("ret: ", tokens[*pos].Value)
-		typ := expectIdent(tokens, pos).Value
-		//ret := ReturnNode{Name: name, Type: typ}
-		funcNode.Body += name + ":" + typ //append(funcNode.Budy, ret)
-	}
-
-	return funcNode
+type ParseError struct {
+	File   string
+	Line   int
+	Column int
+	Msg    string
 }
 
-func parseRetSign(tokens []Token, pos *int) {
-	tok := expectIdent(tokens, pos)
-
-	var retSigns = []RetSignsNode{}
-	retSigns = append(retSigns, RetSignsNode{tok.Value, tok.Type})
+func dump(ast *AST) {
+	data, err := json.MarshalIndent(ast, ".", "  ")
+	if err != nil {
+		panic(err)
+	}
+	fmt.Println(string(data))
 }
 
-type RetSignsNode []string
+/*
+func TrackError() {
+	if r := recover(); r != nil {
+		if e, ok := r.(ParseError); ok {
+			fmt.Printf("%s:%d:%d: %s\n", e.File, e.Line, e.Column, e.Msg)
+		} else {
+			panic(r)
+		}
+	}
+}()
+*/
