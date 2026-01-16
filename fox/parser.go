@@ -43,13 +43,19 @@ func parseFunc(tokens []Token, pos *int) FuncNode {
 
 	tok := tokens[*pos].Value
 	for tok != "}" {
-		//stmt := parseExpr(tokens, pos)
-		parseExpr(tokens, pos)
-		//	funcNode.Body = append(funcNode.Body, stmt)
+		expr := parseExpr(tokens, pos)
+		funcNode.Body = append(funcNode.Body, ExprStatementNode{Expr: expr})
 		time.Sleep(time.Second / 2)
 	}
 
 	return funcNode
+}
+
+func isAssign(tokens []Token, pos *int) bool {
+	if *pos+1 >= len(tokens) {
+		return false
+	}
+	return tokens[*pos].Type == "IDENT" && tokens[*pos+1].Value == ":="
 }
 
 func parsePrimary(tokens []Token, pos *int) ExpressionNode {
@@ -103,98 +109,6 @@ func astBuilder(tokens []Token) {
 		}
 	}
 	dump(ast)
-}
-
-func parsePackage(tokens []Token, pos *int) string {
-	// read "package"
-	// read package name
-	expect(tokens, pos, "package")
-	pkg := tokens[*pos].Value
-	return pkg
-}
-
-func parseImport(tokens []Token, pos *int) ImportNode {
-	/*
-		read import
-		read (
-		read "fmt"
-		my read ,
-		read "io"
-		read )
-	*/
-	expect(tokens, pos, "import")
-	expect(tokens, pos, "(")
-
-	var libs = ImportNode{}
-
-	for tokens[*pos].Value != ")" {
-		pkg := expectIdent(tokens, pos)
-		libs = append(libs, pkg.Value)
-	}
-
-	expect(tokens, pos, ")") // consume closing brace
-
-	return libs
-}
-
-func parseStruct(tokens []Token, pos *int) StructNode {
-	/*
-	   expect "type" or "struct"
-	   read "struct"
-	   read struct name
-	   read "{"
-	   parse fields
-	   read "}"
-
-	   type X struct {
-	       a int
-	       b int
-	   }
-	*/
-	expect(tokens, pos, "type")
-
-	name := expectIdent(tokens, pos)
-
-	expect(tokens, pos, "struct")
-	expect(tokens, pos, "{")
-
-	fields := []FieldNode{}
-	for tokens[*pos].Value != "}" {
-		field := parseField(tokens, pos)
-		fields = append(fields, field)
-	}
-
-	expect(tokens, pos, "}") // consume closing brace
-
-	return StructNode{
-		Name:   name.Value,
-		Fields: fields,
-	}
-}
-
-func parseField(tokens []Token, pos *int) FieldNode {
-	if *pos >= len(tokens) {
-		panic("unexpected end of file, expected Ident")
-	}
-	//ex: a int
-	nameTok := expectIdent(tokens, pos)
-	typeTok := expectIdent(tokens, pos)
-	return FieldNode{
-		Name: nameTok.Value,
-		Type: typeTok.Value,
-	}
-}
-func parseRetSign(tokens []Token, pos *int) []RetSignsNode {
-
-	var retSigns = []RetSignsNode{}
-
-	for tokens[*pos].Value != "{" {
-		tok := expectIdent(tokens, pos)
-		fmt.Println(" tok", tok)
-		retSigns = append(retSigns, RetSignsNode{tok.Value, tok.Type})
-	}
-	return retSigns
-
 }
 
 func expectIdent(tokens []Token, pos *int) Token {
