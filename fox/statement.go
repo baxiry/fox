@@ -1,7 +1,5 @@
 package main
 
-import "fmt"
-
 type StatementNode interface {
 	isStatement()
 }
@@ -16,22 +14,48 @@ type AssignNode struct {
 	Value ExpressionNode
 }
 
+type DefineStmt struct {
+	Name  string
+	Value ExpressionNode
+}
+
+func (DefineStmt) isStatement()        {}
 func (ExprStatementNode) isStatement() {}
 func (AssignNode) isStatement()        {}
 func (ReturnNode) isStatement()        {}
 
+func parseDefine(tokens []Token, pos *int) StatementNode {
+	name := expectIdent(tokens, pos).Value
+	expect(tokens, pos, ":=")
+	expr := parseExpr(tokens, pos)
+	return DefineStmt{Name: name, Value: expr}
+}
+
 func parseStatement(tokens []Token, pos *int) StatementNode {
-	switch tokens[*pos].Value {
+	tok := tokens[*pos]
+
+	switch tok.Value {
 	case "return":
 		return parseReturn(tokens, pos)
 	case "if":
 		return parseIf(tokens, pos)
 	case "for":
 		return parseFor(tokens, pos)
+
 	default:
-		if tokens[*pos+1].Value == "=" {
+		if *pos+1 >= len(tokens) {
+			return parseExprStatement(tokens, pos)
+		}
+
+		op := tokens[*pos+1].Value
+		if op == "=" {
 			return parseAssign(tokens, pos)
 		}
+
+		if op == ":=" {
+			return parseDefine(tokens, pos)
+		}
+
 		return parseExprStatement(tokens, pos)
 	}
 }
@@ -46,6 +70,7 @@ func parseFor(tokens []Token, pos *int) ReturnNode {
 	val := parseExpr(tokens, pos)
 	return ReturnNode{Value: val}
 }
+
 func parseReturn(tokens []Token, pos *int) ReturnNode {
 	expect(tokens, pos, "return")
 	val := parseExpr(tokens, pos)
@@ -60,7 +85,7 @@ func parsePackage(tokens []Token, pos *int) string {
 	return pkg
 }
 
-func parseImport(tokens []Token, pos *int) ImportNode {
+func parseImport(tokens []Token, pos *int) []string {
 	/*
 		read import
 		read (
@@ -72,7 +97,7 @@ func parseImport(tokens []Token, pos *int) ImportNode {
 	expect(tokens, pos, "import")
 	expect(tokens, pos, "(")
 
-	var libs = ImportNode{}
+	var libs = []string{}
 
 	for tokens[*pos].Value != ")" {
 		pkg := expectIdent(tokens, pos)
@@ -123,8 +148,12 @@ func parseRetSign(tokens []Token, pos *int) []RetSignsNode {
 	var retSigns = []RetSignsNode{}
 
 	for tokens[*pos].Value != "{" {
+
+		if tokens[*pos].Value == "," && tokens[*pos+1].Value != "{" {
+			*pos++
+		}
 		tok := expectIdent(tokens, pos)
-		fmt.Println(" tok", tok)
+
 		retSigns = append(retSigns, RetSignsNode{tok.Value, tok.Type})
 	}
 	return retSigns

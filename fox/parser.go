@@ -49,8 +49,6 @@ func parseExpr(tokens []Token, pos *int) ExpressionNode {
 // primary expressions
 func parsePrimary(tokens []Token, pos *int) ExpressionNode {
 	tok := tokens[*pos]
-	fmt.Println("tok", tok)
-	time.Sleep(time.Second / 2)
 
 	switch tok.Type {
 	case "IDENT":
@@ -60,6 +58,10 @@ func parsePrimary(tokens []Token, pos *int) ExpressionNode {
 	case "NUMBER":
 		*pos++
 		return NumberExpr{Value: tok.Value}
+
+	case "STRING":
+		*pos++
+		return StringExpr{Value: tok.Value}
 
 	case "(":
 		*pos++
@@ -106,8 +108,9 @@ func parseFunc(tokens []Token, pos *int) FuncNode {
 
 	expect(tokens, pos, "{")
 	for tokens[*pos].Value != "}" {
-		expr := parseExpr(tokens, pos)
-		funcNode.Body = append(funcNode.Body, ExprStatementNode{Expr: expr})
+		//expr := parseExpr(tokens, pos)
+		stmt := parseStatement(tokens, pos)
+		funcNode.Body = append(funcNode.Body, stmt)
 		time.Sleep(time.Millisecond / 350)
 	}
 	expect(tokens, pos, "}")
@@ -150,15 +153,15 @@ func astBuilder(tokens []Token) {
 
 func expectIdent(tokens []Token, pos *int) Token {
 	if *pos >= len(tokens) {
-		panic("unexpected end of input, expected identifier")
+		panic("   unexpected end of input, expected identifier")
 	}
 
 	tok := tokens[*pos]
-	fmt.Println("expectIdent: token is ", tok.Type, tok.Value)
+	fmt.Println("expectIdent: ", tok)
 
 	if tok.Type != "IDENT" {
 		panic(fmt.Sprintf(
-			"syntax error at line %d, col %d: expected IDENT, got '%s'",
+			"   syntax error at line %d, col %d: expected IDENT, got '%s'\n\n",
 			tok.Line, tok.Column, tok.Type,
 		))
 	}
@@ -171,8 +174,8 @@ func expect(tokens []Token, pos *int, value string) {
 	if *pos >= len(tokens) {
 		panic("unexpected end of file, expected " + value)
 	}
-
 	tok := tokens[*pos]
+	fmt.Println("expect:      ", tok)
 	if tok.Value != value {
 		panic(fmt.Sprintf("syntax error: expected '%s', got '%s'", value, tok.Value))
 	}

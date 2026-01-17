@@ -10,6 +10,10 @@ type NumberNode struct {
 	Value int
 }
 
+type StringExpr struct {
+	Value string
+}
+
 type IdentNode struct {
 	Name string
 }
@@ -33,7 +37,9 @@ type NumberExpr struct {
 	Value string
 }
 
-func (NumberExpr) isExpr()     {}
+func (NumberExpr) isExpr() {}
+func (StringExpr) isExpr() {}
+
 func (NumberNode) isExpr()     {}
 func (CallExprNode) isExpr()   {}
 func (BinaryExprNode) isExpr() {}
