@@ -5,48 +5,6 @@ import (
 	"time"
 )
 
-type RetSignsNode []string
-
-// ================= Utilities =================
-
-func expectIdent(tokens []Token, pos *int) Token {
-	if *pos >= len(tokens) {
-		panic("unexpected end of input, expected identifier")
-	}
-
-	tok := tokens[*pos]
-	fmt.Println("expectIdent: token is ", tok.Type, tok.Value)
-
-	if tok.Type != "IDENT" {
-		panic(fmt.Sprintf(
-			"syntax error at line %d, col %d: expected IDENT, got '%s'",
-			tok.Line, tok.Column, tok.Type,
-		))
-	}
-
-	*pos++
-	return tok
-}
-
-func expect(tokens []Token, pos *int, value string) {
-	if *pos >= len(tokens) {
-		panic("unexpected end of file, expected " + value)
-	}
-
-	tok := tokens[*pos]
-	if tok.Value != value {
-		panic(fmt.Sprintf("syntax error: expected '%s', got '%s'", value, tok.Value))
-	}
-	*pos++
-}
-
-func isAssign(tokens []Token, pos *int) bool {
-	if *pos+1 >= len(tokens) {
-		return false
-	}
-	return tokens[*pos].Type == "IDENT" && tokens[*pos+1].Value == ":="
-}
-
 // ================= Expressions =================
 
 // parse unary Operator: *p
@@ -186,4 +144,44 @@ func astBuilder(tokens []Token) {
 		}
 	}
 	dump(ast)
+}
+
+// ================= Utilities =================
+
+func expectIdent(tokens []Token, pos *int) Token {
+	if *pos >= len(tokens) {
+		panic("unexpected end of input, expected identifier")
+	}
+
+	tok := tokens[*pos]
+	fmt.Println("expectIdent: token is ", tok.Type, tok.Value)
+
+	if tok.Type != "IDENT" {
+		panic(fmt.Sprintf(
+			"syntax error at line %d, col %d: expected IDENT, got '%s'",
+			tok.Line, tok.Column, tok.Type,
+		))
+	}
+
+	*pos++
+	return tok
+}
+
+func expect(tokens []Token, pos *int, value string) {
+	if *pos >= len(tokens) {
+		panic("unexpected end of file, expected " + value)
+	}
+
+	tok := tokens[*pos]
+	if tok.Value != value {
+		panic(fmt.Sprintf("syntax error: expected '%s', got '%s'", value, tok.Value))
+	}
+	*pos++
+}
+
+func isAssign(tokens []Token, pos *int) bool {
+	if *pos+1 >= len(tokens) {
+		return false
+	}
+	return tokens[*pos].Type == "IDENT" && tokens[*pos+1].Value == ":="
 }

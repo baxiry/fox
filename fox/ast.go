@@ -2,14 +2,14 @@ package main
 
 type AST struct {
 	PackageName string
-	Imports     ImportNode
+	Imports     []string
 	Structs     []StructNode
 	Funcs       []FuncNode
-	//ExportVars  []string
-	//Vars        []string
+	//eVars     []string
+	//Vars      []string
+	//eConsts   []string
+	//Consts    []string
 }
-
-type ImportNode []string
 
 type StructNode struct {
 	Name   string
@@ -25,11 +25,14 @@ type ReturnNode struct {
 	Value ExpressionNode
 }
 
+type RetSignsNode []string
+
 type FuncNode struct {
 	Name    string
 	Params  []ParamNode
 	Returns []ReturnNode
 	Body    []StatementNode
+	Vars    []string
 }
 
 type ParamNode struct {
