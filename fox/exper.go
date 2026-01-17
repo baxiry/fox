@@ -5,9 +5,6 @@ import "fmt"
 type ExpressionNode interface {
 	isExpr()
 }
-type ReturnNode struct {
-	Value ExpressionNode
-}
 
 type NumberNode struct {
 	Value int
@@ -47,10 +44,6 @@ func parseExprStatement(tokens []Token, pos *int) StatementNode {
 	fmt.Println("parseExprStatement.")
 	expr := parseExpr(tokens, pos)
 	return ExprStatementNode{Expr: expr}
-}
-
-func parseExpr(tokens []Token, pos *int) ExpressionNode {
-	return parsePrimary(tokens, pos)
 }
 
 func parseExprOrAssign(tokens []Token, pos *int) StatementNode {

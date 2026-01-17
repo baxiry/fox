@@ -18,34 +18,95 @@ type Token struct {
 }
 
 // tokenize splits the input into very simple tokens
+
 func tokenize(input string) []Token {
 	var tokens []Token
 	var current strings.Builder
 
-	addToken := func() []Token {
-		if current.Len() > 0 {
-			tokVal := current.String()
-			tokType := "IDENT"
-			if tokVal == "package" || tokVal == "type" || tokVal == "struct" || tokVal == "func" || tokVal == "return" {
-				tokType = "KEYWORD"
-			}
-			tokens = append(tokens, Token{Type: tokType, Value: tokVal})
-			current.Reset()
+	addToken := func() {
+		if current.Len() == 0 {
+			return
 		}
-		return tokens
+		val := current.String()
+		typ := "IDENT"
+
+		// NUMBER
+		if isNumber(val) {
+			typ = "NUMBER"
+		}
+
+		// KEYWORD
+		switch val {
+		case "package", "type", "struct", "func", "return", "var", "const", "if", "for":
+			typ = "KEYWORD"
+		}
+
+		tokens = append(tokens, Token{Type: typ, Value: val})
+		current.Reset()
 	}
 
-	for _, r := range input {
-		if unicode.IsSpace(r) || r == '{' || r == '}' || r == '(' || r == ')' || r == ':' || r == ',' {
+	i := 0
+	for i < len(input) {
+		r := rune(input[i])
+
+		// Spaces
+		if unicode.IsSpace(r) {
 			addToken()
-			if !unicode.IsSpace(r) {
-				tokens = append(tokens, Token{Type: "SYMBOL", Value: string(r)})
+			i++
+			continue
+		}
+
+		// OPERATOR
+		if i+1 < len(input) {
+			two := input[i : i+2]
+			if two == ":=" || two == "+=" || two == "-=" || two == "*=" || two == "/=" || two == "==" || two == "!=" {
+				addToken()
+				tokens = append(tokens, Token{Type: "OPERATOR", Value: two})
+				i += 2
+				continue
 			}
-		} else {
-			current.WriteRune(r)
+		}
+
+		// SYMBOLS
+		switch r {
+		case '{', '}', '(', ')', ',', ';':
+			addToken()
+			tokens = append(tokens, Token{Type: "SYMBOL", Value: string(r)})
+			i++
+			continue
+		case '=', '+', '-', '*', '/', '<', '>', '!':
+			addToken()
+			tokens = append(tokens, Token{Type: "OPERATOR", Value: string(r)})
+			i++
+			continue
+		case '"':
+			// STRINGS
+			addToken()
+			i++
+			var s strings.Builder
+			for i < len(input) && input[i] != '"' {
+				s.WriteByte(input[i])
+				i++
+			}
+			i++ // skip this symbol: ".
+			tokens = append(tokens, Token{Type: "STRING", Value: s.String()})
+			continue
+		}
+
+		// part of name or number
+		current.WriteRune(r)
+		i++
+	}
+
+	addToken()
+	return tokens
+}
+
+func isNumber(s string) bool {
+	for _, r := range s {
+		if !unicode.IsDigit(r) {
+			return false
 		}
 	}
-	tokens = addToken()
-
-	return tokens
+	return len(s) > 0
 }

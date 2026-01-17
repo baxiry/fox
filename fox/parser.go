@@ -1,54 +1,43 @@
 package main
 
 import (
-	"encoding/json"
 	"fmt"
 	"time"
 )
 
 type RetSignsNode []string
 
-func parseFunc(tokens []Token, pos *int) FuncNode {
-	funcNode := FuncNode{}
+// ================= Utilities =================
 
-	// read "func"
-	// read func name
-	expect(tokens, pos, "func")
-	funcNode.Name = expectIdent(tokens, pos).Value
-
-	// parse function's Params
-	// read "("
-	// parse params
-	// read ")"
-	expect(tokens, pos, "(")
-
-	fmt.Println("   parse func params")
-	for tokens[*pos].Value != ")" {
-		if tokens[*pos].Value == "," {
-			*pos++
-		}
-		name := expectIdent(tokens, pos).Value
-		typ := expectIdent(tokens, pos).Value
-		param := ParamNode{name, typ}
-		funcNode.Params = append(funcNode.Params, param)
-	}
-	// close func param
-	expect(tokens, pos, ")")
-
-	fmt.Println("   parse returnsSign")
-	parseRetSign(tokens, pos)
-
-	fmt.Println("   parse budy func")
-	expect(tokens, pos, "{")
-
-	tok := tokens[*pos].Value
-	for tok != "}" {
-		expr := parseExpr(tokens, pos)
-		funcNode.Body = append(funcNode.Body, ExprStatementNode{Expr: expr})
-		time.Sleep(time.Second / 2)
+func expectIdent(tokens []Token, pos *int) Token {
+	if *pos >= len(tokens) {
+		panic("unexpected end of input, expected identifier")
 	}
 
-	return funcNode
+	tok := tokens[*pos]
+	fmt.Println("expectIdent: token is ", tok.Type, tok.Value)
+
+	if tok.Type != "IDENT" {
+		panic(fmt.Sprintf(
+			"syntax error at line %d, col %d: expected IDENT, got '%s'",
+			tok.Line, tok.Column, tok.Type,
+		))
+	}
+
+	*pos++
+	return tok
+}
+
+func expect(tokens []Token, pos *int, value string) {
+	if *pos >= len(tokens) {
+		panic("unexpected end of file, expected " + value)
+	}
+
+	tok := tokens[*pos]
+	if tok.Value != value {
+		panic(fmt.Sprintf("syntax error: expected '%s', got '%s'", value, tok.Value))
+	}
+	*pos++
 }
 
 func isAssign(tokens []Token, pos *int) bool {
@@ -58,6 +47,48 @@ func isAssign(tokens []Token, pos *int) bool {
 	return tokens[*pos].Type == "IDENT" && tokens[*pos+1].Value == ":="
 }
 
+// ================= Expressions =================
+
+// parse unary Operator: *p
+func parseUnary(tokens []Token, pos *int) ExpressionNode {
+	if tokens[*pos].Value == "*" {
+		*pos++
+		expr := parseUnary(tokens, pos)
+		return expr // later: DerefExpr{Expr: expr}
+	}
+	return parsePrimary(tokens, pos)
+}
+
+// parse * and /
+func parseMul(tokens []Token, pos *int) ExpressionNode {
+	left := parseUnary(tokens, pos)
+	for tokens[*pos].Value == "*" || tokens[*pos].Value == "/" {
+		op := tokens[*pos].Value
+		*pos++
+		right := parseUnary(tokens, pos)
+		left = BinaryExprNode{Left: left, Op: op, Right: right}
+	}
+	return left
+}
+
+// parse + and -
+func parseAdd(tokens []Token, pos *int) ExpressionNode {
+	left := parseMul(tokens, pos)
+	for tokens[*pos].Value == "+" || tokens[*pos].Value == "-" {
+		op := tokens[*pos].Value
+		*pos++
+		right := parseMul(tokens, pos)
+		left = BinaryExprNode{Left: left, Op: op, Right: right}
+	}
+	return left
+}
+
+// top-level expression
+func parseExpr(tokens []Token, pos *int) ExpressionNode {
+	return parseAdd(tokens, pos)
+}
+
+// primary expressions
 func parsePrimary(tokens []Token, pos *int) ExpressionNode {
 	tok := tokens[*pos]
 	fmt.Println("tok", tok)
@@ -72,6 +103,12 @@ func parsePrimary(tokens []Token, pos *int) ExpressionNode {
 		*pos++
 		return NumberExpr{Value: tok.Value}
 
+	case "(":
+		*pos++
+		expr := parseExpr(tokens, pos)
+		expect(tokens, pos, ")")
+		return expr
+
 	default:
 		panic(fmt.Sprintf(
 			"expected expression at %d:%d, got '%s'",
@@ -80,7 +117,48 @@ func parsePrimary(tokens []Token, pos *int) ExpressionNode {
 	}
 }
 
-// AST nodes
+// ================= Functions =================
+
+func parseFunc(tokens []Token, pos *int) FuncNode {
+	funcNode := FuncNode{}
+
+	expect(tokens, pos, "func")
+	funcNode.Name = expectIdent(tokens, pos).Value
+
+	expect(tokens, pos, "(")
+	for tokens[*pos].Value != ")" {
+		if tokens[*pos].Value == "," {
+			*pos++
+		}
+		name := expectIdent(tokens, pos).Value
+
+		typ := ""
+		if tokens[*pos].Value == "*" {
+			*pos++
+			typ = "*" + expectIdent(tokens, pos).Value
+		} else {
+			typ = expectIdent(tokens, pos).Value
+		}
+
+		funcNode.Params = append(funcNode.Params, ParamNode{name, typ})
+	}
+	expect(tokens, pos, ")")
+
+	parseRetSign(tokens, pos)
+
+	expect(tokens, pos, "{")
+	for tokens[*pos].Value != "}" {
+		expr := parseExpr(tokens, pos)
+		funcNode.Body = append(funcNode.Body, ExprStatementNode{Expr: expr})
+		time.Sleep(time.Millisecond / 350)
+	}
+	expect(tokens, pos, "}")
+
+	return funcNode
+}
+
+// ================= AST Builder =================
+
 func astBuilder(tokens []Token) {
 	p := 0
 	pos := &p
@@ -104,68 +182,8 @@ func astBuilder(tokens []Token) {
 			ast.Funcs = append(ast.Funcs, parseFunc(tokens, pos))
 
 		default:
-			// error or skip
 			*pos++
 		}
 	}
 	dump(ast)
 }
-
-func expectIdent(tokens []Token, pos *int) Token {
-	if *pos >= len(tokens) {
-		panic("unexpected end of input, expected identifier")
-	}
-
-	tok := tokens[*pos]
-	fmt.Println("expectIdent: token is ", tok.Type, tok.Value)
-
-	if tok.Type != "IDENT" {
-		panic(fmt.Sprintf(
-			"syntax error at line %d, col %d: expected IDENT, got '%s'",
-			tok.Line, tok.Column, tok.Value,
-		))
-	}
-
-	*pos++
-	return tok
-}
-
-func expect(tokens []Token, pos *int, value string) {
-	if *pos >= len(tokens) {
-		panic("unexpected end of file, expected " + value)
-	}
-
-	tok := tokens[*pos]
-	if tok.Value != value {
-		// TODO add error posision, line number
-		panic(fmt.Sprintf("syntax error At expect func: expected '%s', got '%s'", value, tok.Value))
-	}
-	*pos++
-}
-
-type ParseError struct {
-	File   string
-	Line   int
-	Column int
-	Msg    string
-}
-
-func dump(ast *AST) {
-	data, err := json.MarshalIndent(ast, ".", "  ")
-	if err != nil {
-		panic(err)
-	}
-	fmt.Println(string(data))
-}
-
-/*
-func TrackError() {
-	if r := recover(); r != nil {
-		if e, ok := r.(ParseError); ok {
-			fmt.Printf("%s:%d:%d: %s\n", e.File, e.Line, e.Column, e.Msg)
-		} else {
-			panic(r)
-		}
-	}
-}()
-*/

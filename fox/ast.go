@@ -21,11 +21,15 @@ type FieldNode struct {
 	Type string
 }
 
+type ReturnNode struct {
+	Value ExpressionNode
+}
+
 type FuncNode struct {
 	Name    string
 	Params  []ParamNode
 	Returns []ReturnNode
-	Body    []StatementNode // keep body as raw string
+	Body    []StatementNode
 }
 
 type ParamNode struct {
