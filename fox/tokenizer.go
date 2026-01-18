@@ -23,6 +23,8 @@ func tokenize(input string) []Token {
 	var tokens []Token
 	var current strings.Builder
 
+	var line = 1
+
 	addToken := func() {
 		if current.Len() == 0 {
 			return
@@ -41,12 +43,15 @@ func tokenize(input string) []Token {
 			typ = "KEYWORD"
 		}
 
-		tokens = append(tokens, Token{Type: typ, Value: val})
+		tokens = append(tokens, Token{Type: typ, Value: val, Line: line})
 		current.Reset()
 	}
 
 	i := 0
 	for i < len(input) {
+		if string(input[i]) == "\n" {
+			line++
+		}
 		r := rune(input[i])
 
 		// Spaces
@@ -61,7 +66,7 @@ func tokenize(input string) []Token {
 			two := input[i : i+2]
 			if two == ":=" || two == "+=" || two == "-=" || two == "*=" || two == "/=" || two == "==" || two == "!=" {
 				addToken()
-				tokens = append(tokens, Token{Type: "OPERATOR", Value: two})
+				tokens = append(tokens, Token{Type: "OPERATOR", Value: two, Line: line})
 				i += 2
 				continue
 			}
@@ -71,12 +76,12 @@ func tokenize(input string) []Token {
 		switch r {
 		case '{', '}', '(', ')', ',', ';':
 			addToken()
-			tokens = append(tokens, Token{Type: "SYMBOL", Value: string(r)})
+			tokens = append(tokens, Token{Type: "SYMBOL", Value: string(r), Line: line})
 			i++
 			continue
 		case '=', '+', '-', '*', '/', '<', '>', '!':
 			addToken()
-			tokens = append(tokens, Token{Type: "OPERATOR", Value: string(r)})
+			tokens = append(tokens, Token{Type: "OPERATOR", Value: string(r), Line: line})
 			i++
 			continue
 		case '"':
@@ -89,7 +94,7 @@ func tokenize(input string) []Token {
 				i++
 			}
 			i++ // skip this symbol: ".
-			tokens = append(tokens, Token{Type: "STRING", Value: s.String()})
+			tokens = append(tokens, Token{Type: "STRING", Value: s.String(), Line: line})
 			continue
 		}
 
