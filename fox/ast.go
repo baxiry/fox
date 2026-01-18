@@ -3,39 +3,31 @@ package main
 type AST struct {
 	PackageName string
 	Imports     []string
-	Structs     []StructNode
-	Funcs       []FuncNode
-	//eVars     []string
-	//Vars      []string
-	//eConsts   []string
-	//Consts    []string
+	Structs     []StructDecl
+	Funcs       []FuncDecl
 }
 
-type StructNode struct {
+type StructDecl struct {
 	Name   string
-	Fields []FieldNode
+	Fields []FieldDecl
 }
 
-type FieldNode struct {
+type FieldDecl struct {
 	Name string
 	Type string
 }
 
-type ReturnNode struct {
-	Values []ExpressionNode
-}
-
-type RetSignsNode []string
-
-type FuncNode struct {
+type FuncDecl struct {
 	Name    string
-	Params  []ParamNode
-	Returns []ReturnNode
-	Body    []StatementNode
+	Params  []ParamDecl
+	Returns []ReturnSig
+	Body    []Statement
 	Vars    []string
 }
 
-type ParamNode struct {
+type ParamDecl struct {
 	Name string
 	Type string
 }
+
+type ReturnSig []string

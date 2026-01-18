@@ -1,37 +1,61 @@
 package main
 
-type StatementNode interface {
+import "fmt"
+
+type Statement interface {
 	isStatement()
 }
 
-type ExprStatementNode struct {
-	Expr ExpressionNode
+type ReturnStmt struct {
+	Values []Expression
 }
 
-type AssignNode struct {
-	Name  string
-	Op    string // "=", ":=", ...
-	Value ExpressionNode
+func (ReturnStmt) isStatement() {}
+
+type IfStmt struct {
+	Cond Expression
+	Then []Statement
+	Else []Statement
 }
+
+func (IfStmt) isStatement() {}
+
+type ForStmt struct {
+	Init Statement
+	Cond Expression
+	Post Statement
+	Body []Statement
+}
+
+func (ForStmt) isStatement() {}
+
+type AssignStmt struct {
+	Name  string
+	Op    string // "=" or ":="
+	Value Expression
+}
+
+func (AssignStmt) isStatement() {}
 
 type DefineStmt struct {
 	Name  string
-	Value ExpressionNode
+	Value Expression
 }
 
-func (DefineStmt) isStatement()        {}
-func (ExprStatementNode) isStatement() {}
-func (AssignNode) isStatement()        {}
-func (ReturnNode) isStatement()        {}
+func (DefineStmt) isStatement() {}
 
-func parseDefine(tokens []Token, pos *int) StatementNode {
-	name := expectIdent(tokens, pos).Value
-	expect(tokens, pos, ":=")
+type ExprStmt struct {
+	Expr Expression
+}
+
+func (ExprStmt) isStatement() {}
+func parseExprStatement(tokens []Token, pos *int) Statement {
+	fmt.Println("parseExprStatement.")
 	expr := parseExpr(tokens, pos)
-	return DefineStmt{Name: name, Value: expr}
+	return ExprStmt{Expr: expr}
 }
 
-func parseStatement(tokens []Token, pos *int) StatementNode {
+func parseStatement(tokens []Token, pos *int) Statement {
 	tok := tokens[*pos]
 
 	switch tok.Value {
@@ -60,26 +84,26 @@ func parseStatement(tokens []Token, pos *int) StatementNode {
 	}
 }
 
-func parseIf(tokens []Token, pos *int) StatementNode {
+func parseIf(tokens []Token, pos *int) Statement {
 	expect(tokens, pos, "if")
 	return parseStatement(tokens, pos)
 }
 
-func parseFor(tokens []Token, pos *int) StatementNode {
+func parseFor(tokens []Token, pos *int) Statement {
 	expect(tokens, pos, "for")
 	return parseStatement(tokens, pos)
 }
 
-func parseReturn(tokens []Token, pos *int) StatementNode {
+func parseReturn(tokens []Token, pos *int) Statement {
 	expect(tokens, pos, "return")
-	values := []ExpressionNode{}
+	values := []Expression{}
 	values = append(values, parseExpr(tokens, pos))
 	for tokens[*pos].Value == "," {
 		*pos++ // consume ','
 		values = append(values, parseExpr(tokens, pos))
 	}
 
-	return ReturnNode{Values: values}
+	return ReturnStmt{Values: values}
 }
 
 func parsePackage(tokens []Token, pos *int) string {
@@ -114,7 +138,7 @@ func parseImport(tokens []Token, pos *int) []string {
 	return libs
 }
 
-func parseStruct(tokens []Token, pos *int) StructNode {
+func parseStruct(tokens []Token, pos *int) StructDecl {
 	/*
 	   expect "type" or "struct"
 	   read "struct"
@@ -135,7 +159,7 @@ func parseStruct(tokens []Token, pos *int) StructNode {
 	expect(tokens, pos, "struct")
 	expect(tokens, pos, "{")
 
-	fields := []FieldNode{}
+	fields := []FieldDecl{}
 	for tokens[*pos].Value != "}" {
 		field := parseField(tokens, pos)
 		fields = append(fields, field)
@@ -143,14 +167,14 @@ func parseStruct(tokens []Token, pos *int) StructNode {
 
 	expect(tokens, pos, "}") // consume closing brace
 
-	return StructNode{
+	return StructDecl{
 		Name:   name.Value,
 		Fields: fields,
 	}
 }
-func parseRetSign(tokens []Token, pos *int) []RetSignsNode {
+func parseRetSign(tokens []Token, pos *int) []ReturnSig {
 
-	var retSigns = []RetSignsNode{}
+	var retSigns = []ReturnSig{}
 
 	for tokens[*pos].Value != "{" {
 
@@ -159,20 +183,20 @@ func parseRetSign(tokens []Token, pos *int) []RetSignsNode {
 		}
 		tok := expectIdent(tokens, pos)
 
-		retSigns = append(retSigns, RetSignsNode{tok.Value, tok.Type})
+		retSigns = append(retSigns, ReturnSig{tok.Value, tok.Type})
 	}
 	return retSigns
 
 }
 
-func parseField(tokens []Token, pos *int) FieldNode {
+func parseField(tokens []Token, pos *int) FieldDecl {
 	if *pos >= len(tokens) {
 		panic("unexpected end of file, expected Ident")
 	}
 	//ex: a int
 	nameTok := expectIdent(tokens, pos)
 	typeTok := expectIdent(tokens, pos)
-	return FieldNode{
+	return FieldDecl{
 		Name: nameTok.Value,
 		Type: typeTok.Value,
 	}

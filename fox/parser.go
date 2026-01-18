@@ -7,7 +7,7 @@ import (
 // ================= Expressions =================
 
 // parse unary Operator: *p
-func parseUnary(tokens []Token, pos *int) ExpressionNode {
+func parseUnary(tokens []Token, pos *int) Expression {
 	if tokens[*pos].Value == "*" {
 		*pos++
 		expr := parseUnary(tokens, pos)
@@ -17,42 +17,42 @@ func parseUnary(tokens []Token, pos *int) ExpressionNode {
 }
 
 // parse * and /
-func parseMul(tokens []Token, pos *int) ExpressionNode {
+func parseMul(tokens []Token, pos *int) Expression {
 	left := parseUnary(tokens, pos)
 	for tokens[*pos].Value == "*" || tokens[*pos].Value == "/" {
 		op := tokens[*pos].Value
 		*pos++
 		right := parseUnary(tokens, pos)
-		left = BinaryExprNode{Left: left, Op: op, Right: right}
+		left = BinaryExpr{Left: left, Op: op, Right: right}
 	}
 	return left
 }
 
 // parse + and -
-func parseAdd(tokens []Token, pos *int) ExpressionNode {
+func parseAdd(tokens []Token, pos *int) Expression {
 	left := parseMul(tokens, pos)
 	for tokens[*pos].Value == "+" || tokens[*pos].Value == "-" {
 		op := tokens[*pos].Value
 		*pos++
 		right := parseMul(tokens, pos)
-		left = BinaryExprNode{Left: left, Op: op, Right: right}
+		left = BinaryExpr{Left: left, Op: op, Right: right}
 	}
 	return left
 }
 
 // top-level expression
-func parseExpr(tokens []Token, pos *int) ExpressionNode {
+func parseExpr(tokens []Token, pos *int) Expression {
 	return parseAdd(tokens, pos)
 }
 
 // primary expressions
-func parsePrimary(tokens []Token, pos *int) ExpressionNode {
+func parsePrimary(tokens []Token, pos *int) Expression {
 	tok := tokens[*pos]
 
 	switch tok.Type {
 	case "IDENT":
 		*pos++
-		return IdentExpr{Value: tok.Value}
+		return IdentExpr{Name: tok.Value}
 
 	case "NUMBER":
 		*pos++
@@ -75,8 +75,8 @@ func parsePrimary(tokens []Token, pos *int) ExpressionNode {
 
 // ================= Functions =================
 
-func parseFunc(tokens []Token, pos *int) FuncNode {
-	funcNode := FuncNode{}
+func parseFunc(tokens []Token, pos *int) FuncDecl {
+	funcNode := FuncDecl{}
 
 	expect(tokens, pos, "func")
 	funcNode.Name = expectIdent(tokens, pos).Value
@@ -96,7 +96,7 @@ func parseFunc(tokens []Token, pos *int) FuncNode {
 			typ = expectIdent(tokens, pos).Value
 		}
 
-		funcNode.Params = append(funcNode.Params, ParamNode{name, typ})
+		funcNode.Params = append(funcNode.Params, ParamDecl{name, typ})
 	}
 	expect(tokens, pos, ")")
 

@@ -2,35 +2,8 @@ package main
 
 import "fmt"
 
-type ExpressionNode interface {
+type Expression interface {
 	isExpr()
-}
-
-type NumberNode struct {
-	Value int
-}
-
-type StringExpr struct {
-	Value string
-}
-
-type IdentNode struct {
-	Name string
-}
-
-type BinaryExprNode struct {
-	Op    string
-	Left  ExpressionNode
-	Right ExpressionNode
-}
-
-type CallExprNode struct {
-	Name string
-	Args []ExpressionNode
-}
-
-type IdentExpr struct {
-	Value string
 }
 
 type NumberExpr struct {
@@ -38,39 +11,69 @@ type NumberExpr struct {
 }
 
 func (NumberExpr) isExpr() {}
-func (StringExpr) isExpr() {}
 
-func (NumberNode) isExpr()     {}
-func (CallExprNode) isExpr()   {}
-func (BinaryExprNode) isExpr() {}
-func (IdentNode) isExpr()      {}
-func (IdentExpr) isExpr()      {}
-
-func parseExprStatement(tokens []Token, pos *int) StatementNode {
-	fmt.Println("parseExprStatement.")
-	expr := parseExpr(tokens, pos)
-	return ExprStatementNode{Expr: expr}
+type StringExpr struct {
+	Value string
 }
 
-func parseExprOrAssign(tokens []Token, pos *int) StatementNode {
+func (StringExpr) isExpr() {}
+
+type IdentExpr struct {
+	Name string
+}
+
+func (IdentExpr) isExpr() {}
+
+type BinaryExpr struct {
+	Op    string
+	Left  Expression
+	Right Expression
+}
+
+func (BinaryExpr) isExpr() {}
+
+type CallExpr struct {
+	Name string
+	Args []Expression
+}
+
+func (CallExpr) isExpr() {}
+
+func parseExprOrAssign(tokens []Token, pos *int) Statement {
 
 	if lookAheadIsAssign(tokens, *pos) {
 		return parseAssign(tokens, pos)
 	}
 
 	expr := parseExpr(tokens, pos)
-	return ExprStatementNode{Expr: expr}
+	return ExprStmt{Expr: expr}
 }
 
-func parseAssign(tokens []Token, pos *int) StatementNode {
-	// ex : x = expr
+func parseAssign(tokens []Token, pos *int) Statement {
+	// ex: x = expr
 	name := expectIdent(tokens, pos).Value
 	op := tokens[*pos].Value //
 	*pos++
 
 	value := parseExpr(tokens, pos)
 
-	return AssignNode{
+	return AssignStmt{
+		Name:  name,
+		Op:    op,
+		Value: value,
+	}
+}
+
+func parseDefine(tokens []Token, pos *int) Statement {
+	// ex: x = expr
+	name := expectIdent(tokens, pos).Value
+	op := tokens[*pos].Value //
+	fmt.Println("op in parseDef", op)
+	*pos++
+
+	value := parseExpr(tokens, pos)
+
+	return AssignStmt{
 		Name:  name,
 		Op:    op,
 		Value: value,
