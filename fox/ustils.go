@@ -13,7 +13,7 @@ type ParseError struct {
 }
 
 func dump(ast *AST) {
-	data, err := json.MarshalIndent(ast, ".", "  ")
+	data, err := json.MarshalIndent(ast, "", "  ")
 	if err != nil {
 		panic(err)
 	}

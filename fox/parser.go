@@ -2,7 +2,6 @@ package main
 
 import (
 	"fmt"
-	"time"
 )
 
 // ================= Expressions =================
@@ -70,10 +69,7 @@ func parsePrimary(tokens []Token, pos *int) ExpressionNode {
 		return expr
 
 	default:
-		panic(fmt.Sprintf(
-			"expected expression at %d:%d, got '%s'",
-			tok.Line, tok.Column, tok.Value,
-		))
+		panic(fmt.Sprintf("expected expression at line %d, got '%s'\n", tok.Line, tok.Value))
 	}
 }
 
@@ -111,7 +107,6 @@ func parseFunc(tokens []Token, pos *int) FuncNode {
 		//expr := parseExpr(tokens, pos)
 		stmt := parseStatement(tokens, pos)
 		funcNode.Body = append(funcNode.Body, stmt)
-		time.Sleep(time.Millisecond / 350)
 	}
 	expect(tokens, pos, "}")
 
@@ -128,6 +123,7 @@ func astBuilder(tokens []Token) {
 	fmt.Println("len of tokens  : ", len(tokens))
 	for *pos < len(tokens) {
 		token := tokens[*pos]
+		fmt.Println(token)
 
 		switch token.Value {
 		case "package":
@@ -152,17 +148,17 @@ func astBuilder(tokens []Token) {
 // ================= Utilities =================
 
 func expectIdent(tokens []Token, pos *int) Token {
+
 	if *pos >= len(tokens) {
 		panic("   unexpected end of input, expected identifier")
 	}
 
 	tok := tokens[*pos]
-	fmt.Println("expectIdent: ", tok)
+	fmt.Println("expectIdent", tok)
 
 	if tok.Type != "IDENT" {
 		panic(fmt.Sprintf(
-			"   syntax error at line %d, col %d: expected IDENT, got '%s'\n\n",
-			tok.Line, tok.Column, tok.Type,
+			"syntax error at line %d: expected IDENT, got '%s'\n\n", tok.Line, tok.Type,
 		))
 	}
 
@@ -175,7 +171,8 @@ func expect(tokens []Token, pos *int, value string) {
 		panic("unexpected end of file, expected " + value)
 	}
 	tok := tokens[*pos]
-	fmt.Println("expect:      ", tok)
+
+	fmt.Println("expect   ", tok)
 	if tok.Value != value {
 		panic(fmt.Sprintf("syntax error: expected '%s', got '%s'", value, tok.Value))
 	}

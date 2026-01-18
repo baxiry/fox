@@ -22,7 +22,7 @@ type FieldNode struct {
 }
 
 type ReturnNode struct {
-	Value ExpressionNode
+	Values []ExpressionNode
 }
 
 type RetSignsNode []string

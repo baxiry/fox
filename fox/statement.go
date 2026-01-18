@@ -60,21 +60,26 @@ func parseStatement(tokens []Token, pos *int) StatementNode {
 	}
 }
 
-func parseIf(tokens []Token, pos *int) ReturnNode {
+func parseIf(tokens []Token, pos *int) StatementNode {
 	expect(tokens, pos, "if")
-	val := parseExpr(tokens, pos)
-	return ReturnNode{Value: val}
-}
-func parseFor(tokens []Token, pos *int) ReturnNode {
-	expect(tokens, pos, "for")
-	val := parseExpr(tokens, pos)
-	return ReturnNode{Value: val}
+	return parseStatement(tokens, pos)
 }
 
-func parseReturn(tokens []Token, pos *int) ReturnNode {
+func parseFor(tokens []Token, pos *int) StatementNode {
+	expect(tokens, pos, "for")
+	return parseStatement(tokens, pos)
+}
+
+func parseReturn(tokens []Token, pos *int) StatementNode {
 	expect(tokens, pos, "return")
-	val := parseExpr(tokens, pos)
-	return ReturnNode{Value: val}
+	values := []ExpressionNode{}
+	values = append(values, parseExpr(tokens, pos))
+	for tokens[*pos].Value == "," {
+		*pos++ // consume ','
+		values = append(values, parseExpr(tokens, pos))
+	}
+
+	return ReturnNode{Values: values}
 }
 
 func parsePackage(tokens []Token, pos *int) string {

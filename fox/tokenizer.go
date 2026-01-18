@@ -11,10 +11,9 @@ import (
 type Token struct {
 	Type  string
 	Value string
-
-	file   string
-	Line   int
-	Column int
+	file  string
+	Line  int
+	//Column int
 }
 
 // tokenize splits the input into very simple tokens

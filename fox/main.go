@@ -1,6 +1,7 @@
 package main
 
 import (
+	"fmt"
 	"os"
 )
 
@@ -14,5 +15,8 @@ func main() {
 	content := string(data)
 	tokens := tokenize(content)
 
+	for _, token := range tokens {
+		fmt.Println(token)
+	}
 	astBuilder(tokens)
 }
