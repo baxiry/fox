@@ -1,19 +1,22 @@
 package main
 
-import "fmt"
+type UnaryExpr struct {
+	Op   string // "*", "&"
+	Expr Expression
+}
 
 type Expression interface {
 	isExpr()
 }
 
 type NumberExpr struct {
-	Value string
+	Literal string
 }
 
 func (NumberExpr) isExpr() {}
 
 type StringExpr struct {
-	Value string
+	Literal string
 }
 
 func (StringExpr) isExpr() {}
@@ -32,64 +35,56 @@ type BinaryExpr struct {
 
 func (BinaryExpr) isExpr() {}
 
+func (UnaryExpr) isExpr() {}
+
+//type CallExpr struct {
+//   Func Expression
+//  Args []Expression
+//}
+
 type CallExpr struct {
-	Name string
-	Args []Expression
+	FuncName string
+	Args     []Expression
 }
 
 func (CallExpr) isExpr() {}
 
-func parseExprOrAssign(tokens []Token, pos *int) Statement {
+func parseCall(name string, tokens []Token, pos *int) Expression {
+	expectType(tokens, pos, Delimiter.LParen)
 
+	args := []Expression{}
+
+	for tokens[*pos].Value != ")" {
+		if tokens[*pos].Value == "," {
+			*pos++
+			continue
+		}
+		arg := parseExpr(tokens, pos)
+		args = append(args, arg)
+	}
+
+	expectType(tokens, pos, Delimiter.RParen)
+	return CallExpr{FuncName: name, Args: args}
+}
+
+func parseExprOrAssign(tokens []Token, pos *int) Statement {
 	if lookAheadIsAssign(tokens, *pos) {
 		return parseAssign(tokens, pos)
 	}
-
 	expr := parseExpr(tokens, pos)
 	return ExprStmt{Expr: expr}
-}
-
-func parseAssign(tokens []Token, pos *int) Statement {
-	// ex: x = expr
-	name := expectIdent(tokens, pos).Value
-	op := tokens[*pos].Value //
-	*pos++
-
-	value := parseExpr(tokens, pos)
-
-	return AssignStmt{
-		Name:  name,
-		Op:    op,
-		Value: value,
-	}
-}
-
-func parseDefine(tokens []Token, pos *int) Statement {
-	// ex: x = expr
-	name := expectIdent(tokens, pos).Value
-	op := tokens[*pos].Value //
-	fmt.Println("op in parseDef", op)
-	*pos++
-
-	value := parseExpr(tokens, pos)
-
-	return AssignStmt{
-		Name:  name,
-		Op:    op,
-		Value: value,
-	}
 }
 
 func lookAheadIsAssign(tokens []Token, pos int) bool {
 	if pos+1 >= len(tokens) {
 		return false
 	}
-	// ex: IDENT "="
-	if tokens[pos].Type == "IDENT" && tokens[pos+1].Value == "=" {
+	// IDENT = expr
+	if tokens[pos].Type == Ident.Ident && tokens[pos+1].Type == Operator.Assign {
 		return true
 	}
-	// ex: IDENT ":="
-	if tokens[pos].Type == "IDENT" && tokens[pos+1].Value == ":=" {
+	// IDENT := expr
+	if tokens[pos].Type == Ident.Ident && tokens[pos+1].Type == Operator.Define {
 		return true
 	}
 	return false

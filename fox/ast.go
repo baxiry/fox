@@ -30,4 +30,9 @@ type ParamDecl struct {
 	Type string
 }
 
-type ReturnSig []string
+type ReturnSig struct {
+	Name string
+	Type string
+}
+
+//[]string

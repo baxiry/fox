@@ -1,13 +1,27 @@
 package main
 
-import "fmt"
+// ===== Interfaces =====
 
 type Statement interface {
 	isStatement()
 }
 
+// ===== AST Nodes (Statements) =====
+
+type BreakNode struct {
+	Tok Token
+}
+
+func (BreakNode) isStatement() {}
+
+type ContinueNode struct {
+	Tok Token
+}
+
+func (ContinueNode) isStatement() {}
+
 type ReturnStmt struct {
-	Values []Expression
+	RetValues []Expression
 }
 
 func (ReturnStmt) isStatement() {}
@@ -49,11 +63,8 @@ type ExprStmt struct {
 }
 
 func (ExprStmt) isStatement() {}
-func parseExprStatement(tokens []Token, pos *int) Statement {
-	fmt.Println("parseExprStatement.")
-	expr := parseExpr(tokens, pos)
-	return ExprStmt{Expr: expr}
-}
+
+// ===== Parsing Helpers =====
 
 func parseStatement(tokens []Token, pos *int) Statement {
 	tok := tokens[*pos]
@@ -65,139 +76,131 @@ func parseStatement(tokens []Token, pos *int) Statement {
 		return parseIf(tokens, pos)
 	case "for":
 		return parseFor(tokens, pos)
-
+	case "break":
+		expectType(tokens, pos, Keyword.Break)
+		return BreakNode{Tok: tok}
+	case "continue":
+		expectType(tokens, pos, Keyword.Continue)
+		return ContinueNode{Tok: tok}
 	default:
-		if *pos+1 >= len(tokens) {
-			return parseExprStatement(tokens, pos)
+		if *pos+1 < len(tokens) {
+			op := tokens[*pos+1].Value
+			if op == "=" {
+				return parseAssign(tokens, pos)
+			}
+			if op == ":=" {
+				return parseDefine(tokens, pos)
+			}
 		}
-
-		op := tokens[*pos+1].Value
-		if op == "=" {
-			return parseAssign(tokens, pos)
-		}
-
-		if op == ":=" {
-			return parseDefine(tokens, pos)
-		}
-
 		return parseExprStatement(tokens, pos)
 	}
 }
 
+// ===== Block Parsing =====
+
+func parseBlock(tokens []Token, pos *int) []Statement {
+	stmts := []Statement{}
+
+	expectType(tokens, pos, Delimiter.LBrace)
+	for *pos < len(tokens) && tokens[*pos].Type != Delimiter.RBrace {
+		stmts = append(stmts, parseStatement(tokens, pos))
+	}
+	expectType(tokens, pos, Delimiter.RBrace)
+	return stmts
+}
+
+// ===== Statement Parsers =====
+
 func parseIf(tokens []Token, pos *int) Statement {
-	expect(tokens, pos, "if")
-	return parseStatement(tokens, pos)
+	expectType(tokens, pos, Keyword.If)
+	cond := parseExpr(tokens, pos)
+	thenBlock := parseBlock(tokens, pos)
+
+	var elseBlock []Statement
+	if tokens[*pos].Type == Keyword.Else {
+		*pos++
+		elseBlock = parseBlock(tokens, pos)
+	}
+
+	return IfStmt{Cond: cond, Then: thenBlock, Else: elseBlock}
 }
 
 func parseFor(tokens []Token, pos *int) Statement {
-	expect(tokens, pos, "for")
-	return parseStatement(tokens, pos)
+	expectType(tokens, pos, Keyword.For)
+	cond := parseExpr(tokens, pos)
+	body := parseBlock(tokens, pos)
+	return ForStmt{Cond: cond, Body: body}
 }
 
 func parseReturn(tokens []Token, pos *int) Statement {
-	expect(tokens, pos, "return")
+	expectType(tokens, pos, Keyword.Return)
 	values := []Expression{}
-	values = append(values, parseExpr(tokens, pos))
-	for tokens[*pos].Value == "," {
-		*pos++ // consume ','
+
+	if tokens[*pos].Type != Delimiter.Semic && tokens[*pos].Type != Delimiter.RBrace {
 		values = append(values, parseExpr(tokens, pos))
+		for tokens[*pos].Value == "," {
+			*pos++
+			values = append(values, parseExpr(tokens, pos))
+		}
 	}
 
-	return ReturnStmt{Values: values}
+	return ReturnStmt{RetValues: values}
 }
 
-func parsePackage(tokens []Token, pos *int) string {
-	// read "package"
-	// read package name
-	expect(tokens, pos, "package")
-	pkg := tokens[*pos].Value
-	return pkg
+func parseExprStatement(tokens []Token, pos *int) Statement {
+	expr := parseExpr(tokens, pos)
+	return ExprStmt{Expr: expr}
 }
 
-func parseImport(tokens []Token, pos *int) []string {
-	/*
-		read import
-		read (
-		read "fmt"
-		my read ,
-		read "io"
-		read )
-	*/
-	expect(tokens, pos, "import")
-	expect(tokens, pos, "(")
-
-	var libs = []string{}
-
-	for tokens[*pos].Value != ")" {
-		pkg := expectIdent(tokens, pos)
-		libs = append(libs, pkg.Value)
-	}
-
-	expect(tokens, pos, ")") // consume closing brace
-
-	return libs
-}
-
-func parseStruct(tokens []Token, pos *int) StructDecl {
-	/*
-	   expect "type" or "struct"
-	   read "struct"
-	   read struct name
-	   read "{"
-	   parse fields
-	   read "}"
-
-	   type X struct {
-	       a int
-	       b int
-	   }
-	*/
-	expect(tokens, pos, "type")
-
-	name := expectIdent(tokens, pos)
-
-	expect(tokens, pos, "struct")
-	expect(tokens, pos, "{")
-
-	fields := []FieldDecl{}
-	for tokens[*pos].Value != "}" {
-		field := parseField(tokens, pos)
-		fields = append(fields, field)
-	}
-
-	expect(tokens, pos, "}") // consume closing brace
-
-	return StructDecl{
-		Name:   name.Value,
-		Fields: fields,
-	}
-}
 func parseRetSign(tokens []Token, pos *int) []ReturnSig {
-
 	var retSigns = []ReturnSig{}
 
-	for tokens[*pos].Value != "{" {
-
-		if tokens[*pos].Value == "," && tokens[*pos+1].Value != "{" {
+	for tokens[*pos].Value != Delimiter.LBrace {
+		if tokens[*pos].Value == Delimiter.Comma && tokens[*pos+1].Value != Delimiter.LBrace {
 			*pos++
 		}
 		tok := expectIdent(tokens, pos)
-
-		retSigns = append(retSigns, ReturnSig{tok.Value, tok.Type})
+		retSigns = append(retSigns, ReturnSig{
+			Name: tok.Value,
+			Type: tok.Type,
+		})
 	}
 	return retSigns
-
 }
 
-func parseField(tokens []Token, pos *int) FieldDecl {
-	if *pos >= len(tokens) {
-		panic("unexpected end of file, expected Ident")
+func parseAssign(tokens []Token, pos *int) Statement {
+	nameTok := expectType(tokens, pos, Ident.Ident)
+	name := nameTok.Value
+
+	opTok := tokens[*pos]
+	if opTok.Type != Operator.Assign && opTok.Type != Operator.Define {
+		panic("expected = or :=")
 	}
-	//ex: a int
-	nameTok := expectIdent(tokens, pos)
-	typeTok := expectIdent(tokens, pos)
-	return FieldDecl{
-		Name: nameTok.Value,
-		Type: typeTok.Value,
+	*pos++
+
+	value := parseExpr(tokens, pos)
+
+	return AssignStmt{
+		Name:  name,
+		Op:    opTok.Value,
+		Value: value,
+	}
+}
+
+func parseDefine(tokens []Token, pos *int) Statement {
+	nameTok := expectType(tokens, pos, Ident.Ident)
+	name := nameTok.Value
+
+	opTok := tokens[*pos]
+	if opTok.Type != Operator.Define {
+		panic("expected :=")
+	}
+	*pos++
+
+	value := parseExpr(tokens, pos)
+
+	return DefineStmt{
+		Name:  name,
+		Value: value,
 	}
 }

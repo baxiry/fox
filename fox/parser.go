@@ -11,7 +11,8 @@ func parseUnary(tokens []Token, pos *int) Expression {
 	if tokens[*pos].Value == "*" {
 		*pos++
 		expr := parseUnary(tokens, pos)
-		return expr // later: DerefExpr{Expr: expr}
+
+		return UnaryExpr{Op: "*", Expr: expr}
 	}
 	return parsePrimary(tokens, pos)
 }
@@ -42,34 +43,47 @@ func parseAdd(tokens []Token, pos *int) Expression {
 
 // top-level expression
 func parseExpr(tokens []Token, pos *int) Expression {
-	return parseAdd(tokens, pos)
+	return parseAdd(tokens, pos) // this is not logic
 }
 
 // primary expressions
 func parsePrimary(tokens []Token, pos *int) Expression {
+	if *pos >= len(tokens) {
+		panic("unexpected end of input while parsing expression")
+	}
+
 	tok := tokens[*pos]
 
 	switch tok.Type {
-	case "IDENT":
+
+	case Ident.Ident:
 		*pos++
+
+		// function call: f(...)
+		if *pos < len(tokens) && tokens[*pos].Type == Delimiter.LParen {
+			return parseCall(tok.Value, tokens, pos)
+		}
 		return IdentExpr{Name: tok.Value}
 
-	case "NUMBER":
+	case NumericLiteral.Int, NumericLiteral.Float:
 		*pos++
-		return NumberExpr{Value: tok.Value}
+		return NumberExpr{Literal: tok.Value}
 
-	case "STRING":
+	case OtherLiteral.String:
 		*pos++
-		return StringExpr{Value: tok.Value}
+		return StringExpr{Literal: tok.Value}
 
-	case "(":
+	case Delimiter.LParen: //TOKEN_LPAREN:
 		*pos++
 		expr := parseExpr(tokens, pos)
-		expect(tokens, pos, ")")
+		expectType(tokens, pos, Delimiter.LParen)
 		return expr
 
 	default:
-		panic(fmt.Sprintf("expected expression at line %d, got '%s'\n", tok.Line, tok.Value))
+		panic(fmt.Sprintf(
+			"expected expression at line %d, got %s (%q)",
+			tok.Line, tok.Type, tok.Value,
+		))
 	}
 }
 
@@ -78,37 +92,54 @@ func parsePrimary(tokens []Token, pos *int) Expression {
 func parseFunc(tokens []Token, pos *int) FuncDecl {
 	funcNode := FuncDecl{}
 
-	expect(tokens, pos, "func")
+	// func
+	expectType(tokens, pos, Keyword.Func)
 	funcNode.Name = expectIdent(tokens, pos).Value
 
-	expect(tokens, pos, "(")
-	for tokens[*pos].Value != ")" {
-		if tokens[*pos].Value == "," {
+	// (
+	expectType(tokens, pos, Delimiter.LParen)
+
+	for tokens[*pos].Type != Delimiter.RParen {
+		// skip comma
+		if tokens[*pos].Type == Delimiter.Comma {
 			*pos++
+			continue
 		}
+
+		// param name
 		name := expectIdent(tokens, pos).Value
 
+		// param type
 		typ := ""
-		if tokens[*pos].Value == "*" {
+		if tokens[*pos].Type == Operator.Star {
 			*pos++
 			typ = "*" + expectIdent(tokens, pos).Value
 		} else {
 			typ = expectIdent(tokens, pos).Value
 		}
 
-		funcNode.Params = append(funcNode.Params, ParamDecl{name, typ})
+		funcNode.Params = append(funcNode.Params, ParamDecl{
+			Name: name,
+			Type: typ,
+		})
 	}
-	expect(tokens, pos, ")")
 
+	// )
+	expectType(tokens, pos, Delimiter.RParen)
+
+	// return signature
 	parseRetSign(tokens, pos)
 
-	expect(tokens, pos, "{")
-	for tokens[*pos].Value != "}" {
-		//expr := parseExpr(tokens, pos)
+	// {
+	expectType(tokens, pos, Delimiter.LBrace)
+
+	for tokens[*pos].Type != Delimiter.RBrace {
 		stmt := parseStatement(tokens, pos)
 		funcNode.Body = append(funcNode.Body, stmt)
 	}
-	expect(tokens, pos, "}")
+
+	// }
+	expectType(tokens, pos, Delimiter.RBrace)
 
 	return funcNode
 }
@@ -123,7 +154,6 @@ func astBuilder(tokens []Token) {
 	fmt.Println("len of tokens  : ", len(tokens))
 	for *pos < len(tokens) {
 		token := tokens[*pos]
-		fmt.Println(token)
 
 		switch token.Value {
 		case "package":
@@ -148,17 +178,16 @@ func astBuilder(tokens []Token) {
 // ================= Utilities =================
 
 func expectIdent(tokens []Token, pos *int) Token {
-
 	if *pos >= len(tokens) {
-		panic("   unexpected end of input, expected identifier")
+		panic("unexpected end of input, expected identifier")
 	}
 
 	tok := tokens[*pos]
-	fmt.Println("expectIdent", tok)
 
-	if tok.Type != "IDENT" {
+	if tok.Type != Ident.Ident {
 		panic(fmt.Sprintf(
-			"syntax error at line %d: expected IDENT, got '%s'\n\n", tok.Line, tok.Type,
+			"syntax error at line %d: expected IDENT, got %s",
+			tok.Line, tok.Type,
 		))
 	}
 
@@ -166,22 +195,100 @@ func expectIdent(tokens []Token, pos *int) Token {
 	return tok
 }
 
-func expect(tokens []Token, pos *int, value string) {
+func expectValue(tokens []Token, pos *int, value string) {
 	if *pos >= len(tokens) {
 		panic("unexpected end of file, expected " + value)
 	}
 	tok := tokens[*pos]
 
-	fmt.Println("expect   ", tok)
 	if tok.Value != value {
-		panic(fmt.Sprintf("syntax error: expected '%s', got '%s'", value, tok.Value))
+		panic(fmt.Sprintf(
+			"syntax error at line %d: expected '%s', got '%s'",
+			tok.Line, value, tok.Value,
+		))
 	}
 	*pos++
 }
 
+func expectType(tokens []Token, pos *int, expected string) Token {
+	if *pos >= len(tokens) {
+		panic("unexpected end of input")
+	}
+	tok := tokens[*pos]
+
+	if tok.Type != expected {
+		panic(fmt.Sprintf(
+			"syntax error at line %d: expected %s, got %s",
+			tok.Line, expected, tok.Type,
+		))
+	}
+	*pos++
+	return tok
+}
+
+func expectKind(tokens []Token, pos *int, kind TokenKind, expectedText string) Token {
+	if *pos >= len(tokens) {
+		panic("unexpected end of input")
+	}
+	tok := tokens[*pos]
+
+	if tok.Kind != kind {
+		panic(fmt.Sprintf(
+			"syntax error at line %d: expected %s, got %s",
+			tok.Line, expectedText, tok.Type,
+		))
+	}
+	*pos++
+	return tok
+}
 func isAssign(tokens []Token, pos *int) bool {
 	if *pos+1 >= len(tokens) {
 		return false
 	}
-	return tokens[*pos].Type == "IDENT" && tokens[*pos+1].Value == ":="
+	return tokens[*pos].Type == Ident.Ident &&
+		(tokens[*pos+1].Type == Operator.Assign ||
+			tokens[*pos+1].Type == Operator.Define)
+}
+
+// ===== Top-Level Parsers =====
+
+func parsePackage(tokens []Token, pos *int) string {
+	expectType(tokens, pos, Keyword.Package)
+	pkg := tokens[*pos].Value
+	*pos++
+	return pkg
+}
+
+func parseImport(tokens []Token, pos *int) []string {
+	expectType(tokens, pos, Keyword.Import)
+	expectType(tokens, pos, Delimiter.LParen)
+
+	libs := []string{}
+	for tokens[*pos].Value != ")" {
+		pkg := expectIdent(tokens, pos)
+		libs = append(libs, pkg.Value)
+	}
+	expectType(tokens, pos, Delimiter.RParen)
+	return libs
+}
+
+func parseStruct(tokens []Token, pos *int) StructDecl {
+	expectType(tokens, pos, Keyword.Type)
+	name := expectIdent(tokens, pos)
+	expectType(tokens, pos, Keyword.Struct)
+	expectType(tokens, pos, Delimiter.LBrace)
+
+	fields := []FieldDecl{}
+	for tokens[*pos].Value != "}" {
+		fields = append(fields, parseField(tokens, pos))
+	}
+	expectType(tokens, pos, Delimiter.RBrace)
+
+	return StructDecl{Name: name.Value, Fields: fields}
+}
+
+func parseField(tokens []Token, pos *int) FieldDecl {
+	nameTok := expectIdent(tokens, pos)
+	typeTok := expectIdent(tokens, pos)
+	return FieldDecl{Name: nameTok.Value, Type: typeTok.Value}
 }
