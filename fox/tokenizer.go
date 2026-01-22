@@ -169,6 +169,24 @@ func tokenize(input string) []Token {
 		case "import":
 			tokens = append(tokens, Token{Type: Keyword.Import, Value: val, Line: line, Column: col})
 			return
+		case "break":
+			tokens = append(tokens, Token{
+				Kind:   KeywordKind,
+				Type:   Keyword.Break,
+				Value:  val,
+				Line:   line,
+				Column: col,
+			})
+			return
+		case "continue":
+			tokens = append(tokens, Token{
+				Kind:   KeywordKind,
+				Type:   Keyword.Continue,
+				Value:  val,
+				Line:   line,
+				Column: col,
+			})
+			return
 		}
 
 		if isInt(val) {

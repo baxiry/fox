@@ -29,6 +29,24 @@ func parseMul(tokens []Token, pos *int) Expression {
 	return left
 }
 
+func parseEquality(tokens []Token, pos *int) Expression {
+	left := parseAdd(tokens, pos)
+
+	for tokens[*pos].Value == "==" || tokens[*pos].Value == "!=" {
+		op := tokens[*pos].Value
+		*pos++
+		right := parseAdd(tokens, pos)
+
+		left = BinaryExpr{
+			Left:  left,
+			Op:    op,
+			Right: right,
+		}
+	}
+
+	return left
+}
+
 // parse + and -
 func parseAdd(tokens []Token, pos *int) Expression {
 	left := parseMul(tokens, pos)
@@ -43,7 +61,8 @@ func parseAdd(tokens []Token, pos *int) Expression {
 
 // top-level expression
 func parseExpr(tokens []Token, pos *int) Expression {
-	return parseAdd(tokens, pos) // this is not logic
+	// TODO: need && ||. ex: parseLogic()
+	return parseEquality(tokens, pos)
 }
 
 // primary expressions
@@ -173,81 +192,6 @@ func astBuilder(tokens []Token) {
 		}
 	}
 	dump(ast)
-}
-
-// ================= Utilities =================
-
-func expectIdent(tokens []Token, pos *int) Token {
-	if *pos >= len(tokens) {
-		panic("unexpected end of input, expected identifier")
-	}
-
-	tok := tokens[*pos]
-
-	if tok.Type != Ident.Ident {
-		panic(fmt.Sprintf(
-			"syntax error at line %d: expected IDENT, got %s",
-			tok.Line, tok.Type,
-		))
-	}
-
-	*pos++
-	return tok
-}
-
-func expectValue(tokens []Token, pos *int, value string) {
-	if *pos >= len(tokens) {
-		panic("unexpected end of file, expected " + value)
-	}
-	tok := tokens[*pos]
-
-	if tok.Value != value {
-		panic(fmt.Sprintf(
-			"syntax error at line %d: expected '%s', got '%s'",
-			tok.Line, value, tok.Value,
-		))
-	}
-	*pos++
-}
-
-func expectType(tokens []Token, pos *int, expected string) Token {
-	if *pos >= len(tokens) {
-		panic("unexpected end of input")
-	}
-	tok := tokens[*pos]
-
-	if tok.Type != expected {
-		panic(fmt.Sprintf(
-			"syntax error at line %d: expected %s, got %s",
-			tok.Line, expected, tok.Type,
-		))
-	}
-	*pos++
-	return tok
-}
-
-func expectKind(tokens []Token, pos *int, kind TokenKind, expectedText string) Token {
-	if *pos >= len(tokens) {
-		panic("unexpected end of input")
-	}
-	tok := tokens[*pos]
-
-	if tok.Kind != kind {
-		panic(fmt.Sprintf(
-			"syntax error at line %d: expected %s, got %s",
-			tok.Line, expectedText, tok.Type,
-		))
-	}
-	*pos++
-	return tok
-}
-func isAssign(tokens []Token, pos *int) bool {
-	if *pos+1 >= len(tokens) {
-		return false
-	}
-	return tokens[*pos].Type == Ident.Ident &&
-		(tokens[*pos+1].Type == Operator.Assign ||
-			tokens[*pos+1].Type == Operator.Define)
 }
 
 // ===== Top-Level Parsers =====
