@@ -21,7 +21,7 @@ func parseUnary(tokens []Token, pos *int) Expression {
 func parseMul(tokens []Token, pos *int) Expression {
 	left := parseUnary(tokens, pos)
 	for tokens[*pos].Value == "*" || tokens[*pos].Value == "/" {
-		op := tokens[*pos].Value
+		op := tokens[*pos]
 		*pos++
 		right := parseUnary(tokens, pos)
 		left = BinaryExpr{Left: left, Op: op, Right: right}
@@ -33,7 +33,7 @@ func parseEquality(tokens []Token, pos *int) Expression {
 	left := parseAdd(tokens, pos)
 
 	for tokens[*pos].Value == "==" || tokens[*pos].Value == "!=" {
-		op := tokens[*pos].Value
+		op := tokens[*pos]
 		*pos++
 		right := parseAdd(tokens, pos)
 
@@ -51,7 +51,7 @@ func parseEquality(tokens []Token, pos *int) Expression {
 func parseAdd(tokens []Token, pos *int) Expression {
 	left := parseMul(tokens, pos)
 	for tokens[*pos].Value == "+" || tokens[*pos].Value == "-" {
-		op := tokens[*pos].Value
+		op := tokens[*pos]
 		*pos++
 		right := parseMul(tokens, pos)
 		left = BinaryExpr{Left: left, Op: op, Right: right}
@@ -112,7 +112,7 @@ func parseFunc(tokens []Token, pos *int) FuncDecl {
 	funcNode := FuncDecl{}
 
 	// func
-	expectType(tokens, pos, Keyword.Func)
+	expectType(tokens, pos, keywords.Func)
 	funcNode.Name = expectIdent(tokens, pos).Value
 
 	// (
@@ -147,7 +147,7 @@ func parseFunc(tokens []Token, pos *int) FuncDecl {
 	expectType(tokens, pos, Delimiter.RParen)
 
 	// return signature
-	parseRetSign(tokens, pos)
+	funcNode.Returns = parseRetSign(tokens, pos)
 
 	// {
 	expectType(tokens, pos, Delimiter.LBrace)
@@ -197,14 +197,14 @@ func astBuilder(tokens []Token) {
 // ===== Top-Level Parsers =====
 
 func parsePackage(tokens []Token, pos *int) string {
-	expectType(tokens, pos, Keyword.Package)
+	expectType(tokens, pos, keywords.Package)
 	pkg := tokens[*pos].Value
 	*pos++
 	return pkg
 }
 
 func parseImport(tokens []Token, pos *int) []string {
-	expectType(tokens, pos, Keyword.Import)
+	expectType(tokens, pos, keywords.Import)
 	expectType(tokens, pos, Delimiter.LParen)
 
 	libs := []string{}
@@ -217,9 +217,9 @@ func parseImport(tokens []Token, pos *int) []string {
 }
 
 func parseStruct(tokens []Token, pos *int) StructDecl {
-	expectType(tokens, pos, Keyword.Type)
+	expectType(tokens, pos, keywords.Type)
 	name := expectIdent(tokens, pos)
-	expectType(tokens, pos, Keyword.Struct)
+	expectType(tokens, pos, keywords.Struct)
 	expectType(tokens, pos, Delimiter.LBrace)
 
 	fields := []FieldDecl{}

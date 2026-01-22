@@ -1,12 +1,12 @@
 package main
 
-// ===== Interfaces =====
+// Interfaces
 
 type Statement interface {
 	isStatement()
 }
 
-// ===== AST Nodes (Statements) =====
+// AST Nodes (Statements)
 
 type BreakNode struct {
 	Tok Token
@@ -64,26 +64,26 @@ type ExprStmt struct {
 
 func (ExprStmt) isStatement() {}
 
-// ===== Parsing Helpers =====
+//  Parsing Helpers
 
 func parseStatement(tokens []Token, pos *int) Statement {
 	tok := tokens[*pos]
 
 	switch tok.Value {
-	case "return":
+	case keywords.Return:
 		return parseReturn(tokens, pos)
 
-	case "if":
+	case keywords.If:
 		return parseIf(tokens, pos)
 
-	case "for":
+	case keywords.For:
 		return parseFor(tokens, pos)
 
-	case "break":
+	case keywords.Break:
 		*pos++
 		return BreakNode{Tok: tok}
 
-	case "continue":
+	case keywords.Continue:
 		*pos++
 		return ContinueNode{Tok: tok}
 
@@ -102,7 +102,7 @@ func parseStatement(tokens []Token, pos *int) Statement {
 	}
 }
 
-// ===== Block Parsing =====
+// Block Parsing
 
 func parseBlock(tokens []Token, pos *int) []Statement {
 	stmts := []Statement{}
@@ -114,15 +114,15 @@ func parseBlock(tokens []Token, pos *int) []Statement {
 	return stmts
 }
 
-// ===== Statement Parsers =====
+//  Statement Parsers
 
 func parseIf(tokens []Token, pos *int) Statement {
-	expectType(tokens, pos, Keyword.If)
+	expectType(tokens, pos, keywords.If)
 	cond := parseExpr(tokens, pos)
 	thenBlock := parseBlock(tokens, pos)
 
 	var elseBlock []Statement
-	if *pos < len(tokens) && tokens[*pos].Type == Keyword.Else {
+	if *pos < len(tokens) && tokens[*pos].Type == keywords.Else {
 		*pos++
 		elseBlock = parseBlock(tokens, pos)
 	}
@@ -130,8 +130,28 @@ func parseIf(tokens []Token, pos *int) Statement {
 	return IfStmt{Cond: cond, Then: thenBlock, Else: elseBlock}
 }
 
+func parseExprUntil(tokens []Token, pos *int, stop string) Expression {
+	expr := parseExpr(tokens, pos)
+
+	for *pos < len(tokens) && tokens[*pos].Value != stop {
+		op := tokens[*pos]
+		if op.Kind != OperatorKind {
+			break
+		}
+		*pos++
+
+		right := parseExpr(tokens, pos)
+		expr = BinaryExpr{
+			Op:    op,
+			Left:  expr,
+			Right: right,
+		}
+	}
+	return expr
+}
+
 func parseFor(tokens []Token, pos *int) Statement {
-	expectType(tokens, pos, Keyword.For)
+	expectType(tokens, pos, keywords.For)
 	forStmt := ForStmt{}
 
 	//  INIT
@@ -147,7 +167,7 @@ func parseFor(tokens []Token, pos *int) Statement {
 
 	// CONDITION
 	if tokens[*pos].Type != Delimiter.Semic && tokens[*pos].Type != Delimiter.LBrace {
-		forStmt.Cond = parseExpr(tokens, pos)
+		forStmt.Cond = parseExprUntil(tokens, pos, ";")
 	}
 	expectType(tokens, pos, Delimiter.Semic) // use ;
 
@@ -166,7 +186,7 @@ func parseFor(tokens []Token, pos *int) Statement {
 }
 
 func parseReturn(tokens []Token, pos *int) Statement {
-	expectType(tokens, pos, Keyword.Return)
+	expectType(tokens, pos, keywords.Return)
 	values := []Expression{}
 
 	if tokens[*pos].Type != Delimiter.Semic && tokens[*pos].Type != Delimiter.RBrace {
@@ -185,8 +205,6 @@ func parseExprStatement(tokens []Token, pos *int) Statement {
 	return ExprStmt{Expr: expr}
 }
 
-// ===== Assignment / Definition Parsers =====
-
 func parseRetSign(tokens []Token, pos *int) []ReturnSig {
 	var retSigns []ReturnSig
 
@@ -203,6 +221,8 @@ func parseRetSign(tokens []Token, pos *int) []ReturnSig {
 
 	return retSigns
 }
+
+// Assignment / Definition Parsers
 func parseAssign(tokens []Token, pos *int) Statement {
 	nameTok := expectType(tokens, pos, Ident.Ident)
 	name := nameTok.Value
@@ -230,10 +250,12 @@ func parseDefine(tokens []Token, pos *int) Statement {
 	return DefineStmt{Name: name, Value: val}
 }
 
-// ----- مساعدة للـ For init/post (دمج تعريف أو تعيين) -----
+// For init/post
 func parseDefOrAssign(tokens []Token, pos *int) Statement {
 	if *pos+1 < len(tokens) && tokens[*pos+1].Type == Operator.Define {
 		return parseDefine(tokens, pos)
 	}
 	return parseAssign(tokens, pos)
 }
+
+// end

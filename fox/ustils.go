@@ -3,6 +3,7 @@ package main
 import (
 	"encoding/json"
 	"fmt"
+	"os"
 	"strings"
 )
 
@@ -13,13 +14,18 @@ type ParseError struct {
 	Msg    string
 }
 
+var enc = json.NewEncoder(os.Stdout)
+
 func dump(ast *AST) {
-	data, err := json.MarshalIndent(ast, "", "  ")
+	enc.SetEscapeHTML(false)
+	enc.SetIndent("", "  ")
+	err := enc.Encode(ast)
 	if err != nil {
 		panic(err)
 	}
-	fmt.Println(string(data))
+	//fmt.Println(ast)
 }
+
 func readNumber(src string, pos *int) Token {
 	start := *pos
 

@@ -28,7 +28,7 @@ type IdentExpr struct {
 func (IdentExpr) isExpr() {}
 
 type BinaryExpr struct {
-	Op    string
+	Op    Token
 	Left  Expression
 	Right Expression
 }

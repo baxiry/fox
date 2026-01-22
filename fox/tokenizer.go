@@ -79,7 +79,7 @@ var OtherLiteral = Literals{
 	Bool:   "BOOL",
 }
 
-var Keyword = Keywords{
+var keywords = Keywords{
 	Package:  "package",
 	Import:   "import",
 	Const:    "const",
@@ -140,39 +140,39 @@ func tokenize(input string) []Token {
 
 		switch val {
 		case "package":
-			tokens = append(tokens, Token{Type: Keyword.Package, Value: val, Line: line, Column: col})
+			tokens = append(tokens, Token{Type: keywords.Package, Value: val, Line: line, Column: col})
 			return
 		case "type":
-			tokens = append(tokens, Token{Type: Keyword.Type, Value: val, Line: line, Column: col})
+			tokens = append(tokens, Token{Type: keywords.Type, Value: val, Line: line, Column: col})
 			return
 		case "struct":
-			tokens = append(tokens, Token{Type: Keyword.Struct, Value: val, Line: line, Column: col})
+			tokens = append(tokens, Token{Type: keywords.Struct, Value: val, Line: line, Column: col})
 			return
 		case "func":
-			tokens = append(tokens, Token{Type: Keyword.Func, Value: val, Line: line, Column: col})
+			tokens = append(tokens, Token{Type: keywords.Func, Value: val, Line: line, Column: col})
 			return
 		case "return":
-			tokens = append(tokens, Token{Type: Keyword.Return, Value: val, Line: line, Column: col})
+			tokens = append(tokens, Token{Type: keywords.Return, Value: val, Line: line, Column: col})
 			return
 		case "var":
-			tokens = append(tokens, Token{Type: Keyword.Var, Value: val, Line: line, Column: col})
+			tokens = append(tokens, Token{Type: keywords.Var, Value: val, Line: line, Column: col})
 			return
 		case "const":
-			tokens = append(tokens, Token{Type: Keyword.Const, Value: val, Line: line, Column: col})
+			tokens = append(tokens, Token{Type: keywords.Const, Value: val, Line: line, Column: col})
 			return
 		case "if":
-			tokens = append(tokens, Token{Type: Keyword.If, Value: val, Line: line, Column: col})
+			tokens = append(tokens, Token{Type: keywords.If, Value: val, Line: line, Column: col})
 			return
 		case "for":
-			tokens = append(tokens, Token{Type: Keyword.For, Value: val, Line: line, Column: col})
+			tokens = append(tokens, Token{Type: keywords.For, Value: val, Line: line, Column: col})
 			return
 		case "import":
-			tokens = append(tokens, Token{Type: Keyword.Import, Value: val, Line: line, Column: col})
+			tokens = append(tokens, Token{Type: keywords.Import, Value: val, Line: line, Column: col})
 			return
 		case "break":
 			tokens = append(tokens, Token{
 				Kind:   KeywordKind,
-				Type:   Keyword.Break,
+				Type:   keywords.Break,
 				Value:  val,
 				Line:   line,
 				Column: col,
@@ -181,7 +181,7 @@ func tokenize(input string) []Token {
 		case "continue":
 			tokens = append(tokens, Token{
 				Kind:   KeywordKind,
-				Type:   Keyword.Continue,
+				Type:   keywords.Continue,
 				Value:  val,
 				Line:   line,
 				Column: col,
@@ -313,6 +313,31 @@ func tokenize(input string) []Token {
 			i++
 			tokens = append(tokens, Token{Type: OtherLiteral.String, Value: s.String(), Line: line, Column: startCol})
 			continue
+
+		case '<':
+			addToken()
+			tokens = append(tokens, Token{
+				Kind:   OperatorKind,
+				Type:   Operator.Lt,
+				Value:  "<",
+				Line:   line,
+				Column: col,
+			})
+			i++
+			continue
+
+		case '>':
+			addToken()
+			tokens = append(tokens, Token{
+				Kind:   OperatorKind,
+				Type:   Operator.Gt,
+				Value:  ">",
+				Line:   line,
+				Column: col,
+			})
+			i++
+			continue
+
 		}
 
 		current.WriteRune(r)

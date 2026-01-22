@@ -6,7 +6,8 @@ import (
 
 func main() {
 	// Read the Fox file
-	data, err := os.ReadFile("../test.fox")
+	testFile := os.Args[1]
+	data, err := os.ReadFile("../" + testFile)
 	if err != nil {
 		panic(err)
 	}

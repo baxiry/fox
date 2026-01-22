@@ -22,7 +22,6 @@ type FuncDecl struct {
 	Params  []ParamDecl
 	Returns []ReturnSig
 	Body    []Statement
-	Vars    []string
 }
 
 type ParamDecl struct {
