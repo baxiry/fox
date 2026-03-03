@@ -85,7 +85,7 @@ var keywords = Keywords{
 	Const:    "const",
 	Type:     "type",
 	Struct:   "struct",
-	Func:     "func",
+	Func:     "fn",
 	Var:      "var",
 	If:       "if",
 	Else:     "else",
@@ -139,37 +139,38 @@ func tokenize(input string) []Token {
 		current.Reset()
 
 		switch val {
-		case "package":
+		case keywords.Package:
+			// TODO use keyType like : PACKAGE instead keywords.Package
 			tokens = append(tokens, Token{Type: keywords.Package, Value: val, Line: line, Column: col})
 			return
-		case "type":
+		case keywords.Type:
 			tokens = append(tokens, Token{Type: keywords.Type, Value: val, Line: line, Column: col})
 			return
-		case "struct":
+		case keywords.Struct:
 			tokens = append(tokens, Token{Type: keywords.Struct, Value: val, Line: line, Column: col})
 			return
-		case "func":
+		case keywords.Func:
 			tokens = append(tokens, Token{Type: keywords.Func, Value: val, Line: line, Column: col})
 			return
-		case "return":
+		case keywords.Return:
 			tokens = append(tokens, Token{Type: keywords.Return, Value: val, Line: line, Column: col})
 			return
-		case "var":
+		case keywords.Var:
 			tokens = append(tokens, Token{Type: keywords.Var, Value: val, Line: line, Column: col})
 			return
-		case "const":
+		case keywords.Const:
 			tokens = append(tokens, Token{Type: keywords.Const, Value: val, Line: line, Column: col})
 			return
-		case "if":
+		case keywords.If:
 			tokens = append(tokens, Token{Type: keywords.If, Value: val, Line: line, Column: col})
 			return
-		case "for":
+		case keywords.For:
 			tokens = append(tokens, Token{Type: keywords.For, Value: val, Line: line, Column: col})
 			return
-		case "import":
+		case keywords.Import:
 			tokens = append(tokens, Token{Type: keywords.Import, Value: val, Line: line, Column: col})
 			return
-		case "break":
+		case keywords.Break:
 			tokens = append(tokens, Token{
 				Kind:   KeywordKind,
 				Type:   keywords.Break,
@@ -178,7 +179,7 @@ func tokenize(input string) []Token {
 				Column: col,
 			})
 			return
-		case "continue":
+		case keywords.Continue:
 			tokens = append(tokens, Token{
 				Kind:   KeywordKind,
 				Type:   keywords.Continue,

@@ -184,7 +184,7 @@ func astBuilder(tokens []Token) {
 		case "type":
 			ast.Structs = append(ast.Structs, parseStruct(tokens, pos))
 
-		case "func":
+		case keywords.Func: // "func":
 			ast.Funcs = append(ast.Funcs, parseFunc(tokens, pos))
 
 		default:
