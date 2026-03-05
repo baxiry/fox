@@ -164,6 +164,9 @@ func tokenize(input string) []Token {
 		case keywords.If:
 			tokens = append(tokens, Token{Type: keywords.If, Value: val, Line: line, Column: col})
 			return
+		case keywords.Else:
+			tokens = append(tokens, Token{Type: keywords.Else, Value: val, Line: line, Column: col})
+			return
 		case keywords.For:
 			tokens = append(tokens, Token{Type: keywords.For, Value: val, Line: line, Column: col})
 			return
@@ -246,63 +249,99 @@ func tokenize(input string) []Token {
 		}
 
 		tkn := string(r)
-
 		switch r {
+
 		case '&':
 			addToken()
 			tokens = append(tokens, Token{Type: Operator.Ref, Value: tkn, Line: line, Column: col})
 			i++
 			continue
+
 		case '=':
 			addToken()
 			tokens = append(tokens, Token{Type: Operator.Assign, Value: tkn, Line: line, Column: col})
 			i++
 			continue
+
 		case '+':
+			// إذا كان بعدها رقم فهي جزء من الرقم
+			if i+1 < len(input) && unicode.IsDigit(rune(input[i+1])) {
+				current.WriteRune(r)
+				i++
+				col++
+				continue
+			}
 			addToken()
 			tokens = append(tokens, Token{Type: Operator.Plus, Value: tkn, Line: line, Column: col})
 			i++
 			continue
+
 		case '-':
+			if i+1 < len(input) && unicode.IsDigit(rune(input[i+1])) {
+				current.WriteRune(r)
+				i++
+				col++
+				continue
+			}
 			addToken()
 			tokens = append(tokens, Token{Type: Operator.Minus, Value: tkn, Line: line, Column: col})
 			i++
 			continue
+
 		case '*':
 			addToken()
 			tokens = append(tokens, Token{Type: Operator.Star, Value: tkn, Line: line, Column: col})
 			i++
 			continue
+
 		case '/':
 			addToken()
 			tokens = append(tokens, Token{Type: Operator.Slash, Value: tkn, Line: line, Column: col})
 			i++
 			continue
+
 		case '(':
 			addToken()
 			tokens = append(tokens, Token{Type: Delimiter.LParen, Value: tkn, Line: line, Column: col})
 			i++
 			continue
+
 		case ')':
 			addToken()
 			tokens = append(tokens, Token{Type: Delimiter.RParen, Value: tkn, Line: line, Column: col})
 			i++
 			continue
+
 		case '{':
 			addToken()
 			tokens = append(tokens, Token{Type: Delimiter.LBrace, Value: tkn, Line: line, Column: col})
 			i++
 			continue
+
 		case '}':
 			addToken()
 			tokens = append(tokens, Token{Type: Delimiter.RBrace, Value: tkn, Line: line, Column: col})
 			i++
 			continue
+
+		case '[':
+			addToken()
+			tokens = append(tokens, Token{Type: Delimiter.LBrack, Value: tkn, Line: line, Column: col})
+			i++
+			continue
+
+		case ']':
+			addToken()
+			tokens = append(tokens, Token{Type: Delimiter.RBrack, Value: tkn, Line: line, Column: col})
+			i++
+			continue
+
 		case ',':
 			addToken()
 			tokens = append(tokens, Token{Type: Delimiter.Comma, Value: tkn, Line: line, Column: col})
 			i++
 			continue
+
 		case ';':
 			addToken()
 			tokens = append(tokens, Token{Type: Delimiter.Semic, Value: tkn, Line: line, Column: col})
@@ -334,13 +373,11 @@ func tokenize(input string) []Token {
 			i++
 			tokens = append(tokens, Token{Type: OtherLiteral.String, Value: s.String(), Line: line, Column: startCol})
 			continue
-
 		}
 
 		current.WriteRune(r)
 		i++
 	}
-
 	addToken()
 	return tokens
 }
