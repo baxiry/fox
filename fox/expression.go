@@ -1,8 +1,10 @@
 package main
 
 type UnaryExpr struct {
-	Op   string // "*", "&"
+	Op   string // like "*", "&"
 	Expr Expression
+	Line int
+	// Col  int later
 }
 
 type Expression interface {
@@ -21,6 +23,12 @@ type StringExpr struct {
 
 func (StringExpr) isExpr() {}
 
+type LiteralExpr struct {
+	Value string
+}
+
+func (LiteralExpr) isExpr() {}
+
 type IdentExpr struct {
 	Name string
 }
@@ -28,7 +36,7 @@ type IdentExpr struct {
 func (IdentExpr) isExpr() {}
 
 type BinaryExpr struct {
-	Op    Token
+	Op    string
 	Left  Expression
 	Right Expression
 }
@@ -37,14 +45,9 @@ func (BinaryExpr) isExpr() {}
 
 func (UnaryExpr) isExpr() {}
 
-//type CallExpr struct {
-//   Func Expression
-//  Args []Expression
-//}
-
 type CallExpr struct {
-	FuncName string
-	Args     []Expression
+	Callee Expression
+	Args   []Expression
 }
 
 func (CallExpr) isExpr() {}
@@ -64,7 +67,10 @@ func parseCall(name string, tokens []Token, pos *int) Expression {
 	}
 
 	expectType(tokens, pos, Delimiter.RParen)
-	return CallExpr{FuncName: name, Args: args}
+	return CallExpr{
+		Callee: IdentExpr{Name: name},
+		Args:   args,
+	}
 }
 
 func parseExprOrAssign(tokens []Token, pos *int) Statement {

@@ -6,25 +6,73 @@ import (
 
 // ================= Expressions =================
 
-// parse unary Operator: *p
-func parseUnary(tokens []Token, pos *int) Expression {
-	if tokens[*pos].Value == "*" {
+func parseType(tokens []Token, pos *int) Type {
+	if *pos >= len(tokens) {
+		panic("unexpected end of input while parsing type")
+	}
+
+	if tokens[*pos].Type == Operator.Ref {
+		panic(fmt.Sprintf(
+			"syntax error at line %d, column %d: cannot use & in parameter signature",
+			tokens[*pos].Line, tokens[*pos].Column,
+		))
+	}
+
+	ptrDepth := 0
+	for *pos < len(tokens) && tokens[*pos].Type == Operator.Star {
+		ptrDepth++
 		*pos++
+	}
+
+	if *pos >= len(tokens) {
+		panic("unexpected end of input while parsing type after pointers")
+	}
+
+	name := expectIdent(tokens, pos).Value
+
+	return Type{
+		Name:     name,
+		PtrDepth: ptrDepth,
+	}
+}
+
+func parseUnary(tokens []Token, pos *int) Expression {
+	if *pos >= len(tokens) {
+		panic("unexpected end of input while parsing unary expression")
+	}
+
+	tok := tokens[*pos]
+
+	if tok.Type == Operator.Star || tok.Type == Operator.Ref || tok.Type == Operator.Not || tok.Type == Operator.Minus {
+		(*pos)++
+
+		if *pos >= len(tokens) {
+			panic(fmt.Sprintf(
+				"unexpected end of input after unary operator '%s' at line %d, column %d",
+				tok.Value, tok.Line, tok.Column,
+			))
+		}
+
 		expr := parseUnary(tokens, pos)
 
-		return UnaryExpr{Op: "*", Expr: expr}
+		return UnaryExpr{
+			Op:   tok.Value,
+			Expr: expr,
+			Line: tok.Line,
+		}
 	}
+
 	return parsePrimary(tokens, pos)
 }
 
 // parse * and /
 func parseMul(tokens []Token, pos *int) Expression {
 	left := parseUnary(tokens, pos)
-	for tokens[*pos].Value == "*" || tokens[*pos].Value == "/" {
+	for tokens[*pos].Type == Operator.Star || tokens[*pos].Type == Operator.Slash {
 		op := tokens[*pos]
 		*pos++
 		right := parseUnary(tokens, pos)
-		left = BinaryExpr{Left: left, Op: op, Right: right}
+		left = BinaryExpr{Left: left, Op: op.Type, Right: right}
 	}
 	return left
 }
@@ -32,14 +80,14 @@ func parseMul(tokens []Token, pos *int) Expression {
 func parseEquality(tokens []Token, pos *int) Expression {
 	left := parseAdd(tokens, pos)
 
-	for tokens[*pos].Value == "==" || tokens[*pos].Value == "!=" {
+	for tokens[*pos].Type == "==" || tokens[*pos].Type == "!=" {
 		op := tokens[*pos]
 		*pos++
 		right := parseAdd(tokens, pos)
 
-		left = BinaryExpr{
+		left = &BinaryExpr{
 			Left:  left,
-			Op:    op,
+			Op:    op.Type,
 			Right: right,
 		}
 	}
@@ -50,11 +98,11 @@ func parseEquality(tokens []Token, pos *int) Expression {
 // parse + and -
 func parseAdd(tokens []Token, pos *int) Expression {
 	left := parseMul(tokens, pos)
-	for tokens[*pos].Value == "+" || tokens[*pos].Value == "-" {
+	for tokens[*pos].Type == "+" || tokens[*pos].Type == "-" {
 		op := tokens[*pos]
 		*pos++
 		right := parseMul(tokens, pos)
-		left = BinaryExpr{Left: left, Op: op, Right: right}
+		left = &BinaryExpr{Left: left, Op: op.Type, Right: right}
 	}
 	return left
 }
@@ -70,14 +118,11 @@ func parsePrimary(tokens []Token, pos *int) Expression {
 	if *pos >= len(tokens) {
 		panic("unexpected end of input while parsing expression")
 	}
-
 	tok := tokens[*pos]
-
 	switch tok.Type {
 
 	case Ident.Ident:
 		*pos++
-
 		// function call: f(...)
 		if *pos < len(tokens) && tokens[*pos].Type == Delimiter.LParen {
 			return parseCall(tok.Value, tokens, pos)
@@ -99,10 +144,7 @@ func parsePrimary(tokens []Token, pos *int) Expression {
 		return expr
 
 	default:
-		panic(fmt.Sprintf(
-			"expected expression at line %d, got %s (%q)",
-			tok.Line, tok.Type, tok.Value,
-		))
+		panic(fmt.Sprintf("expected expression at line %d, got %s (%q)", tok.Line, tok.Type, tok.Value))
 	}
 }
 
@@ -128,14 +170,7 @@ func parseFunc(tokens []Token, pos *int) FuncDecl {
 		// param name
 		name := expectIdent(tokens, pos).Value
 
-		// param type
-		typ := ""
-		if tokens[*pos].Type == Operator.Star {
-			*pos++
-			typ = "*" + expectIdent(tokens, pos).Value
-		} else {
-			typ = expectIdent(tokens, pos).Value
-		}
+		typ := parseType(tokens, pos)
 
 		funcNode.Params = append(funcNode.Params, ParamDecl{
 			Name: name,
@@ -165,7 +200,7 @@ func parseFunc(tokens []Token, pos *int) FuncDecl {
 
 // ================= AST Builder =================
 
-func astBuilder(tokens []Token) {
+func astBuilder(tokens []Token) *AST {
 	p := 0
 	pos := &p
 	ast := &AST{}
@@ -191,14 +226,14 @@ func astBuilder(tokens []Token) {
 			*pos++
 		}
 	}
-	dump(ast)
+	return ast
 }
 
 // ===== Top-Level Parsers =====
 
 func parsePackage(tokens []Token, pos *int) string {
 	expectType(tokens, pos, keywords.Package)
-	pkg := tokens[*pos].Value
+	pkg := tokens[*pos].Type
 	*pos++
 	return pkg
 }
@@ -208,7 +243,7 @@ func parseImport(tokens []Token, pos *int) []string {
 	expectType(tokens, pos, Delimiter.LParen)
 
 	libs := []string{}
-	for tokens[*pos].Value != ")" {
+	for tokens[*pos].Type != ")" {
 		pkg := expectIdent(tokens, pos)
 		libs = append(libs, pkg.Value)
 	}
@@ -223,7 +258,7 @@ func parseStruct(tokens []Token, pos *int) StructDecl {
 	expectType(tokens, pos, Delimiter.LBrace)
 
 	fields := []FieldDecl{}
-	for tokens[*pos].Value != "}" {
+	for tokens[*pos].Type != "}" {
 		fields = append(fields, parseField(tokens, pos))
 	}
 	expectType(tokens, pos, Delimiter.RBrace)

@@ -12,8 +12,7 @@ func main() {
 		panic(err)
 	}
 
-	content := string(data)
-	tokens := tokenize(content)
+	tokens := tokenize(string(data))
 
-	astBuilder(tokens)
+	dmp(astBuilder(tokens))
 }

@@ -1,9 +1,10 @@
 package main
 
+// assignment
 // Interfaces
 
 type Statement interface {
-	isStatement()
+	isStat()
 }
 
 // AST Nodes (Statements)
@@ -12,19 +13,23 @@ type BreakNode struct {
 	Tok Token
 }
 
-func (BreakNode) isStatement() {}
+func (BreakNode) isStat() {}
 
 type ContinueNode struct {
 	Tok Token
 }
 
-func (ContinueNode) isStatement() {}
+func (ContinueNode) isStat() {}
 
-type ReturnStmt struct {
-	RetValues []Expression
+type ReturnStmte struct {
+	Value Expression
 }
 
-func (ReturnStmt) isStatement() {}
+type ReturnStmt struct {
+	Values []Expression
+}
+
+func (ReturnStmt) isStat() {}
 
 type IfStmt struct {
 	Cond Expression
@@ -32,7 +37,7 @@ type IfStmt struct {
 	Else []Statement
 }
 
-func (IfStmt) isStatement() {}
+func (IfStmt) isStat() {}
 
 type ForStmt struct {
 	Init Statement
@@ -41,28 +46,28 @@ type ForStmt struct {
 	Body []Statement
 }
 
-func (ForStmt) isStatement() {}
+func (ForStmt) isStat() {}
 
 type AssignStmt struct {
-	Name  string
-	Op    string // "=" or ":="
-	Value Expression
+	Target Expression
+	Op     string
+	Value  Expression
 }
 
-func (AssignStmt) isStatement() {}
+func (AssignStmt) isStat() {}
 
 type DefineStmt struct {
 	Name  string
 	Value Expression
 }
 
-func (DefineStmt) isStatement() {}
+func (DefineStmt) isStat() {}
 
 type ExprStmt struct {
 	Expr Expression
 }
 
-func (ExprStmt) isStatement() {}
+func (ExprStmt) isStat() {}
 
 //  Parsing Helpers
 
@@ -142,7 +147,7 @@ func parseExprUntil(tokens []Token, pos *int, stop string) Expression {
 
 		right := parseExpr(tokens, pos)
 		expr = BinaryExpr{
-			Op:    op,
+			Op:    op.Type,
 			Left:  expr,
 			Right: right,
 		}
@@ -197,7 +202,7 @@ func parseReturn(tokens []Token, pos *int) Statement {
 		}
 	}
 
-	return ReturnStmt{RetValues: values}
+	return ReturnStmt{Values: values}
 }
 
 func parseExprStatement(tokens []Token, pos *int) Statement {
@@ -208,14 +213,36 @@ func parseExprStatement(tokens []Token, pos *int) Statement {
 func parseRetSign(tokens []Token, pos *int) []ReturnSig {
 	var retSigns []ReturnSig
 
-	for *pos < len(tokens) && tokens[*pos].Value != Delimiter.LBrace {
-		if tokens[*pos].Value == Delimiter.Comma && *pos+1 < len(tokens) && tokens[*pos+1].Value != Delimiter.LBrace {
+	for *pos < len(tokens) && tokens[*pos].Type != Delimiter.LBrace {
+		// تخطي الفواصل
+		for *pos < len(tokens) && tokens[*pos].Type == Delimiter.Comma {
 			*pos++
 		}
-		tok := expectIdent(tokens, pos)
+
+		if *pos >= len(tokens) || tokens[*pos].Type == Delimiter.LBrace {
+			break
+		}
+
+		// اسم الإرجاع اختياري (يمكن تركه فارغًا)
+		name := ""
+		if tokens[*pos].Type == Ident.Ident {
+			name = expectIdent(tokens, pos).Value
+		}
+
+		if *pos >= len(tokens) || tokens[*pos].Type == Delimiter.LBrace || tokens[*pos].Type == Delimiter.Comma {
+			// نوع غير موجود أو عنصر منفرد
+			retSigns = append(retSigns, ReturnSig{
+				Name: name,
+				Type: Type{Name: ""}, // أو TypeZero
+			})
+			continue
+		}
+
+		// النوع
+		typ := parseType(tokens, pos)
 		retSigns = append(retSigns, ReturnSig{
-			Name: tok.Value,
-			Type: tok.Type,
+			Name: name,
+			Type: typ,
 		})
 	}
 
@@ -236,9 +263,9 @@ func parseAssign(tokens []Token, pos *int) Statement {
 	value := parseExpr(tokens, pos)
 
 	return AssignStmt{
-		Name:  name,
-		Op:    opTok.Value,
-		Value: value,
+		Target: &IdentExpr{Name: name},
+		Op:     opTok.Value,
+		Value:  value,
 	}
 }
 

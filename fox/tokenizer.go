@@ -52,7 +52,7 @@ type Keywords struct {
 }
 
 type Operators struct {
-	Plus, Minus, Star, Slash, Assign, Define, Eq, Neq, Lt, Gt, Lte, Gte, And, Or, Not string
+	Plus, Minus, Ref, Star, Slash, Assign, Define, Eq, Neq, Lt, Gt, Lte, Gte, And, Or, Not string
 }
 
 type Delimiters struct {
@@ -245,62 +245,82 @@ func tokenize(input string) []Token {
 			}
 		}
 
+		tkn := string(r)
+
 		switch r {
+		case '&':
+			addToken()
+			tokens = append(tokens, Token{Type: Operator.Ref, Value: tkn, Line: line, Column: col})
+			i++
+			continue
 		case '=':
 			addToken()
-			tokens = append(tokens, Token{Type: Operator.Assign, Value: "=", Line: line, Column: col})
+			tokens = append(tokens, Token{Type: Operator.Assign, Value: tkn, Line: line, Column: col})
 			i++
 			continue
 		case '+':
 			addToken()
-			tokens = append(tokens, Token{Type: Operator.Plus, Value: "+", Line: line, Column: col})
+			tokens = append(tokens, Token{Type: Operator.Plus, Value: tkn, Line: line, Column: col})
 			i++
 			continue
 		case '-':
 			addToken()
-			tokens = append(tokens, Token{Type: Operator.Minus, Value: "-", Line: line, Column: col})
+			tokens = append(tokens, Token{Type: Operator.Minus, Value: tkn, Line: line, Column: col})
 			i++
 			continue
 		case '*':
 			addToken()
-			tokens = append(tokens, Token{Type: Operator.Star, Value: "*", Line: line, Column: col})
+			tokens = append(tokens, Token{Type: Operator.Star, Value: tkn, Line: line, Column: col})
 			i++
 			continue
 		case '/':
 			addToken()
-			tokens = append(tokens, Token{Type: Operator.Slash, Value: "/", Line: line, Column: col})
+			tokens = append(tokens, Token{Type: Operator.Slash, Value: tkn, Line: line, Column: col})
 			i++
 			continue
 		case '(':
 			addToken()
-			tokens = append(tokens, Token{Type: Delimiter.LParen, Value: "(", Line: line, Column: col})
+			tokens = append(tokens, Token{Type: Delimiter.LParen, Value: tkn, Line: line, Column: col})
 			i++
 			continue
 		case ')':
 			addToken()
-			tokens = append(tokens, Token{Type: Delimiter.RParen, Value: ")", Line: line, Column: col})
+			tokens = append(tokens, Token{Type: Delimiter.RParen, Value: tkn, Line: line, Column: col})
 			i++
 			continue
 		case '{':
 			addToken()
-			tokens = append(tokens, Token{Type: Delimiter.LBrace, Value: "{", Line: line, Column: col})
+			tokens = append(tokens, Token{Type: Delimiter.LBrace, Value: tkn, Line: line, Column: col})
 			i++
 			continue
 		case '}':
 			addToken()
-			tokens = append(tokens, Token{Type: Delimiter.RBrace, Value: "}", Line: line, Column: col})
+			tokens = append(tokens, Token{Type: Delimiter.RBrace, Value: tkn, Line: line, Column: col})
 			i++
 			continue
 		case ',':
 			addToken()
-			tokens = append(tokens, Token{Type: Delimiter.Comma, Value: ",", Line: line, Column: col})
+			tokens = append(tokens, Token{Type: Delimiter.Comma, Value: tkn, Line: line, Column: col})
 			i++
 			continue
 		case ';':
 			addToken()
-			tokens = append(tokens, Token{Type: Delimiter.Semic, Value: ";", Line: line, Column: col})
+			tokens = append(tokens, Token{Type: Delimiter.Semic, Value: tkn, Line: line, Column: col})
 			i++
 			continue
+
+		case '<':
+			addToken()
+			tokens = append(tokens, Token{Kind: OperatorKind, Type: Operator.Lt, Value: tkn, Line: line, Column: col})
+			i++
+			continue
+
+		case '>':
+			addToken()
+			tokens = append(tokens, Token{Kind: OperatorKind, Type: Operator.Gt, Value: tkn, Line: line, Column: col})
+			i++
+			continue
+
 		case '"':
 			addToken()
 			i++
@@ -313,30 +333,6 @@ func tokenize(input string) []Token {
 			}
 			i++
 			tokens = append(tokens, Token{Type: OtherLiteral.String, Value: s.String(), Line: line, Column: startCol})
-			continue
-
-		case '<':
-			addToken()
-			tokens = append(tokens, Token{
-				Kind:   OperatorKind,
-				Type:   Operator.Lt,
-				Value:  "<",
-				Line:   line,
-				Column: col,
-			})
-			i++
-			continue
-
-		case '>':
-			addToken()
-			tokens = append(tokens, Token{
-				Kind:   OperatorKind,
-				Type:   Operator.Gt,
-				Value:  ">",
-				Line:   line,
-				Column: col,
-			})
-			i++
 			continue
 
 		}

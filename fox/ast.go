@@ -7,6 +7,13 @@ type AST struct {
 	Funcs       []FuncDecl
 }
 
+type Node interface{}
+
+type Type struct {
+	Name     string
+	PtrDepth int
+}
+
 type StructDecl struct {
 	Name   string
 	Fields []FieldDecl
@@ -20,18 +27,33 @@ type FieldDecl struct {
 type FuncDecl struct {
 	Name    string
 	Params  []ParamDecl
+	Return  Type
 	Returns []ReturnSig
 	Body    []Statement
 }
-
 type ParamDecl struct {
 	Name string
-	Type string
+	Type Type
 }
 
 type ReturnSig struct {
 	Name string
-	Type string
+	Type Type
 }
+type TypeNode interface {
+	isType()
+}
+
+type SimpleType struct {
+	Name string
+}
+
+func (SimpleType) isType() {}
+
+type PointerType struct {
+	Base TypeNode
+}
+
+func (PointerType) isType() {}
 
 //[]string

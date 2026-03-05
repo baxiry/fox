@@ -16,7 +16,7 @@ type ParseError struct {
 
 var enc = json.NewEncoder(os.Stdout)
 
-func dump(ast *AST) {
+func dmp(ast *AST) {
 	enc.SetEscapeHTML(false)
 	enc.SetIndent("", "  ")
 	err := enc.Encode(ast)
