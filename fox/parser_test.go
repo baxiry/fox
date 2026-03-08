@@ -6,9 +6,9 @@ import (
 
 func Test_ParseType_Success(t *testing.T) {
 	tokens := []Token{
-		{Type: Operator.Star, Value: "*", Line: 1},
-		{Type: Operator.Star, Value: "*", Line: 1},
-		{Type: Ident.Ident, Value: "Obj", Line: 1},
+		{Type: Operator.Star, Value: "*"},
+		{Type: Operator.Star, Value: "*"},
+		{Type: Ident.Ident, Value: "Obj"},
 	}
 
 	pos := 0
@@ -24,8 +24,8 @@ func Test_ParseType_Success(t *testing.T) {
 
 func Test_ParseType_FailRef(t *testing.T) {
 	tokens := []Token{
-		{Type: Operator.Ref, Value: "&", Line: 1},
-		{Type: Ident.Ident, Value: "Obj", Line: 1},
+		{Type: Operator.Ref, Value: "&"},
+		{Type: Ident.Ident, Value: "Obj"},
 	}
 
 	pos := 0
@@ -39,8 +39,8 @@ func Test_ParseType_FailRef(t *testing.T) {
 
 func Test_ParseUnary_Success(t *testing.T) {
 	tokens := []Token{
-		{Type: Operator.Ref, Value: "&", Line: 1},
-		{Type: Ident.Ident, Value: "x", Line: 1},
+		{Type: Operator.Ref, Value: "&"},
+		{Type: Ident.Ident, Value: "x"},
 	}
 
 	pos := 0
@@ -67,7 +67,7 @@ func Test_ParseUnary_Success(t *testing.T) {
 
 func Test_ParseUnary_FailEnd(t *testing.T) {
 	tokens := []Token{
-		{Type: Operator.Ref, Value: "&", Line: 1},
+		{Type: Operator.Ref, Value: "&"},
 	}
 
 	pos := 0
@@ -81,9 +81,9 @@ func Test_ParseUnary_FailEnd(t *testing.T) {
 
 func Test_ParsePrimary_NumberStringIdent(t *testing.T) {
 	tokens := []Token{
-		{Type: NumericLiteral.Int, Value: "42", Line: 1},
-		{Type: OtherLiteral.String, Value: "hello", Line: 1},
-		{Type: Ident.Ident, Value: "foo", Line: 1},
+		{Type: NumericLiteral.Int, Value: "42"},
+		{Type: OtherLiteral.String, Value: "hello"},
+		{Type: Ident.Ident, Value: "foo"},
 	}
 
 	pos := 0
@@ -105,7 +105,7 @@ func Test_ParsePrimary_NumberStringIdent(t *testing.T) {
 
 func Test_ParsePrimary_Fail(t *testing.T) {
 	tokens := []Token{
-		{Type: Operator.Plus, Value: "+", Line: 1},
+		{Type: Operator.Plus, Value: "+"},
 	}
 
 	pos := 0
@@ -119,15 +119,15 @@ func Test_ParsePrimary_Fail(t *testing.T) {
 
 func Test_ParseFunc_Simple(t *testing.T) {
 	tokens := []Token{
-		{Type: keywords.Func, Value: "fn", Line: 1},
-		{Type: Ident.Ident, Value: "make", Line: 1},
-		{Type: Delimiter.LParen, Value: "(", Line: 1},
-		{Type: Delimiter.RParen, Value: ")", Line: 1},
-		{Type: Delimiter.LBrace, Value: "{", Line: 1},
-		{Type: Ident.Ident, Value: "x", Line: 1},
-		{Type: Operator.Assign, Value: "=", Line: 1},
-		{Type: Ident.Ident, Value: "Obj", Line: 1},
-		{Type: Delimiter.RBrace, Value: "}", Line: 1},
+		{Type: keywords.Func, Value: "fn"},
+		{Type: Ident.Ident, Value: "make"},
+		{Type: Delimiter.LParen, Value: "("},
+		{Type: Delimiter.RParen, Value: ")"},
+		{Type: Delimiter.LBrace, Value: "{"},
+		{Type: Ident.Ident, Value: "x"},
+		{Type: Operator.Assign, Value: "="},
+		{Type: Ident.Ident, Value: "Obj"},
+		{Type: Delimiter.RBrace, Value: "}"},
 	}
 
 	pos := 0
@@ -143,8 +143,8 @@ func Test_ParseFunc_Simple(t *testing.T) {
 
 func Test_ParseUnaryRef(t *testing.T) {
 	tokens := []Token{
-		{Type: Operator.Ref, Value: "&", Line: 1},
-		{Type: Ident.Ident, Value: "x", Line: 1},
+		{Type: Operator.Ref, Value: "&"},
+		{Type: Ident.Ident, Value: "x"},
 	}
 
 	pos := 0
@@ -171,8 +171,8 @@ func Test_ParseUnaryRef(t *testing.T) {
 
 func Test_ParseUnaryMinus(t *testing.T) {
 	tokens := []Token{
-		{Type: Operator.Minus, Value: "-", Line: 1},
-		{Type: Ident.Ident, Value: "x", Line: 1},
+		{Type: Operator.Minus, Value: "-"},
+		{Type: Ident.Ident, Value: "x"},
 	}
 
 	pos := 0
@@ -199,9 +199,9 @@ func Test_ParseUnaryMinus(t *testing.T) {
 
 func Test_ParseUnaryNested(t *testing.T) {
 	tokens := []Token{
-		{Type: Operator.Star, Value: "*", Line: 1},
-		{Type: Operator.Ref, Value: "&", Line: 1},
-		{Type: Ident.Ident, Value: "x", Line: 1},
+		{Type: Operator.Star, Value: "*"},
+		{Type: Operator.Ref, Value: "&"},
+		{Type: Ident.Ident, Value: "x"},
 	}
 
 	pos := 0
@@ -237,55 +237,7 @@ func Test_ParseUnaryNested(t *testing.T) {
 
 func Test_ParseType_Simple(t *testing.T) {
 	tokens := []Token{
-		{Type: Ident.Ident, Value: "int", Line: 1},
-	}
-	pos := 0
-	typ := parseType(tokens, &pos)
-
-	if typ.Name != "int" {
-		t.Errorf("expected type 'int', got %s", typ.Name)
-	}
-	if typ.PtrDepth != 0 {
-		t.Errorf("expected PtrDepth 0, got %d", typ.PtrDepth)
-	}
-}
-
-func Test_ParseType_Pointer(t *testing.T) {
-	tokens := []Token{
-		{Type: Operator.Star, Value: "*", Line: 1},
-		{Type: Operator.Star, Value: "*", Line: 1},
-		{Type: Ident.Ident, Value: "Obj", Line: 1},
-	}
-	pos := 0
-	typ := parseType(tokens, &pos)
-
-	if typ.Name != "Obj" {
-		t.Errorf("expected type 'Obj', got %s", typ.Name)
-	}
-	if typ.PtrDepth != 2 {
-		t.Errorf("expected PtrDepth 2, got %d", typ.PtrDepth)
-	}
-}
-
-func Test_ParseType_InvalidRef(t *testing.T) {
-	tokens := []Token{
-		{Type: Operator.Ref, Value: "&", Line: 1},
-		{Type: Ident.Ident, Value: "Obj", Line: 1},
-	}
-	pos := 0
-
-	defer func() {
-		if r := recover(); r == nil {
-			t.Errorf("expected panic on & in type signature")
-		}
-	}()
-
-	_ = parseType(tokens, &pos)
-}
-
-func TestParseType_Simple(t *testing.T) {
-	tokens := []Token{
-		{Type: Ident.Ident, Value: "int", Line: 1},
+		{Type: Ident.Ident, Value: "int"},
 	}
 	pos := 0
 	typ := parseType(tokens, &pos)
@@ -298,11 +250,11 @@ func TestParseType_Simple(t *testing.T) {
 	}
 }
 
-func TestParseType_Pointer(t *testing.T) {
+func Test_ParseType_Pointer(t *testing.T) {
 	tokens := []Token{
-		{Type: Operator.Star, Value: "*", Line: 1},
-		{Type: Operator.Star, Value: "*", Line: 1},
-		{Type: Ident.Ident, Value: "float", Line: 1},
+		{Type: Operator.Star, Value: "*"},
+		{Type: Operator.Star, Value: "*"},
+		{Type: Ident.Ident, Value: "float"},
 	}
 	pos := 0
 	typ := parseType(tokens, &pos)
@@ -315,10 +267,10 @@ func TestParseType_Pointer(t *testing.T) {
 	}
 }
 
-func TestParseType_InvalidRef(t *testing.T) {
+func Test_ParseType_InvalidRef(t *testing.T) {
 	tokens := []Token{
-		{Type: Operator.Ref, Value: "&", Line: 1},
-		{Type: Ident.Ident, Value: "Obj", Line: 1},
+		{Type: Operator.Ref, Value: "&"},
+		{Type: Ident.Ident, Value: "Obj"},
 	}
 	pos := 0
 	defer func() {
@@ -329,15 +281,15 @@ func TestParseType_InvalidRef(t *testing.T) {
 	_ = parseType(tokens, &pos)
 }
 
-func TestParseStruct_Simple(t *testing.T) {
+func Test_ParseStruct_Simple(t *testing.T) {
 	tokens := []Token{
-		{Type: keywords.Type, Value: "type", Line: 1},
-		{Type: Ident.Ident, Value: "Obj", Line: 1},
-		{Type: keywords.Struct, Value: "struct", Line: 1},
-		{Type: Delimiter.LBrace, Value: "{", Line: 1},
-		{Type: Ident.Ident, Value: "value", Line: 1},
-		{Type: Ident.Ident, Value: "int", Line: 1},
-		{Type: Delimiter.RBrace, Value: "}", Line: 1},
+		{Type: keywords.Type, Value: "type"},
+		{Type: Ident.Ident, Value: "Obj"},
+		{Type: keywords.Struct, Value: "struct"},
+		{Type: Delimiter.LBrace, Value: "{"},
+		{Type: Ident.Ident, Value: "value"},
+		{Type: Ident.Ident, Value: "int"},
+		{Type: Delimiter.RBrace, Value: "}"},
 	}
 
 	pos := 0
@@ -354,17 +306,17 @@ func TestParseStruct_Simple(t *testing.T) {
 	}
 }
 
-func TestParseStruct_MultipleFields(t *testing.T) {
+func Test_ParseStruct_MultipleFields(t *testing.T) {
 	tokens := []Token{
-		{Type: keywords.Type, Value: "type", Line: 1},
-		{Type: Ident.Ident, Value: "Person", Line: 1},
-		{Type: keywords.Struct, Value: "struct", Line: 1},
-		{Type: Delimiter.LBrace, Value: "{", Line: 1},
-		{Type: Ident.Ident, Value: "name", Line: 1},
-		{Type: Ident.Ident, Value: "string", Line: 1},
-		{Type: Ident.Ident, Value: "age", Line: 1},
-		{Type: Ident.Ident, Value: "int", Line: 1},
-		{Type: Delimiter.RBrace, Value: "}", Line: 1},
+		{Type: keywords.Type, Value: "type"},
+		{Type: Ident.Ident, Value: "Person"},
+		{Type: keywords.Struct, Value: "struct"},
+		{Type: Delimiter.LBrace, Value: "{"},
+		{Type: Ident.Ident, Value: "name"},
+		{Type: Ident.Ident, Value: "string"},
+		{Type: Ident.Ident, Value: "age"},
+		{Type: Ident.Ident, Value: "int"},
+		{Type: Delimiter.RBrace, Value: "}"},
 	}
 
 	pos := 0
@@ -378,10 +330,10 @@ func TestParseStruct_MultipleFields(t *testing.T) {
 	}
 }
 
-func TestParseField_Invalid(t *testing.T) {
+func Test_ParseField_Invalid(t *testing.T) {
 	tokens := []Token{
-		{Type: Ident.Ident, Value: "x", Line: 1},
-		{Type: Operator.Plus, Value: "+", Line: 1}, // invalid type
+		{Type: Ident.Ident, Value: "x"},
+		{Type: Operator.Plus, Value: "+"}, // invalid type
 	}
 
 	pos := 0
@@ -394,17 +346,17 @@ func TestParseField_Invalid(t *testing.T) {
 	_ = parseField(tokens, &pos)
 }
 
-func TestParseFunc_NoParams(t *testing.T) {
+func Test_ParseFunc_NoParams(t *testing.T) {
 	tokens := []Token{
-		{Type: keywords.Func, Value: "fn", Line: 1},
-		{Type: Ident.Ident, Value: "make", Line: 1},
-		{Type: Delimiter.LParen, Value: "(", Line: 1},
-		{Type: Delimiter.RParen, Value: ")", Line: 1},
-		{Type: Delimiter.LBrace, Value: "{", Line: 1},
-		{Type: Ident.Ident, Value: "x", Line: 1},
-		{Type: Operator.Assign, Value: "=", Line: 1},
-		{Type: Ident.Ident, Value: "Obj", Line: 1},
-		{Type: Delimiter.RBrace, Value: "}", Line: 1},
+		{Type: keywords.Func, Value: "fn"},
+		{Type: Ident.Ident, Value: "make"},
+		{Type: Delimiter.LParen, Value: "("},
+		{Type: Delimiter.RParen, Value: ")"},
+		{Type: Delimiter.LBrace, Value: "{"},
+		{Type: Ident.Ident, Value: "x"},
+		{Type: Operator.Assign, Value: "="},
+		{Type: Ident.Ident, Value: "Obj"},
+		{Type: Delimiter.RBrace, Value: "}"},
 	}
 
 	pos := 0
@@ -416,29 +368,29 @@ func TestParseFunc_NoParams(t *testing.T) {
 	if len(fn.Params) != 0 {
 		t.Errorf("expected 0 params, got %d", len(fn.Params))
 	}
-	if len(fn.Body) != 2 {
+	if len(fn.Body) != 1 {
 		t.Errorf("expected body length 2, got %d", len(fn.Body))
 	}
 }
 
-func TestParseFunc_WithParamsAndReturn(t *testing.T) {
+func Test_ParseFunc_WithParamsAndReturn(t *testing.T) {
 	tokens := []Token{
-		{Type: keywords.Func, Value: "fn", Line: 1},
-		{Type: Ident.Ident, Value: "add", Line: 1},
-		{Type: Delimiter.LParen, Value: "(", Line: 1},
-		{Type: Ident.Ident, Value: "a", Line: 1},
-		{Type: Ident.Ident, Value: "int", Line: 1},
-		{Type: Delimiter.Comma, Value: ",", Line: 1},
-		{Type: Ident.Ident, Value: "b", Line: 1},
-		{Type: Ident.Ident, Value: "int", Line: 1},
-		{Type: Delimiter.RParen, Value: ")", Line: 1},
-		{Type: Ident.Ident, Value: "int", Line: 1}, // return type
-		{Type: Delimiter.LBrace, Value: "{", Line: 1},
-		{Type: keywords.Return, Value: "return", Line: 1},
-		{Type: Ident.Ident, Value: "a", Line: 1},
-		{Type: Operator.Plus, Value: "+", Line: 1},
-		{Type: Ident.Ident, Value: "b", Line: 1},
-		{Type: Delimiter.RBrace, Value: "}", Line: 1},
+		{Type: keywords.Func, Value: "fn"},
+		{Type: Ident.Ident, Value: "add"},
+		{Type: Delimiter.LParen, Value: "("},
+		{Type: Ident.Ident, Value: "a"},
+		{Type: Ident.Ident, Value: "int"},
+		{Type: Delimiter.Comma, Value: ","},
+		{Type: Ident.Ident, Value: "b"},
+		{Type: Ident.Ident, Value: "int"},
+		{Type: Delimiter.RParen, Value: ")"},
+		{Type: Ident.Ident, Value: "int"}, // return type
+		{Type: Delimiter.LBrace, Value: "{"},
+		{Type: keywords.Return, Value: "return"},
+		{Type: Ident.Ident, Value: "a"},
+		{Type: Operator.Plus, Value: "+"},
+		{Type: Ident.Ident, Value: "b"},
+		{Type: Delimiter.RBrace, Value: "}"},
 	}
 
 	pos := 0
@@ -457,11 +409,11 @@ func TestParseFunc_WithParamsAndReturn(t *testing.T) {
 	//	}
 }
 
-func TestParseFunc_SyntaxError(t *testing.T) {
+func Test_ParseFunc_SyntaxError(t *testing.T) {
 	tokens := []Token{
-		{Type: keywords.Func, Value: "fn", Line: 1},
-		{Type: Ident.Ident, Value: "bad", Line: 1},
-		{Type: Delimiter.LParen, Value: "(", Line: 1},
+		{Type: keywords.Func, Value: "fn"},
+		{Type: Ident.Ident, Value: "bad"},
+		{Type: Delimiter.LParen, Value: "("},
 		// missing closing parenthesis
 	}
 

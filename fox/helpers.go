@@ -1,10 +1,13 @@
 package main
 
-import "fmt"
+import (
+	"fmt"
+)
 
 // ================= Utilities =================
 
 func expectIdent(tokens []Token, pos *int) Token {
+
 	if *pos >= len(tokens) {
 		panic("unexpected end of input, expected identifier")
 	}
@@ -38,6 +41,7 @@ func expectValue(tokens []Token, pos *int, value string) {
 }
 
 func expectType(tokens []Token, pos *int, expected string) Token {
+
 	if *pos >= len(tokens) {
 		panic("unexpected end of input")
 	}
@@ -68,6 +72,7 @@ func expectKind(tokens []Token, pos *int, kind TokenKind, expectedText string) T
 	*pos++
 	return tok
 }
+
 func isAssign(tokens []Token, pos *int) bool {
 	if *pos+1 >= len(tokens) {
 		return false

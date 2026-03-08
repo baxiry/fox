@@ -2,7 +2,7 @@ package main
 
 import "testing"
 
-func TestTokenizeOperators(t *testing.T) {
+func Test_TokenizeOperators(t *testing.T) {
 	src := "& * + - / := = =="
 	tokens := tokenize(src)
 
@@ -22,7 +22,7 @@ func TestTokenizeOperators(t *testing.T) {
 	}
 }
 
-func TestTokenizeKeywords(t *testing.T) {
+func Test_TokenizeKeywords(t *testing.T) {
 	src := "fn return var const if else for break continue package import type struct"
 	tokens := tokenize(src)
 
@@ -43,7 +43,7 @@ func TestTokenizeKeywords(t *testing.T) {
 	}
 }
 
-func TestTokenizeNumbers(t *testing.T) {
+func Test_TokenizeNumbers(t *testing.T) {
 	src := "42 -7 3.14 -0.5"
 	tokens := tokenize(src)
 
@@ -63,7 +63,7 @@ func TestTokenizeNumbers(t *testing.T) {
 	}
 }
 
-func TestTokenizeStrings(t *testing.T) {
+func Test_TokenizeStrings(t *testing.T) {
 	src := `"hello" "world"`
 	tokens := tokenize(src)
 
@@ -78,7 +78,7 @@ func TestTokenizeStrings(t *testing.T) {
 	}
 }
 
-func TestTokenizeDelimiters(t *testing.T) {
+func Test_TokenizeDelimiters(t *testing.T) {
 	src := "( ) { } [ ] , ;"
 	tokens := tokenize(src)
 
@@ -100,7 +100,7 @@ func TestTokenizeDelimiters(t *testing.T) {
 	}
 }
 
-func TestTokenizeIllegal(t *testing.T) {
+func Test_TokenizeIllegal(t *testing.T) {
 	src := "@ # $"
 	tokens := tokenize(src)
 

@@ -7,6 +7,7 @@ import (
 // ================= Expressions =================
 
 func parseType(tokens []Token, pos *int) Type {
+
 	if *pos >= len(tokens) {
 		panic("unexpected end of input while parsing type")
 	}
@@ -137,7 +138,7 @@ func parsePrimary(tokens []Token, pos *int) Expression {
 		*pos++
 		return StringExpr{Literal: tok.Value}
 
-	case Delimiter.LParen: //TOKEN_LPAREN:
+	case Delimiter.LParen: // TOKEN_LPAREN:
 		*pos++
 		expr := parseExpr(tokens, pos)
 		expectType(tokens, pos, Delimiter.LParen)

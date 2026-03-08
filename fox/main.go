@@ -5,9 +5,9 @@ import (
 )
 
 func main() {
-	// Read the Fox file
-	testFile := os.Args[1]
-	data, err := os.ReadFile("../" + testFile)
+
+	foxFile := os.Args[1]
+	data, err := os.ReadFile(foxFile)
 	if err != nil {
 		panic(err)
 	}

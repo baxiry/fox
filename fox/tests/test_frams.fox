@@ -1,0 +1,32 @@
+
+type Obj struct {
+    value int
+}
+
+fn bad() *Obj {
+    o := Obj
+    return &o    
+}
+
+fn make() Obj {
+    o := Obj
+    return o
+}
+
+fn parent() {
+    x := make()
+    p := &x   
+}
+
+
+fn bad2(o *Obj) *Obj {
+    return &o    
+}
+
+fn parallel() {
+    x := Obj
+    spawn worker(&x)
+}
+
+fn worker(p *Obj) {
+}
