@@ -175,11 +175,13 @@ func Lexer(input string) []Token {
 		current.Reset()
 		// Keywords exact match
 		switch val {
-		case keywords.Package, keywords.Type, keywords.Struct, keywords.Func, keywords.Return, keywords.Var,
-			keywords.Const, keywords.If, keywords.Else, keywords.For, keywords.Import, keywords.Break, keywords.Continue:
+		case keywords.Package, keywords.Type, keywords.Struct, keywords.Func,
+			keywords.Return, keywords.Var, keywords.Const, keywords.If,
+			keywords.Else, keywords.For, keywords.Import, keywords.Break, keywords.Continue:
 			tokens = append(tokens, Token{Type: val, Value: val, Line: line, Column: col})
 			return
 		}
+
 		if isInt(val) {
 			tokens = append(tokens, Token{Type: NumericLiteral.Int, Value: val, Line: line, Column: col})
 			return
@@ -189,9 +191,9 @@ func Lexer(input string) []Token {
 			return
 		}
 
+		// Any other unknown identifier
 		tokens = append(tokens, Token{Type: Ident.Ident, Value: val, Line: line, Column: col})
 	}
-
 	i := 0
 	for i < len(input) {
 		r := rune(input[i])
