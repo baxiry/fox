@@ -12,7 +12,7 @@ func main() {
 		panic(err)
 	}
 
-	tokens := tokenize(string(data))
+	tokens := Lexer(string(data))
 
 	dmp(astBuilder(tokens))
 }

@@ -124,9 +124,45 @@ var Delimiter = Delimiters{
 	Semic:  ";",
 }
 
-//  Lexer
+// Lexer
+func isInt(s string) bool {
+	if s == "" {
+		return false
+	}
+	for i, r := range s {
+		if i == 0 && (r == '+' || r == '-') {
+			continue
+		}
+		if !unicode.IsDigit(r) {
+			return false
+		}
+	}
+	return true
+}
 
-func tokenize(input string) []Token {
+func isFloat(s string) bool {
+	if s == "" {
+		return false
+	}
+	dotSeen := false
+	for i, r := range s {
+		if i == 0 && (r == '+' || r == '-') {
+			continue
+		}
+		if r == '.' {
+			if dotSeen {
+				return false
+			}
+			dotSeen = true
+			continue
+		}
+		if !unicode.IsDigit(r) {
+			return false
+		}
+	}
+	return dotSeen
+}
+func Lexer(input string) []Token {
 	var tokens []Token
 	var current strings.Builder
 	line, col := 1, 0
@@ -136,49 +172,12 @@ func tokenize(input string) []Token {
 			return
 		}
 		val := current.String()
-		fmt.Print(string(val), ", ")
 		current.Reset()
-
+		// Keywords exact match
 		switch val {
-		case keywords.Package:
-			// TODO use keyType like : PACKAGE instead keywords.Package
-			tokens = append(tokens, Token{Type: keywords.Package, Value: val, Line: line, Column: col})
-			return
-		case keywords.Type:
-			tokens = append(tokens, Token{Type: keywords.Type, Value: val, Line: line, Column: col})
-			return
-		case keywords.Struct:
-			tokens = append(tokens, Token{Type: keywords.Struct, Value: val, Line: line, Column: col})
-			return
-		case keywords.Func:
-			tokens = append(tokens, Token{Type: keywords.Func, Value: val, Line: line, Column: col})
-			return
-		case keywords.Return:
-			tokens = append(tokens, Token{Type: keywords.Return, Value: val, Line: line, Column: col})
-			return
-		case keywords.Var:
-			tokens = append(tokens, Token{Type: keywords.Var, Value: val, Line: line, Column: col})
-			return
-		case keywords.Const:
-			tokens = append(tokens, Token{Type: keywords.Const, Value: val, Line: line, Column: col})
-			return
-		case keywords.If:
-			tokens = append(tokens, Token{Type: keywords.If, Value: val, Line: line, Column: col})
-			return
-		case keywords.Else:
-			tokens = append(tokens, Token{Type: keywords.Else, Value: val, Line: line, Column: col})
-			return
-		case keywords.For:
-			tokens = append(tokens, Token{Type: keywords.For, Value: val, Line: line, Column: col})
-			return
-		case keywords.Import:
-			tokens = append(tokens, Token{Type: keywords.Import, Value: val, Line: line, Column: col})
-			return
-		case keywords.Break:
-			tokens = append(tokens, Token{Kind: KeywordKind, Type: keywords.Break, Value: val, Line: line, Column: col})
-			return
-		case keywords.Continue:
-			tokens = append(tokens, Token{Kind: KeywordKind, Type: keywords.Continue, Value: val, Line: line, Column: col})
+		case keywords.Package, keywords.Type, keywords.Struct, keywords.Func, keywords.Return, keywords.Var,
+			keywords.Const, keywords.If, keywords.Else, keywords.For, keywords.Import, keywords.Break, keywords.Continue:
+			tokens = append(tokens, Token{Type: val, Value: val, Line: line, Column: col})
 			return
 		}
 		if isInt(val) {
@@ -189,6 +188,7 @@ func tokenize(input string) []Token {
 			tokens = append(tokens, Token{Type: NumericLiteral.Float, Value: val, Line: line, Column: col})
 			return
 		}
+
 		tokens = append(tokens, Token{Type: Ident.Ident, Value: val, Line: line, Column: col})
 	}
 
@@ -204,11 +204,13 @@ func tokenize(input string) []Token {
 			i++
 			continue
 		}
+
 		if unicode.IsSpace(r) {
 			addToken()
 			i++
 			continue
 		}
+
 		if i+1 < len(input) {
 			two := input[i : i+2]
 			switch two {
@@ -248,88 +250,107 @@ func tokenize(input string) []Token {
 			i++
 			continue
 
-		case '+':
-			if current.Len() > 0 && isNumBuf(current.String()) && i+1 < len(input) && unicode.IsDigit(rune(input[i+1])) {
+		case '+', '-':
+			if current.Len() > 0 {
+				val := current.String()
+				current.Reset()
+
+				if isInt(val) {
+					tokens = append(tokens, Token{Type: NumericLiteral.Int, Value: val, Line: line, Column: col})
+				} else if isFloat(val) {
+					tokens = append(tokens, Token{Type: NumericLiteral.Float, Value: val, Line: line, Column: col})
+				} else {
+					tokens = append(tokens, Token{Type: Ident.Ident, Value: val, Line: line, Column: col})
+				}
+			}
+
+			tkn := string(r)
+
+			if i+1 < len(input) && unicode.IsDigit(rune(input[i+1])) && (len(tokens) == 0 ||
+				tokens[len(tokens)-1].Type != Ident.Ident) {
 				current.WriteRune(r)
 				i++
 				col++
 				continue
 			}
-			addToken()
-			tokens = append(tokens, Token{Type: Operator.Plus, Value: tkn, Line: line, Column: col})
+
+			tokens = append(tokens, Token{Kind: OperatorKind, Type: map[string]string{"+": Operator.Plus,
+				"-": Operator.Minus}[tkn], Value: tkn, Line: line, Column: col})
 			i++
 			continue
-		case '-':
-			if current.Len() > 0 && isNumBuf(current.String()) && i+1 < len(input) && unicode.IsDigit(rune(input[i+1])) {
-				current.WriteRune(r)
-				i++
-				col++
-				continue
-			}
-			addToken()
-			tokens = append(tokens, Token{Type: Operator.Minus, Value: tkn, Line: line, Column: col})
-			i++
-			continue
+
 		case '*':
 			addToken()
 			tokens = append(tokens, Token{Type: Operator.Star, Value: tkn, Line: line, Column: col})
 			i++
 			continue
+
 		case '/':
 			addToken()
 			tokens = append(tokens, Token{Type: Operator.Slash, Value: tkn, Line: line, Column: col})
 			i++
 			continue
+
 		case '(':
 			addToken()
 			tokens = append(tokens, Token{Type: Delimiter.LParen, Value: tkn, Line: line, Column: col})
 			i++
 			continue
+
 		case ')':
 			addToken()
 			tokens = append(tokens, Token{Type: Delimiter.RParen, Value: tkn, Line: line, Column: col})
 			i++
 			continue
+
 		case '{':
 			addToken()
 			tokens = append(tokens, Token{Type: Delimiter.LBrace, Value: tkn, Line: line, Column: col})
 			i++
 			continue
+
 		case '}':
 			addToken()
 			tokens = append(tokens, Token{Type: Delimiter.RBrace, Value: tkn, Line: line, Column: col})
 			i++
 			continue
+
 		case '[':
 			addToken()
 			tokens = append(tokens, Token{Type: Delimiter.LBrack, Value: tkn, Line: line, Column: col})
 			i++
 			continue
+
 		case ']':
 			addToken()
 			tokens = append(tokens, Token{Type: Delimiter.RBrack, Value: tkn, Line: line, Column: col})
 			i++
 			continue
+
 		case ',':
 			addToken()
 			tokens = append(tokens, Token{Type: Delimiter.Comma, Value: tkn, Line: line, Column: col})
 			i++
 			continue
+
 		case ';':
 			addToken()
 			tokens = append(tokens, Token{Type: Delimiter.Semic, Value: tkn, Line: line, Column: col})
 			i++
 			continue
+
 		case '<':
 			addToken()
 			tokens = append(tokens, Token{Kind: OperatorKind, Type: Operator.Lt, Value: tkn, Line: line, Column: col})
 			i++
 			continue
+
 		case '>':
 			addToken()
 			tokens = append(tokens, Token{Kind: OperatorKind, Type: Operator.Gt, Value: tkn, Line: line, Column: col})
 			i++
 			continue
+
 		case '"':
 			addToken()
 			i++
@@ -349,35 +370,14 @@ func tokenize(input string) []Token {
 		i++
 	}
 	addToken()
-	// for k, token := range tokens {fmt.Println(k, token.Value)}
+	for k, token := range tokens {
+		fmt.Println(k, token.Value)
+	}
 	return tokens
 }
 
 // ================= Helpers =================
 
-// check Numeric buffer
-func isNumBuf(s string) bool {
-	if s == "" {
-		return false
-	}
-	dotSeen := false
-	for i, r := range s {
-		if i == 0 && (r == '+' || r == '-') {
-			continue
-		}
-		if r == '.' {
-			if dotSeen {
-				return false
-			}
-			dotSeen = true
-			continue
-		}
-		if !unicode.IsDigit(r) {
-			return false
-		}
-	}
-	return true
-}
 func IsLiteral(tok Token) bool {
 	return tok.Kind == NumericLiteralKind || tok.Kind == OtherLiteralKind
 }
@@ -405,41 +405,3 @@ func (t Token) String() string {
 }
 
 // ================= Utils =================
-
-func isInt(s string) bool {
-	if s == "" {
-		return false
-	}
-	for i, r := range s {
-		if i == 0 && (r == '+' || r == '-') {
-			continue
-		}
-		if !unicode.IsDigit(r) {
-			return false
-		}
-	}
-	return true
-}
-
-func isFloat(s string) bool {
-	if s == "" {
-		return false
-	}
-	dotSeen := false
-	for i, r := range s {
-		if i == 0 && (r == '+' || r == '-') {
-			continue
-		}
-		if r == '.' {
-			if dotSeen {
-				return false
-			}
-			dotSeen = true
-			continue
-		}
-		if !unicode.IsDigit(r) {
-			return false
-		}
-	}
-	return dotSeen
-}
