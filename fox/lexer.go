@@ -136,6 +136,7 @@ func tokenize(input string) []Token {
 			return
 		}
 		val := current.String()
+		fmt.Print(string(val), ", ")
 		current.Reset()
 
 		switch val {
@@ -174,25 +175,12 @@ func tokenize(input string) []Token {
 			tokens = append(tokens, Token{Type: keywords.Import, Value: val, Line: line, Column: col})
 			return
 		case keywords.Break:
-			tokens = append(tokens, Token{
-				Kind:   KeywordKind,
-				Type:   keywords.Break,
-				Value:  val,
-				Line:   line,
-				Column: col,
-			})
+			tokens = append(tokens, Token{Kind: KeywordKind, Type: keywords.Break, Value: val, Line: line, Column: col})
 			return
 		case keywords.Continue:
-			tokens = append(tokens, Token{
-				Kind:   KeywordKind,
-				Type:   keywords.Continue,
-				Value:  val,
-				Line:   line,
-				Column: col,
-			})
+			tokens = append(tokens, Token{Kind: KeywordKind, Type: keywords.Continue, Value: val, Line: line, Column: col})
 			return
 		}
-
 		if isInt(val) {
 			tokens = append(tokens, Token{Type: NumericLiteral.Int, Value: val, Line: line, Column: col})
 			return
@@ -201,7 +189,6 @@ func tokenize(input string) []Token {
 			tokens = append(tokens, Token{Type: NumericLiteral.Float, Value: val, Line: line, Column: col})
 			return
 		}
-
 		tokens = append(tokens, Token{Type: Ident.Ident, Value: val, Line: line, Column: col})
 	}
 
@@ -217,13 +204,11 @@ func tokenize(input string) []Token {
 			i++
 			continue
 		}
-
 		if unicode.IsSpace(r) {
 			addToken()
 			i++
 			continue
 		}
-
 		if i+1 < len(input) {
 			two := input[i : i+2]
 			switch two {
@@ -264,8 +249,7 @@ func tokenize(input string) []Token {
 			continue
 
 		case '+':
-			// إذا كان بعدها رقم فهي جزء من الرقم
-			if i+1 < len(input) && unicode.IsDigit(rune(input[i+1])) {
+			if current.Len() > 0 && isNumBuf(current.String()) && i+1 < len(input) && unicode.IsDigit(rune(input[i+1])) {
 				current.WriteRune(r)
 				i++
 				col++
@@ -275,9 +259,8 @@ func tokenize(input string) []Token {
 			tokens = append(tokens, Token{Type: Operator.Plus, Value: tkn, Line: line, Column: col})
 			i++
 			continue
-
 		case '-':
-			if i+1 < len(input) && unicode.IsDigit(rune(input[i+1])) {
+			if current.Len() > 0 && isNumBuf(current.String()) && i+1 < len(input) && unicode.IsDigit(rune(input[i+1])) {
 				current.WriteRune(r)
 				i++
 				col++
@@ -287,79 +270,66 @@ func tokenize(input string) []Token {
 			tokens = append(tokens, Token{Type: Operator.Minus, Value: tkn, Line: line, Column: col})
 			i++
 			continue
-
 		case '*':
 			addToken()
 			tokens = append(tokens, Token{Type: Operator.Star, Value: tkn, Line: line, Column: col})
 			i++
 			continue
-
 		case '/':
 			addToken()
 			tokens = append(tokens, Token{Type: Operator.Slash, Value: tkn, Line: line, Column: col})
 			i++
 			continue
-
 		case '(':
 			addToken()
 			tokens = append(tokens, Token{Type: Delimiter.LParen, Value: tkn, Line: line, Column: col})
 			i++
 			continue
-
 		case ')':
 			addToken()
 			tokens = append(tokens, Token{Type: Delimiter.RParen, Value: tkn, Line: line, Column: col})
 			i++
 			continue
-
 		case '{':
 			addToken()
 			tokens = append(tokens, Token{Type: Delimiter.LBrace, Value: tkn, Line: line, Column: col})
 			i++
 			continue
-
 		case '}':
 			addToken()
 			tokens = append(tokens, Token{Type: Delimiter.RBrace, Value: tkn, Line: line, Column: col})
 			i++
 			continue
-
 		case '[':
 			addToken()
 			tokens = append(tokens, Token{Type: Delimiter.LBrack, Value: tkn, Line: line, Column: col})
 			i++
 			continue
-
 		case ']':
 			addToken()
 			tokens = append(tokens, Token{Type: Delimiter.RBrack, Value: tkn, Line: line, Column: col})
 			i++
 			continue
-
 		case ',':
 			addToken()
 			tokens = append(tokens, Token{Type: Delimiter.Comma, Value: tkn, Line: line, Column: col})
 			i++
 			continue
-
 		case ';':
 			addToken()
 			tokens = append(tokens, Token{Type: Delimiter.Semic, Value: tkn, Line: line, Column: col})
 			i++
 			continue
-
 		case '<':
 			addToken()
 			tokens = append(tokens, Token{Kind: OperatorKind, Type: Operator.Lt, Value: tkn, Line: line, Column: col})
 			i++
 			continue
-
 		case '>':
 			addToken()
 			tokens = append(tokens, Token{Kind: OperatorKind, Type: Operator.Gt, Value: tkn, Line: line, Column: col})
 			i++
 			continue
-
 		case '"':
 			addToken()
 			i++
@@ -379,11 +349,35 @@ func tokenize(input string) []Token {
 		i++
 	}
 	addToken()
+	// for k, token := range tokens {fmt.Println(k, token.Value)}
 	return tokens
 }
 
 // ================= Helpers =================
 
+// check Numeric buffer
+func isNumBuf(s string) bool {
+	if s == "" {
+		return false
+	}
+	dotSeen := false
+	for i, r := range s {
+		if i == 0 && (r == '+' || r == '-') {
+			continue
+		}
+		if r == '.' {
+			if dotSeen {
+				return false
+			}
+			dotSeen = true
+			continue
+		}
+		if !unicode.IsDigit(r) {
+			return false
+		}
+	}
+	return true
+}
 func IsLiteral(tok Token) bool {
 	return tok.Kind == NumericLiteralKind || tok.Kind == OtherLiteralKind
 }

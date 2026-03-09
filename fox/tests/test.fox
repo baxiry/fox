@@ -65,6 +65,10 @@ fn parallel() {
 
 fn Loops(x X, y Y, z *Z) Data, int  {
     data := Data
+    x=X
+for i:=0; i<10; i = i-1 {
+       data.x = i
+    }
 
     for i:=0; i<10; i = i+1 {
        data.x = i
@@ -73,7 +77,7 @@ fn Loops(x X, y Y, z *Z) Data, int  {
     for ; i<10; i = i+1 {
        data.x = i
     }
-    for i:=0; ; i = i+1 {
+    for i:=0; ; i=i+1 {
        data.x = i
        if i == 10 {
            break
