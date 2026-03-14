@@ -372,9 +372,7 @@ func Lexer(input string) []Token {
 		i++
 	}
 	addToken()
-	for k, token := range tokens {
-		fmt.Println(k, token.Value)
-	}
+	//for k, token := range tokens {fmt.Println(k, token.Value)	}
 	return tokens
 }
 
