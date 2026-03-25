@@ -47,8 +47,8 @@ type Literals struct {
 }
 
 type Keywords struct {
-	Package, Import, Type, Struct, Func, Var, Const, If, Else, For,
-	Continue, Break, Return string
+	Package, Import, Type, Struct, Fn, Var, Const, If, Else, For,
+	Continue, Break, Return, Fallthrough, Goto string
 }
 
 type Operators struct {
@@ -59,7 +59,7 @@ type Delimiters struct {
 	LParen, RParen, LBrace, RBrace, LBrack, RBrack, Comma, Semic string
 }
 
-// Values
+// Assign Values
 var Special = Specials{
 	EOF:     "EOF",
 	Illegal: "ILLEGAL",
@@ -80,19 +80,21 @@ var OtherLiteral = Literals{
 }
 
 var keywords = Keywords{
-	Package:  "package",
-	Import:   "import",
-	Const:    "const",
-	Type:     "type",
-	Struct:   "struct",
-	Func:     "fn",
-	Var:      "var",
-	If:       "if",
-	Else:     "else",
-	For:      "for",
-	Break:    "break",
-	Continue: "continue",
-	Return:   "return",
+	Package:     "package",
+	Import:      "import",
+	Const:       "const",
+	Type:        "type",
+	Struct:      "struct",
+	Fn:          "fn",
+	Var:         "var",
+	If:          "if",
+	Else:        "else",
+	For:         "for",
+	Break:       "break",
+	Continue:    "continue",
+	Return:      "return",
+	Fallthrough: "fallthrough",
+	Goto:        "goto",
 }
 
 var Operator = Operators{
@@ -125,43 +127,6 @@ var Delimiter = Delimiters{
 }
 
 // Lexer
-func isInt(s string) bool {
-	if s == "" {
-		return false
-	}
-	for i, r := range s {
-		if i == 0 && (r == '+' || r == '-') {
-			continue
-		}
-		if !unicode.IsDigit(r) {
-			return false
-		}
-	}
-	return true
-}
-
-func isFloat(s string) bool {
-	if s == "" {
-		return false
-	}
-	dotSeen := false
-	for i, r := range s {
-		if i == 0 && (r == '+' || r == '-') {
-			continue
-		}
-		if r == '.' {
-			if dotSeen {
-				return false
-			}
-			dotSeen = true
-			continue
-		}
-		if !unicode.IsDigit(r) {
-			return false
-		}
-	}
-	return dotSeen
-}
 func Lexer(input string) []Token {
 	var tokens []Token
 	var current strings.Builder
@@ -175,8 +140,8 @@ func Lexer(input string) []Token {
 		current.Reset()
 		// Keywords exact match
 		switch val {
-		case keywords.Package, keywords.Type, keywords.Struct, keywords.Func,
-			keywords.Return, keywords.Var, keywords.Const, keywords.If,
+		case keywords.Package, keywords.Type, keywords.Struct, keywords.Fn, keywords.Goto,
+			keywords.Return, keywords.Var, keywords.Const, keywords.If, keywords.Fallthrough,
 			keywords.Else, keywords.For, keywords.Import, keywords.Break, keywords.Continue:
 			tokens = append(tokens, Token{Type: val, Value: val, Line: line, Column: col})
 			return
@@ -191,9 +156,10 @@ func Lexer(input string) []Token {
 			return
 		}
 
-		// Any other unknown identifier
+		// Any other identifier
 		tokens = append(tokens, Token{Type: Ident.Ident, Value: val, Line: line, Column: col})
 	}
+
 	i := 0
 	for i < len(input) {
 		r := rune(input[i])
@@ -377,6 +343,43 @@ func Lexer(input string) []Token {
 }
 
 // ================= Helpers =================
+func isInt(s string) bool {
+	if s == "" {
+		return false
+	}
+	for i, r := range s {
+		if i == 0 && (r == '+' || r == '-') {
+			continue
+		}
+		if !unicode.IsDigit(r) {
+			return false
+		}
+	}
+	return true
+}
+
+func isFloat(s string) bool {
+	if s == "" {
+		return false
+	}
+	dotSeen := false
+	for i, r := range s {
+		if i == 0 && (r == '+' || r == '-') {
+			continue
+		}
+		if r == '.' {
+			if dotSeen {
+				return false
+			}
+			dotSeen = true
+			continue
+		}
+		if !unicode.IsDigit(r) {
+			return false
+		}
+	}
+	return dotSeen
+}
 
 func IsLiteral(tok Token) bool {
 	return tok.Kind == NumericLiteralKind || tok.Kind == OtherLiteralKind
@@ -404,4 +407,4 @@ func (t Token) String() string {
 	)
 }
 
-// ================= Utils =================
+// ================= END =================
