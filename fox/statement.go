@@ -30,14 +30,12 @@ type ForStmt struct {
 }
 
 type Assign struct {
-	Type   string
 	Target Expression
 	Op     string
 	Value  Expression
 }
 
 type Declar struct {
-	Type  string
 	Name  string
 	Value Expression
 }
@@ -254,7 +252,6 @@ func parseAssign(tokens []Token, pos *int) Statement {
 	value := parseExpr(tokens, pos)
 
 	return Assign{
-		Type:   "Assign",
 		Target: &IdentExpr{Name: name},
 		Value:  value,
 	}
@@ -265,7 +262,7 @@ func parseDefine(tokens []Token, pos *int) Statement {
 	*pos++
 	expectType(tokens, pos, Operator.Define)
 	val := parseExpr(tokens, pos)
-	return Declar{Type: "Declar", Name: name, Value: val}
+	return Declar{Name: name, Value: val}
 }
 
 // For init/post

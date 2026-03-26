@@ -1,9 +1,7 @@
 package main
 
 import (
-	"encoding/json"
 	"fmt"
-	"os"
 	"reflect"
 	"strings"
 )
@@ -89,18 +87,6 @@ func dumpValue(val reflect.Value, indent int) {
 	default:
 		fmt.Print(val.Interface())
 	}
-}
-
-var enc = json.NewEncoder(os.Stdout)
-
-func dmp(ast *AST) {
-	enc.SetEscapeHTML(false)
-	enc.SetIndent("", "  ")
-	err := enc.Encode(ast)
-	if err != nil {
-		panic(err)
-	}
-	//fmt.Println(ast)
 }
 
 func readNumber(src string, pos *int) Token {
