@@ -1,11 +1,10 @@
 package main
 
-
 type UnaryExpr struct {
 	Op   string // like "*", "&"
 	Expr Expression
 	Line int
-	// Col  int later
+	// Col int later
 }
 
 type Expression interface {

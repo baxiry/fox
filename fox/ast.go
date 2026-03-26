@@ -31,6 +31,7 @@ type FuncDecl struct {
 	Returns []ReturnSig
 	Body    []Statement
 }
+
 type ParamDecl struct {
 	Name string
 	Type Type
@@ -55,5 +56,3 @@ type PointerType struct {
 }
 
 func (PointerType) isType() {}
-
-//[]string

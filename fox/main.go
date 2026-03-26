@@ -14,5 +14,5 @@ func main() {
 
 	tokens := Lexer(string(data))
 
-	dmp(astBuilder(tokens))
+	Dump(astBuilder(tokens))
 }

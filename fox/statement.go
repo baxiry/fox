@@ -7,7 +7,6 @@ type Statement interface {
 type BreakNode struct {
 	Tok Token
 }
-
 type ContinueNode struct {
 	Tok Token
 }
@@ -30,13 +29,15 @@ type ForStmt struct {
 	Body []Statement
 }
 
-type AssignStmt struct {
+type Assign struct {
+	Type   string
 	Target Expression
 	Op     string
 	Value  Expression
 }
 
-type DefineStmt struct {
+type Declar struct {
+	Type  string
 	Name  string
 	Value Expression
 }
@@ -50,8 +51,8 @@ func (ContinueNode) isStat() {}
 func (IfStmt) isStat()       {}
 func (BreakNode) isStat()    {}
 func (ForStmt) isStat()      {}
-func (AssignStmt) isStat()   {}
-func (DefineStmt) isStat()   {}
+func (Assign) isStat()       {}
+func (Declar) isStat()       {}
 func (ExprStmt) isStat()     {}
 
 //  Parsing Helpers
@@ -252,9 +253,9 @@ func parseAssign(tokens []Token, pos *int) Statement {
 
 	value := parseExpr(tokens, pos)
 
-	return AssignStmt{
+	return Assign{
+		Type:   "Assign",
 		Target: &IdentExpr{Name: name},
-		Op:     opTok.Value,
 		Value:  value,
 	}
 }
@@ -264,7 +265,7 @@ func parseDefine(tokens []Token, pos *int) Statement {
 	*pos++
 	expectType(tokens, pos, Operator.Define)
 	val := parseExpr(tokens, pos)
-	return DefineStmt{Name: name, Value: val}
+	return Declar{Type: "Declar", Name: name, Value: val}
 }
 
 // For init/post
