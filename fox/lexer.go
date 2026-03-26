@@ -302,8 +302,16 @@ func Lexer(input string) []Token {
 			continue
 
 		case ';':
-			addToken()
-			tokens = append(tokens, Token{Type: Delimiter.Semic, Value: tkn, Line: line, Column: col})
+			// Skip spaces and tabs
+			j := i + 1
+			for j < len(input) && (input[j] == ' ' || input[j] == '\t') {
+				j++
+			}
+			if j < len(input) && input[j] != '\n' && input[j] != '\r' {
+				// Semicolon is meaningful (middle of line)
+				addToken()
+				tokens = append(tokens, Token{Type: Delimiter.Semic, Value: tkn, Line: line, Column: col})
+			}
 			i++
 			continue
 

@@ -194,6 +194,10 @@ func parseReturn(tokens []Token, pos *int) Statement {
 
 func parseExprStatement(tokens []Token, pos *int) Statement {
 	expr := parseExpr(tokens, pos)
+	if *pos < len(tokens) && tokens[*pos].Type == Delimiter.Semic {
+		*pos++
+	}
+
 	return ExprStmt{Expr: expr}
 }
 

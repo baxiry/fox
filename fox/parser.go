@@ -155,7 +155,7 @@ func parseFunc(tokens []Token, pos *int) FuncDecl {
 	funcNode := FuncDecl{}
 
 	// func
-	expectType(tokens, pos, keywords.Func)
+	expectType(tokens, pos, keywords.Fn)
 	funcNode.Name = expectIdent(tokens, pos).Value
 
 	// (
@@ -220,7 +220,7 @@ func astBuilder(tokens []Token) *AST {
 		case "type":
 			ast.Structs = append(ast.Structs, parseStruct(tokens, pos))
 
-		case keywords.Func: // "func":
+		case keywords.Fn: // "func":
 			ast.Funcs = append(ast.Funcs, parseFunc(tokens, pos))
 
 		default:
