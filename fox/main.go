@@ -2,7 +2,10 @@ package main
 
 import (
 	"os"
+
+	"github.com/kr/pretty"
 )
+
 
 func main() {
 
@@ -14,5 +17,5 @@ func main() {
 
 	tokens := Lexer(string(data))
 
-	Dump(astBuilder(tokens))
+	pretty.Print(astBuilder(tokens))
 }
