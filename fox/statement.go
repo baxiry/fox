@@ -7,26 +7,26 @@ type Statement interface {
 type BreakNode struct {
 	Tok Token
 }
+
 type ContinueNode struct {
 	Tok Token
 }
 
 type ReturnStmt struct {
-	Type    string
 	Results []Expression
 }
 
 type IfStmt struct {
 	Cond Expression
-	Then []Statement
-	Else []Statement
+	Then *FrameBlock
+	Else *FrameBlock
 }
 
 type ForStmt struct {
 	Init Statement
 	Cond Expression
 	Post Statement
-	Body []Statement
+	Body *FrameBlock
 }
 
 type Assign struct {
@@ -116,7 +116,6 @@ func parseStatements(tokens []Token, pos *int) Statement {
 		return ContinueNode{Tok: tok}
 
 	default:
-		// إذا كان next token = أو :=, parse كـ assignment/define
 		if *pos < len(tokens) {
 			// peek ahead
 			if *pos+1 < len(tokens) {
@@ -129,12 +128,16 @@ func parseStatements(tokens []Token, pos *int) Statement {
 				}
 			}
 		}
-		// أي شيء آخر → expression statement
+
 		return parseExprStatement(tokens, pos)
 	}
 }
 
 // Block Parsing
+
+func fblock(stmts []Statement) *FrameBlock {
+	return &FrameBlock{Stmts: stmts}
+}
 
 func parseBlock(tokens []Token, pos *int) []Statement {
 	stmts := []Statement{}
@@ -159,7 +162,7 @@ func parseIf(tokens []Token, pos *int) Statement {
 		elseBlock = parseBlock(tokens, pos)
 	}
 
-	return IfStmt{Cond: cond, Then: thenBlock, Else: elseBlock}
+	return IfStmt{Cond: cond, Then: fblock(thenBlock), Else: fblock(elseBlock)}
 }
 
 func parseExprUntil(tokens []Token, pos *int, stop string) Expression {
@@ -213,7 +216,8 @@ func parseFor(tokens []Token, pos *int) Statement {
 	}
 
 	//  BODY
-	forStmt.Body = parseBlock(tokens, pos)
+
+	forStmt.Body = fblock(parseBlock(tokens, pos))
 	return forStmt
 }
 
@@ -230,7 +234,7 @@ func parseReturn(tokens []Token, pos *int) Statement {
 		}
 	}
 
-	return ReturnStmt{Type: "ReturnStmt", Results: results}
+	return ReturnStmt{Results: results}
 }
 
 func parseExprStatement(tokens []Token, pos *int) Statement {

@@ -16,7 +16,9 @@ func main() {
 
 	tokens := Lexer(string(data))
 
-	//	for k, token := range tokens {fmt.Println(k, token.Value)	}
+	//for k, token := range tokens {
+	//	fmt.Println(k, token.Value)
+	//	}
 
 	pretty.Print(astBuilder(tokens))
 }

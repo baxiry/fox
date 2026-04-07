@@ -23,12 +23,15 @@ type FieldDecl struct {
 	Type string
 }
 
+type FrameBlock struct {
+	Stmts []Statement
+}
+
 type FuncDecl struct {
 	Name    string
 	Params  []ParamDecl
-	Return  Type
 	Returns []ReturnSig
-	Body    []Statement
+	Body    *FrameBlock // BlockStmt
 }
 
 type ParamDecl struct {

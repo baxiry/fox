@@ -20,8 +20,9 @@ func parseUnary(tokens []Token, pos *int) Expression {
 		return UnaryExpr{Op: tok.Value, Expr: expr, Line: tok.Line}
 	}
 
-	return parsePostfix(tokens, pos) // ← هنا كل شيء يمر عبر parsePostfix
+	return parsePostfix(tokens, pos)
 }
+
 func parsePostfix(tokens []Token, pos *int) Expression {
 	expr := parsePrimary(tokens, pos)
 
@@ -181,22 +182,21 @@ func parseFunc(tokens []Token, pos *int) FuncDecl {
 	// return signature
 	funcNode.Returns = parseRetSign(tokens, pos)
 
-	// {
 	expectType(tokens, pos, Delimiter.LBrace)
 
+	frameBlock := &FrameBlock{}
 	for tokens[*pos].Type != Delimiter.RBrace {
 		stmt := parseStatement(tokens, pos)
-		funcNode.Body = append(funcNode.Body, stmt)
+		frameBlock.Stmts = append(frameBlock.Stmts, stmt)
+		funcNode.Body = frameBlock
 	}
 
-	// }
 	expectType(tokens, pos, Delimiter.RBrace)
 
 	return funcNode
 }
 
-//  AST Builder
-
+// AST Builder
 func astBuilder(tokens []Token) *AST {
 	p := 0
 	pos := &p
