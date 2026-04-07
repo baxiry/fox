@@ -1,0 +1,11 @@
+
+type Obj struct {
+    value int
+
+}
+
+fn Update(obj *Obj) {
+    obj.value = 10 
+}
+
+

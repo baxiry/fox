@@ -36,7 +36,7 @@ type Assign struct {
 }
 
 type Declar struct {
-	Name  string
+	Name  Expression
 	Value Expression
 }
 
@@ -53,9 +53,46 @@ func (Assign) isStat()       {}
 func (Declar) isStat()       {}
 func (ExprStmt) isStat()     {}
 
-//  Parsing Helpers
-
+// Parsing Helpers
 func parseStatement(tokens []Token, pos *int) Statement {
+	tok := tokens[*pos]
+
+	switch tok.Value {
+	case keywords.Return:
+		return parseReturn(tokens, pos)
+	case keywords.If:
+		return parseIf(tokens, pos)
+	case keywords.For:
+		return parseFor(tokens, pos)
+	case keywords.Break:
+		*pos++
+		return BreakNode{Tok: tok}
+	case keywords.Continue:
+		*pos++
+		return ContinueNode{Tok: tok}
+	default:
+		// حاول parse LHS كـ postfix expression
+		startPos := *pos
+		_ = parsePostfix(tokens, pos)
+
+		if *pos < len(tokens) {
+			next := tokens[*pos]
+			if next.Type == Operator.Assign {
+				*pos = startPos
+				return parseAssign(tokens, pos)
+			}
+			if next.Type == Operator.Define {
+				*pos = startPos
+				return parseDefine(tokens, pos)
+			}
+		}
+
+		// fallback → expression statement
+		*pos = startPos
+		return parseExprStatement(tokens, pos)
+	}
+}
+func parseStatements(tokens []Token, pos *int) Statement {
 	tok := tokens[*pos]
 
 	switch tok.Value {
@@ -78,16 +115,20 @@ func parseStatement(tokens []Token, pos *int) Statement {
 		return ContinueNode{Tok: tok}
 
 	default:
-		// Identifier followed by = or := → assignment/definition
-		if *pos+1 < len(tokens) {
-			op := tokens[*pos+1].Value
-			if op == "=" {
-				return parseAssign(tokens, pos)
-			}
-			if op == ":=" {
-				return parseDefine(tokens, pos)
+		// إذا كان next token = أو :=, parse كـ assignment/define
+		if *pos < len(tokens) {
+			// peek ahead
+			if *pos+1 < len(tokens) {
+				next := tokens[*pos+1]
+				if next.Type == Operator.Assign {
+					return parseAssign(tokens, pos)
+				}
+				if next.Type == Operator.Define {
+					return parseDefine(tokens, pos)
+				}
 			}
 		}
+		// أي شيء آخر → expression statement
 		return parseExprStatement(tokens, pos)
 	}
 }
@@ -238,31 +279,52 @@ func parseRetSign(tokens []Token, pos *int) []ReturnSig {
 	return retSigns
 }
 
-// Assignment / Definition Parsers
 func parseAssign(tokens []Token, pos *int) Statement {
-	nameTok := expectType(tokens, pos, Ident.Ident)
-	name := nameTok.Value
+	// فقط parse كـ postfix expression للـ LHS
+	target := parsePostfix(tokens, pos)
 
+	// تحقق من أنها L-value صالحة
+	switch target.(type) {
+	case IdentExpr, *IdentExpr, FieldAccessExpr, *FieldAccessExpr:
+		// ok
+	default:
+		panic("left-hand side of assignment must be an identifier or field access")
+	}
+
+	// تأكد من وجود =
 	opTok := tokens[*pos]
-	if opTok.Type != Operator.Assign && opTok.Type != Operator.Define {
-		panic("expected = or :=")
+	if opTok.Type != Operator.Assign {
+		panic("expected = for assignment")
 	}
 	*pos++
 
+	// parse RHS كـ expression كامل
 	value := parseExpr(tokens, pos)
 
 	return Assign{
-		Target: &IdentExpr{Name: name},
+		Target: target,
 		Value:  value,
 	}
 }
 
 func parseDefine(tokens []Token, pos *int) Statement {
-	name := tokens[*pos].Value
-	*pos++
+	// فقط postfix للـ target
+	target := parsePostfix(tokens, pos)
+
+	switch target.(type) {
+	case IdentExpr, *IdentExpr, FieldAccessExpr, *FieldAccessExpr:
+	default:
+		panic("left-hand side of define must be an identifier or field access")
+	}
+
+	// تأكد من وجود :=
 	expectType(tokens, pos, Operator.Define)
-	val := parseExpr(tokens, pos)
-	return Declar{Name: name, Value: val}
+	value := parseExpr(tokens, pos)
+
+	return Declar{
+		Name:  target,
+		Value: value,
+	}
 }
 
 // For init/post

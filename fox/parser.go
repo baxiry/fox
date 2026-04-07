@@ -4,8 +4,67 @@ import (
 	"fmt"
 )
 
-// ================= Expressions =================
+func parseUnary(tokens []Token, pos *int) Expression {
+	if *pos >= len(tokens) {
+		panic("unexpected end of input while parsing unary expression")
+	}
 
+	tok := tokens[*pos]
+
+	if tok.Type == Operator.Star || tok.Type == Operator.Ref || tok.Type == Operator.Not || tok.Type == Operator.Minus {
+		(*pos)++
+		if *pos >= len(tokens) {
+			panic(fmt.Sprintf("unexpected end of input after unary operator '%s'", tok.Value))
+		}
+		expr := parseUnary(tokens, pos)
+		return UnaryExpr{Op: tok.Value, Expr: expr, Line: tok.Line}
+	}
+
+	return parsePostfix(tokens, pos) // ← هنا كل شيء يمر عبر parsePostfix
+}
+func parsePostfix(tokens []Token, pos *int) Expression {
+	expr := parsePrimary(tokens, pos)
+
+	for *pos < len(tokens) && tokens[*pos].Value == "." {
+		*pos++ // consume '.'
+		field := expectIdent(tokens, pos).Value
+		expr = FieldAccessExpr{Object: expr, Field: field}
+	}
+
+	return expr
+}
+func parsePrimary(tokens []Token, pos *int) Expression {
+	if *pos >= len(tokens) {
+		panic("unexpected end of input while parsing expression")
+	}
+
+	tok := tokens[*pos]
+	switch tok.Type {
+	case Ident.Ident:
+		*pos++
+		if *pos < len(tokens) && tokens[*pos].Type == Delimiter.LParen {
+			return parseCall(tok.Value, tokens, pos)
+		}
+		return IdentExpr{Name: tok.Value} // فقط الاسم الأساسي، بدون أي dot
+
+	case NumericLiteral.Int, NumericLiteral.Float:
+		*pos++
+		return NumberExpr{Literal: tok.Value}
+
+	case OtherLiteral.String:
+		*pos++
+		return StringExpr{Literal: tok.Value}
+
+	case Delimiter.LParen:
+		*pos++
+		expr := parseExpr(tokens, pos)
+		expectType(tokens, pos, Delimiter.RParen)
+		return expr
+
+	default:
+		panic(fmt.Sprintf("expected expression at line %d, got %s (%q)", tok.Line, tok.Type, tok.Value))
+	}
+}
 func parseType(tokens []Token, pos *int) Type {
 
 	if *pos >= len(tokens) {
@@ -37,35 +96,6 @@ func parseType(tokens []Token, pos *int) Type {
 	}
 }
 
-func parseUnary(tokens []Token, pos *int) Expression {
-	if *pos >= len(tokens) {
-		panic("unexpected end of input while parsing unary expression")
-	}
-
-	tok := tokens[*pos]
-
-	if tok.Type == Operator.Star || tok.Type == Operator.Ref || tok.Type == Operator.Not || tok.Type == Operator.Minus {
-		(*pos)++
-
-		if *pos >= len(tokens) {
-			panic(fmt.Sprintf(
-				"unexpected end of input after unary operator '%s' at line %d, column %d",
-				tok.Value, tok.Line, tok.Column,
-			))
-		}
-
-		expr := parseUnary(tokens, pos)
-
-		return UnaryExpr{
-			Op:   tok.Value,
-			Expr: expr,
-			Line: tok.Line,
-		}
-	}
-
-	return parsePrimary(tokens, pos)
-}
-
 // parse * and /
 func parseMul(tokens []Token, pos *int) Expression {
 	left := parseUnary(tokens, pos)
@@ -78,6 +108,7 @@ func parseMul(tokens []Token, pos *int) Expression {
 	return left
 }
 
+// Equality == & !=
 func parseEquality(tokens []Token, pos *int) Expression {
 	left := parseAdd(tokens, pos)
 
@@ -114,51 +145,16 @@ func parseExpr(tokens []Token, pos *int) Expression {
 	return parseEquality(tokens, pos)
 }
 
-// primary expressions
-func parsePrimary(tokens []Token, pos *int) Expression {
-	if *pos >= len(tokens) {
-		panic("unexpected end of input while parsing expression")
-	}
-	tok := tokens[*pos]
-	switch tok.Type {
-
-	case Ident.Ident:
-		*pos++
-		// function call: f(...)
-		if *pos < len(tokens) && tokens[*pos].Type == Delimiter.LParen {
-			return parseCall(tok.Value, tokens, pos)
-		}
-		return IdentExpr{Name: tok.Value}
-
-	case NumericLiteral.Int, NumericLiteral.Float:
-		*pos++
-		return NumberExpr{Literal: tok.Value}
-
-	case OtherLiteral.String:
-		*pos++
-		return StringExpr{Literal: tok.Value}
-
-	case Delimiter.LParen: // TOKEN_LPAREN:
-		*pos++
-		expr := parseExpr(tokens, pos)
-		expectType(tokens, pos, Delimiter.LParen)
-		return expr
-
-	default:
-		panic(fmt.Sprintf("expected expression at line %d, got %s (%q)", tok.Line, tok.Type, tok.Value))
-	}
-}
-
-// ================= Functions =================
+//  Functions
 
 func parseFunc(tokens []Token, pos *int) FuncDecl {
 	funcNode := FuncDecl{}
 
-	// func
+	// parse func word then name func
 	expectType(tokens, pos, keywords.Fn)
 	funcNode.Name = expectIdent(tokens, pos).Value
 
-	// (
+	// parse open paren ( then params
 	expectType(tokens, pos, Delimiter.LParen)
 
 	for tokens[*pos].Type != Delimiter.RParen {
@@ -199,7 +195,7 @@ func parseFunc(tokens []Token, pos *int) FuncDecl {
 	return funcNode
 }
 
-// ================= AST Builder =================
+//  AST Builder
 
 func astBuilder(tokens []Token) *AST {
 	p := 0

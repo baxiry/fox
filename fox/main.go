@@ -6,7 +6,6 @@ import (
 	"github.com/kr/pretty"
 )
 
-
 func main() {
 
 	foxFile := os.Args[1]
@@ -16,6 +15,5 @@ func main() {
 	}
 
 	tokens := Lexer(string(data))
-
 	pretty.Print(astBuilder(tokens))
 }

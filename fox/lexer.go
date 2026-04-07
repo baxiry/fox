@@ -52,7 +52,7 @@ type Keywords struct {
 }
 
 type Operators struct {
-	Plus, Minus, Ref, Star, Slash, Assign, Define, Eq, Neq, Lt, Gt, Lte, Gte, And, Or, Not string
+	Plus, Minus, Ref, Star, Slash, Assign, Define, Eq, Neq, Lt, Gt, Lte, Gte, And, Or, Not, Dot string
 }
 
 type Delimiters struct {
@@ -113,6 +113,8 @@ var Operator = Operators{
 	And:    "&&",
 	Or:     "||",
 	Not:    "!",
+
+	Dot: ".", // ← أضف هذا
 }
 
 var Delimiter = Delimiters{
@@ -138,6 +140,7 @@ func Lexer(input string) []Token {
 		}
 		val := current.String()
 		current.Reset()
+
 		// Keywords exact match
 		switch val {
 		case keywords.Package, keywords.Type, keywords.Struct, keywords.Fn, keywords.Goto,
@@ -156,8 +159,17 @@ func Lexer(input string) []Token {
 			return
 		}
 
-		// Any other identifier
-		tokens = append(tokens, Token{Type: Ident.Ident, Value: val, Line: line, Column: col})
+		// Split identifiers by dot
+		parts := strings.Split(val, ".")
+		for i, p := range parts {
+			if p == "" {
+				continue
+			}
+			tokens = append(tokens, Token{Type: Ident.Ident, Value: p, Line: line, Column: col})
+			if i < len(parts)-1 {
+				tokens = append(tokens, Token{Type: Operator.Dot, Value: ".", Line: line, Column: col})
+			}
+		}
 	}
 
 	i := 0
@@ -346,7 +358,9 @@ func Lexer(input string) []Token {
 		i++
 	}
 	addToken()
-	//for k, token := range tokens {fmt.Println(k, token.Value)	}
+	for k, token := range tokens {
+		fmt.Println(k, token.Value)
+	}
 	return tokens
 }
 

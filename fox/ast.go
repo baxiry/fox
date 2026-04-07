@@ -18,7 +18,6 @@ type StructDecl struct {
 	Name   string
 	Fields []FieldDecl
 }
-
 type FieldDecl struct {
 	Name string
 	Type string
@@ -41,6 +40,14 @@ type ReturnSig struct {
 	Name string
 	Type Type
 }
+
+type FieldAccessExpr struct {
+	Object Expression
+	Field  string
+}
+
+func (FieldAccessExpr) isExpr() {}
+
 type TypeNode interface {
 	isType()
 }
