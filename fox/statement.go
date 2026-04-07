@@ -37,6 +37,7 @@ type Assign struct {
 
 type Declar struct {
 	Name  Expression
+	Op    string
 	Value Expression
 }
 
@@ -280,35 +281,30 @@ func parseRetSign(tokens []Token, pos *int) []ReturnSig {
 }
 
 func parseAssign(tokens []Token, pos *int) Statement {
-	// فقط parse كـ postfix expression للـ LHS
 	target := parsePostfix(tokens, pos)
 
-	// تحقق من أنها L-value صالحة
 	switch target.(type) {
 	case IdentExpr, *IdentExpr, FieldAccessExpr, *FieldAccessExpr:
-		// ok
 	default:
 		panic("left-hand side of assignment must be an identifier or field access")
 	}
 
-	// تأكد من وجود =
 	opTok := tokens[*pos]
 	if opTok.Type != Operator.Assign {
 		panic("expected = for assignment")
 	}
 	*pos++
 
-	// parse RHS كـ expression كامل
 	value := parseExpr(tokens, pos)
 
 	return Assign{
 		Target: target,
+		Op:     opTok.Value,
 		Value:  value,
 	}
 }
 
 func parseDefine(tokens []Token, pos *int) Statement {
-	// فقط postfix للـ target
 	target := parsePostfix(tokens, pos)
 
 	switch target.(type) {
@@ -317,12 +313,17 @@ func parseDefine(tokens []Token, pos *int) Statement {
 		panic("left-hand side of define must be an identifier or field access")
 	}
 
-	// تأكد من وجود :=
-	expectType(tokens, pos, Operator.Define)
+	opTok := tokens[*pos]
+	if opTok.Type != Operator.Define {
+		panic("expected := for definition")
+	}
+	*pos++
+
 	value := parseExpr(tokens, pos)
 
 	return Declar{
 		Name:  target,
+		Op:    opTok.Value,
 		Value: value,
 	}
 }
