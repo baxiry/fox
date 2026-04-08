@@ -213,7 +213,7 @@ func Lexer(input string) []Token {
 				}
 			}
 
-			// unary sign detection (نفس منطقك)
+			// unary sign detection
 			if i+1 < len(input) && unicode.IsDigit(rune(input[i+1])) &&
 				(len(tokens) == 0 || tokens[len(tokens)-1].Type != IDENT) {
 				current.WriteRune(r)
@@ -293,6 +293,8 @@ func Lexer(input string) []Token {
 				addToken()
 				tokens = append(tokens, Token{Type: SEMICOLON, Lexeme: tkn, Line: line, Column: col})
 			}
+			addToken()
+			tokens = append(tokens, Token{Type: SEMICOLON, Lexeme: tkn, Line: line, Column: col})
 			i++
 			continue
 
@@ -331,7 +333,7 @@ func Lexer(input string) []Token {
 	return tokens
 }
 
-// ================= Helpers =================
+// Helpers
 func isInt(s string) bool {
 	if s == "" {
 		return false
@@ -434,10 +436,26 @@ func (tt TokenType) String() string {
 		return "PLUS"
 	case IF:
 		return "IF"
-	// أكمل باقي الـ TokenTypes...
+	case OPN_PAREN:
+		return "OPN_PAREN"
+	case CLS_PAREN:
+		return "CLS_PAREN"
+	case OPN_BRACE:
+		return "OPN_BRACE"
+	case CLS_BRACE:
+		return "CLS_BRACE"
+	case OPN_BRACK:
+		return "OPN_BRACK"
+	case CLS_BRACK:
+		return "CLS_BRACK"
+	case COMMA:
+		return "COMMA"
+	case SEMICOLON:
+		return "SEMICOLON"
+
 	default:
 		return "UNKNOWN"
 	}
 }
 
-// ================= END =================
+// END

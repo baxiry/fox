@@ -1,6 +1,3 @@
 
 fn Update(obj *Obj) {
     obj.value = 10 
-}
-
-
