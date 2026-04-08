@@ -1,6 +1,7 @@
 package main
 
 import (
+	"fmt"
 	"os"
 
 	"github.com/kr/pretty"
@@ -13,12 +14,15 @@ func main() {
 	if err != nil {
 		panic(err)
 	}
+	sdata := string(data)
+	fmt.Println("input src:\n", sdata)
 
-	tokens := Lexer(string(data))
+	tokens := Lexer(sdata)
+	fmt.Println("indexs & tokens:\n")
+	for k, token := range tokens {
+		fmt.Print(k, " ", token.Lexeme, ", ")
+	}
 
-	//for k, token := range tokens {
-	//	fmt.Println(k, token.Value)
-	//	}
-
+	fmt.Println("\nresult as AST:\n")
 	pretty.Print(astBuilder(tokens))
 }

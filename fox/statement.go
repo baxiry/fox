@@ -58,31 +58,31 @@ func (ExprStmt) isStat()     {}
 func parseStatement(tokens []Token, pos *int) Statement {
 	tok := tokens[*pos]
 
-	switch tok.Value {
-	case keywords.Return:
+	switch tok.Lexeme {
+	case "return":
 		return parseReturn(tokens, pos)
-	case keywords.If:
+	case "if":
 		return parseIf(tokens, pos)
-	case keywords.For:
+	case "for":
 		return parseFor(tokens, pos)
-	case keywords.Break:
+	case "break":
 		*pos++
 		return BreakNode{Tok: tok}
-	case keywords.Continue:
+	case "continue":
 		*pos++
 		return ContinueNode{Tok: tok}
 	default:
-		// حاول parse LHS كـ postfix expression
+
 		startPos := *pos
 		_ = parsePostfix(tokens, pos)
 
 		if *pos < len(tokens) {
 			next := tokens[*pos]
-			if next.Type == Operator.Assign {
+			if next.Type == ASSIGN {
 				*pos = startPos
 				return parseAssign(tokens, pos)
 			}
-			if next.Type == Operator.Define {
+			if next.Type == DEFINE {
 				*pos = startPos
 				return parseDefine(tokens, pos)
 			}
@@ -93,25 +93,26 @@ func parseStatement(tokens []Token, pos *int) Statement {
 		return parseExprStatement(tokens, pos)
 	}
 }
+
 func parseStatements(tokens []Token, pos *int) Statement {
 	tok := tokens[*pos]
 
-	switch tok.Value {
-	case keywords.Return:
+	switch tok.Lexeme {
+	case "return":
 		results := parseReturn(tokens, pos)
 		return results
 
-	case keywords.If:
+	case "if":
 		return parseIf(tokens, pos)
 
-	case keywords.For:
+	case "for":
 		return parseFor(tokens, pos)
 
-	case keywords.Break:
+	case "break":
 		*pos++
 		return BreakNode{Tok: tok}
 
-	case keywords.Continue:
+	case "continue":
 		*pos++
 		return ContinueNode{Tok: tok}
 
@@ -120,10 +121,10 @@ func parseStatements(tokens []Token, pos *int) Statement {
 			// peek ahead
 			if *pos+1 < len(tokens) {
 				next := tokens[*pos+1]
-				if next.Type == Operator.Assign {
+				if next.Type == ASSIGN {
 					return parseAssign(tokens, pos)
 				}
-				if next.Type == Operator.Define {
+				if next.Type == DEFINE {
 					return parseDefine(tokens, pos)
 				}
 			}
@@ -141,23 +142,23 @@ func fblock(stmts []Statement) *FrameBlock {
 
 func parseBlock(tokens []Token, pos *int) []Statement {
 	stmts := []Statement{}
-	expectType(tokens, pos, Delimiter.LBrace)
-	for *pos < len(tokens) && tokens[*pos].Type != Delimiter.RBrace {
+	expectType(tokens, pos, OPN_BRACE)
+	for *pos < len(tokens) && tokens[*pos].Type != CLS_BRACE {
 		stmts = append(stmts, parseStatement(tokens, pos))
 	}
-	expectType(tokens, pos, Delimiter.RBrace)
+	expectType(tokens, pos, CLS_BRACE)
 	return stmts
 }
 
 //  Statement Parsers
 
 func parseIf(tokens []Token, pos *int) Statement {
-	expectType(tokens, pos, keywords.If)
+	expectType(tokens, pos, IF)
 	cond := parseExpr(tokens, pos)
 	thenBlock := parseBlock(tokens, pos)
 
 	var elseBlock []Statement
-	if *pos < len(tokens) && tokens[*pos].Type == keywords.Else {
+	if *pos < len(tokens) && tokens[*pos].Type == ELSE {
 		*pos++
 		elseBlock = parseBlock(tokens, pos)
 	}
@@ -165,19 +166,29 @@ func parseIf(tokens []Token, pos *int) Statement {
 	return IfStmt{Cond: cond, Then: fblock(thenBlock), Else: fblock(elseBlock)}
 }
 
+func (t Token) IsOperator() bool {
+	switch t.Type {
+	case PLUS, MINUS, STAR, SLASH, ASSIGN, DEFINE,
+		EQ, NEQ, LT, GT, LTE, GTE, AND, OR, NOT, DOT:
+		return true
+	default:
+		return false
+	}
+}
+
 func parseExprUntil(tokens []Token, pos *int, stop string) Expression {
 	expr := parseExpr(tokens, pos)
 
-	for *pos < len(tokens) && tokens[*pos].Value != stop {
+	for *pos < len(tokens) && tokens[*pos].Lexeme != stop {
 		op := tokens[*pos]
-		if op.Kind != OperatorKind {
+		if !op.IsOperator() {
 			break
 		}
 		*pos++
 
 		right := parseExpr(tokens, pos)
 		expr = BinaryExpr{
-			Op:    op.Type,
+			Op:    op.Lexeme,
 			Left:  expr,
 			Right: right,
 		}
@@ -186,31 +197,31 @@ func parseExprUntil(tokens []Token, pos *int, stop string) Expression {
 }
 
 func parseFor(tokens []Token, pos *int) Statement {
-	expectType(tokens, pos, keywords.For)
+	expectType(tokens, pos, FOR)
 	forStmt := ForStmt{}
 
 	//  INIT
 	// check ";" "{" befor init
-	if tokens[*pos].Type != Delimiter.Semic && tokens[*pos].Type != Delimiter.LBrace {
-		if *pos+1 < len(tokens) && (tokens[*pos+1].Type == Operator.Assign || tokens[*pos+1].Type == Operator.Define) {
+	if tokens[*pos].Type != SEMICOLON && tokens[*pos].Type != OPN_BRACE {
+		if *pos+1 < len(tokens) && (tokens[*pos+1].Type == ASSIGN || tokens[*pos+1].Type == DEFINE) {
 			forStmt.Init = parseDefOrAssign(tokens, pos)
 		} else {
 			forStmt.Init = parseExprStatement(tokens, pos)
 		}
 	}
-	expectType(tokens, pos, Delimiter.Semic) // use ;
+	expectType(tokens, pos, SEMICOLON) // use ;
 
 	// CONDITION
-	if tokens[*pos].Type != Delimiter.Semic && tokens[*pos].Type != Delimiter.LBrace {
+	if tokens[*pos].Type != SEMICOLON && tokens[*pos].Type != OPN_BRACE {
 		forStmt.Cond = parseExprUntil(tokens, pos, ";")
 	}
-	expectType(tokens, pos, Delimiter.Semic) // use ;
+	expectType(tokens, pos, SEMICOLON) // use ;
 
 	// POST
-	if tokens[*pos].Type != Delimiter.LBrace {
-		if *pos+1 < len(tokens) && (tokens[*pos+1].Type == Operator.Assign || tokens[*pos+1].Type == Operator.Define) {
+	if tokens[*pos].Type != OPN_BRACE {
+		if *pos+1 < len(tokens) && (tokens[*pos+1].Type == ASSIGN || tokens[*pos+1].Type == DEFINE) {
 			forStmt.Post = parseDefOrAssign(tokens, pos)
-		} else if tokens[*pos].Type != Delimiter.RBrace {
+		} else if tokens[*pos].Type != CLS_BRACE {
 			forStmt.Post = parseExprStatement(tokens, pos)
 		}
 	}
@@ -222,13 +233,13 @@ func parseFor(tokens []Token, pos *int) Statement {
 }
 
 func parseReturn(tokens []Token, pos *int) Statement {
-	expectType(tokens, pos, keywords.Return)
+	expectType(tokens, pos, RETURN)
 
 	results := []Expression{}
 
-	if tokens[*pos].Type != Delimiter.Semic && tokens[*pos].Type != Delimiter.RBrace {
+	if tokens[*pos].Type != SEMICOLON && tokens[*pos].Type != CLS_BRACE {
 		results = append(results, parseExpr(tokens, pos))
-		for *pos < len(tokens) && tokens[*pos].Value == Delimiter.Comma {
+		for *pos < len(tokens) && tokens[*pos].Type == COMMA {
 			*pos++
 			results = append(results, parseExpr(tokens, pos))
 		}
@@ -239,7 +250,7 @@ func parseReturn(tokens []Token, pos *int) Statement {
 
 func parseExprStatement(tokens []Token, pos *int) Statement {
 	expr := parseExpr(tokens, pos)
-	if *pos < len(tokens) && tokens[*pos].Type == Delimiter.Semic {
+	if *pos < len(tokens) && tokens[*pos].Type == SEMICOLON {
 		*pos++
 	}
 
@@ -250,15 +261,15 @@ func parseRetSign(tokens []Token, pos *int) []ReturnSig {
 
 	var retSigns []ReturnSig
 
-	for *pos < len(tokens) && tokens[*pos].Type != Delimiter.LBrace {
+	for *pos < len(tokens) && tokens[*pos].Type != OPN_BRACE {
 
 		// skip commas
-		if tokens[*pos].Type == Delimiter.Comma {
+		if tokens[*pos].Type == COMMA {
 			(*pos)++
 			continue
 		}
 
-		if *pos >= len(tokens) || tokens[*pos].Type == Delimiter.LBrace {
+		if *pos >= len(tokens) || tokens[*pos].Type == OPN_BRACE {
 			break
 		}
 
@@ -266,10 +277,10 @@ func parseRetSign(tokens []Token, pos *int) []ReturnSig {
 
 		// case: named return value  (name type)
 		if *pos+1 < len(tokens) &&
-			tokens[*pos].Type == Ident.Ident &&
-			tokens[*pos+1].Type == Ident.Ident {
+			tokens[*pos].Type == IDENT &&
+			tokens[*pos+1].Type == IDENT {
 
-			name = expectIdent(tokens, pos).Value
+			name = expectIdent(tokens, pos).Lexeme
 		}
 
 		// parse type (this handles Obj, *Obj, etc)
@@ -294,7 +305,7 @@ func parseAssign(tokens []Token, pos *int) Statement {
 	}
 
 	opTok := tokens[*pos]
-	if opTok.Type != Operator.Assign {
+	if opTok.Type != ASSIGN {
 		panic("expected = for assignment")
 	}
 	*pos++
@@ -303,7 +314,7 @@ func parseAssign(tokens []Token, pos *int) Statement {
 
 	return Assign{
 		Target: target,
-		Op:     opTok.Value,
+		Op:     opTok.Lexeme,
 		Value:  value,
 	}
 }
@@ -318,7 +329,7 @@ func parseDefine(tokens []Token, pos *int) Statement {
 	}
 
 	opTok := tokens[*pos]
-	if opTok.Type != Operator.Define {
+	if opTok.Type != DEFINE {
 		panic("expected := for definition")
 	}
 	*pos++
@@ -327,14 +338,14 @@ func parseDefine(tokens []Token, pos *int) Statement {
 
 	return Declar{
 		Name:  target,
-		Op:    opTok.Value,
+		Op:    opTok.Lexeme,
 		Value: value,
 	}
 }
 
 // For init/post
 func parseDefOrAssign(tokens []Token, pos *int) Statement {
-	if *pos+1 < len(tokens) && tokens[*pos+1].Type == Operator.Define {
+	if *pos+1 < len(tokens) && tokens[*pos+1].Type == DEFINE {
 		return parseDefine(tokens, pos)
 	}
 	return parseAssign(tokens, pos)

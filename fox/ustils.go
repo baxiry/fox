@@ -122,8 +122,8 @@ func readNumber(src string, pos *int) Token {
 	// -------------------
 
 	return Token{
-		Type:  NumericLiteral.Float,
-		Value: value,
+		Type:   FLOAT,
+		Lexeme: value,
 	}
 }
 

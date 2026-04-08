@@ -53,12 +53,12 @@ type CallExpr struct {
 func (CallExpr) isExpr() {}
 
 func parseCall(name string, tokens []Token, pos *int) Expression {
-	expectType(tokens, pos, Delimiter.LParen)
+	expectType(tokens, pos, OPN_PAREN)
 
 	args := []Expression{}
 
-	for tokens[*pos].Value != ")" {
-		if tokens[*pos].Value == "," {
+	for tokens[*pos].Type != CLS_PAREN {
+		if tokens[*pos].Type == COMMA {
 			*pos++
 			continue
 		}
@@ -66,7 +66,7 @@ func parseCall(name string, tokens []Token, pos *int) Expression {
 		args = append(args, arg)
 	}
 
-	expectType(tokens, pos, Delimiter.RParen)
+	expectType(tokens, pos, CLS_PAREN)
 	return CallExpr{
 		Callee: IdentExpr{Name: name},
 		Args:   args,
@@ -86,11 +86,11 @@ func lookAheadIsAssign(tokens []Token, pos int) bool {
 		return false
 	}
 	// IDENT = expr
-	if tokens[pos].Type == Ident.Ident && tokens[pos+1].Type == Operator.Assign {
+	if tokens[pos].Type == IDENT && tokens[pos+1].Type == ASSIGN {
 		return true
 	}
 	// IDENT := expr
-	if tokens[pos].Type == Ident.Ident && tokens[pos+1].Type == Operator.Define {
+	if tokens[pos].Type == IDENT && tokens[pos+1].Type == DEFINE {
 		return true
 	}
 	return false

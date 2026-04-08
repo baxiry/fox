@@ -6,129 +6,99 @@ import (
 	"unicode"
 )
 
-// TokenKind
-type TokenKind int
+type TokenType int
 
 const (
 	// Special
-	SpecialKind TokenKind = iota
-	IdentKind
-	NumericLiteralKind
-	OtherLiteralKind
-	KeywordKind
-	OperatorKind
-	DelimiterKind
+	EOF TokenType = iota
+	ILLEGAL
+
+	// Identifiers & literals
+	START_IDENTIFIERS
+	IDENT
+	INT
+	FLOAT
+	STRING
+	BOOL
+	END_IDENTIF
+
+	// Keywords
+	START_KEYWORDS
+	PACKAGE
+	IMPORT
+	TYPE
+	STRUCT
+	FUNC
+	VAR
+	CONST
+	IF
+	ELSE
+	FOR
+	BREAK
+	CONTINUE
+	RETURN
+	FALLTHROUGH
+	GOTO
+	END_KEYWORDS
+
+	// Operators
+	START_OPERATORS
+	PLUS
+	MINUS
+	STAR
+	SLASH
+	ASSIGN
+	DEFINE
+	EQ
+	NEQ
+	LT
+	GT
+	LTE
+	GTE
+	AND
+	OR
+	NOT
+	DOT
+	EDN_OPERATORS
+
+	// Delimiters
+	START_DELIMITERS
+	OPN_PAREN
+	CLS_PAREN
+	OPN_BRACE
+	CLS_BRACE
+	OPN_BRACK
+	CLS_BRACK
+	COMMA
+	SEMICOLON
+	END_DELIMITERS
 )
 
-// Token
 type Token struct {
-	Kind   TokenKind
-	Type   string
-	Value  string
+	Type   TokenType
+	Lexeme string
 	Line   int
 	Column int
 }
 
-// Specials
-type Specials struct {
-	EOF, Illegal string
+var keywords = map[string]TokenType{
+	"package":     PACKAGE,
+	"type":        TYPE,
+	"struct":      STRUCT,
+	"fn":          FUNC,
+	"goto":        GOTO,
+	"return":      RETURN,
+	"var":         VAR,
+	"const":       CONST,
+	"if":          IF,
+	"fallthrough": FALLTHROUGH,
+	"else":        ELSE,
+	"for":         FOR,
+	"import":      IMPORT,
+	"break":       BREAK,
+	"continue":    CONTINUE,
 }
 
-type Idents struct {
-	Ident string
-}
-
-type Numerics struct {
-	Int, Float string
-}
-
-type Literals struct {
-	String, Bool string
-}
-
-type Keywords struct {
-	Package, Import, Type, Struct, Fn, Var, Const, If, Else, For,
-	Continue, Break, Return, Fallthrough, Goto string
-}
-
-type Operators struct {
-	Plus, Minus, Ref, Star, Slash, Assign, Define, Eq, Neq, Lt, Gt, Lte, Gte, And, Or, Not, Dot string
-}
-
-type Delimiters struct {
-	LParen, RParen, LBrace, RBrace, LBrack, RBrack, Comma, Semic string
-}
-
-// Assign Values
-var Special = Specials{
-	EOF:     "EOF",
-	Illegal: "ILLEGAL",
-}
-
-var Ident = Idents{
-	Ident: "IDENT",
-}
-
-var NumericLiteral = Numerics{
-	Int:   "INT",
-	Float: "FLOAT",
-}
-
-var OtherLiteral = Literals{
-	String: "STRING",
-	Bool:   "BOOL",
-}
-
-var keywords = Keywords{
-	Package:     "package",
-	Import:      "import",
-	Const:       "const",
-	Type:        "type",
-	Struct:      "struct",
-	Fn:          "fn",
-	Var:         "var",
-	If:          "if",
-	Else:        "else",
-	For:         "for",
-	Break:       "break",
-	Continue:    "continue",
-	Return:      "return",
-	Fallthrough: "fallthrough",
-	Goto:        "goto",
-}
-
-var Operator = Operators{
-	Plus:   "+",
-	Minus:  "-",
-	Star:   "*",
-	Slash:  "/",
-	Assign: "=",
-	Define: ":=",
-	Eq:     "==",
-	Neq:    "!=",
-	Lt:     "<",
-	Gt:     ">",
-	Lte:    "<=",
-	Gte:    ">=",
-	And:    "&&",
-	Or:     "||",
-	Not:    "!",
-
-	Dot: ".", // ← أضف هذا
-}
-
-var Delimiter = Delimiters{
-	LParen: "(",
-	RParen: ")",
-	LBrace: "{",
-	RBrace: "}",
-	LBrack: "[",
-	RBrack: "]",
-	Comma:  ",",
-	Semic:  ";",
-}
-
-// Lexer
 func Lexer(input string) []Token {
 	var tokens []Token
 	var current strings.Builder
@@ -141,21 +111,18 @@ func Lexer(input string) []Token {
 		val := current.String()
 		current.Reset()
 
-		// Keywords exact match
-		switch val {
-		case keywords.Package, keywords.Type, keywords.Struct, keywords.Fn, keywords.Goto,
-			keywords.Return, keywords.Var, keywords.Const, keywords.If, keywords.Fallthrough,
-			keywords.Else, keywords.For, keywords.Import, keywords.Break, keywords.Continue:
-			tokens = append(tokens, Token{Type: val, Value: val, Line: line, Column: col})
+		// Keywords
+		if tt, ok := keywords[val]; ok {
+			tokens = append(tokens, Token{Type: tt, Lexeme: val, Line: line, Column: col})
 			return
 		}
 
 		if isInt(val) {
-			tokens = append(tokens, Token{Type: NumericLiteral.Int, Value: val, Line: line, Column: col})
+			tokens = append(tokens, Token{Type: INT, Lexeme: val, Line: line, Column: col})
 			return
 		}
 		if isFloat(val) {
-			tokens = append(tokens, Token{Type: NumericLiteral.Float, Value: val, Line: line, Column: col})
+			tokens = append(tokens, Token{Type: FLOAT, Lexeme: val, Line: line, Column: col})
 			return
 		}
 
@@ -165,9 +132,9 @@ func Lexer(input string) []Token {
 			if p == "" {
 				continue
 			}
-			tokens = append(tokens, Token{Type: Ident.Ident, Value: p, Line: line, Column: col})
+			tokens = append(tokens, Token{Type: IDENT, Lexeme: p, Line: line, Column: col})
 			if i < len(parts)-1 {
-				tokens = append(tokens, Token{Type: Operator.Dot, Value: ".", Line: line, Column: col})
+				tokens = append(tokens, Token{Type: DOT, Lexeme: ".", Line: line, Column: col})
 			}
 		}
 	}
@@ -191,24 +158,25 @@ func Lexer(input string) []Token {
 			continue
 		}
 
+		// Two-char operators
 		if i+1 < len(input) {
 			two := input[i : i+2]
 			switch two {
 			case ":=":
 				addToken()
-				tokens = append(tokens, Token{Type: Operator.Define, Value: ":=", Line: line, Column: col})
+				tokens = append(tokens, Token{Type: DEFINE, Lexeme: ":=", Line: line, Column: col})
 				i += 2
 				col++
 				continue
 			case "==":
 				addToken()
-				tokens = append(tokens, Token{Type: Operator.Eq, Value: "==", Line: line, Column: col})
+				tokens = append(tokens, Token{Type: EQ, Lexeme: "==", Line: line, Column: col})
 				i += 2
 				col++
 				continue
 			case "!=":
 				addToken()
-				tokens = append(tokens, Token{Type: Operator.Neq, Value: "!=", Line: line, Column: col})
+				tokens = append(tokens, Token{Type: NEQ, Lexeme: "!=", Line: line, Column: col})
 				i += 2
 				col++
 				continue
@@ -216,17 +184,18 @@ func Lexer(input string) []Token {
 		}
 
 		tkn := string(r)
+
 		switch r {
 
 		case '&':
 			addToken()
-			tokens = append(tokens, Token{Type: Operator.Ref, Value: tkn, Line: line, Column: col})
+			tokens = append(tokens, Token{Type: AND, Lexeme: tkn, Line: line, Column: col})
 			i++
 			continue
 
 		case '=':
 			addToken()
-			tokens = append(tokens, Token{Type: Operator.Assign, Value: tkn, Line: line, Column: col})
+			tokens = append(tokens, Token{Type: ASSIGN, Lexeme: tkn, Line: line, Column: col})
 			i++
 			continue
 
@@ -236,106 +205,106 @@ func Lexer(input string) []Token {
 				current.Reset()
 
 				if isInt(val) {
-					tokens = append(tokens, Token{Type: NumericLiteral.Int, Value: val, Line: line, Column: col})
+					tokens = append(tokens, Token{Type: INT, Lexeme: val, Line: line, Column: col})
 				} else if isFloat(val) {
-					tokens = append(tokens, Token{Type: NumericLiteral.Float, Value: val, Line: line, Column: col})
+					tokens = append(tokens, Token{Type: FLOAT, Lexeme: val, Line: line, Column: col})
 				} else {
-					tokens = append(tokens, Token{Type: Ident.Ident, Value: val, Line: line, Column: col})
+					tokens = append(tokens, Token{Type: IDENT, Lexeme: val, Line: line, Column: col})
 				}
 			}
 
-			tkn := string(r)
-
-			if i+1 < len(input) && unicode.IsDigit(rune(input[i+1])) && (len(tokens) == 0 ||
-				tokens[len(tokens)-1].Type != Ident.Ident) {
+			// unary sign detection (نفس منطقك)
+			if i+1 < len(input) && unicode.IsDigit(rune(input[i+1])) &&
+				(len(tokens) == 0 || tokens[len(tokens)-1].Type != IDENT) {
 				current.WriteRune(r)
 				i++
 				col++
 				continue
 			}
 
-			tokens = append(tokens, Token{Kind: OperatorKind, Type: map[string]string{"+": Operator.Plus,
-				"-": Operator.Minus}[tkn], Value: tkn, Line: line, Column: col})
+			if r == '+' {
+				tokens = append(tokens, Token{Type: PLUS, Lexeme: tkn, Line: line, Column: col})
+			} else {
+				tokens = append(tokens, Token{Type: MINUS, Lexeme: tkn, Line: line, Column: col})
+			}
 			i++
 			continue
 
 		case '*':
 			addToken()
-			tokens = append(tokens, Token{Type: Operator.Star, Value: tkn, Line: line, Column: col})
+			tokens = append(tokens, Token{Type: STAR, Lexeme: tkn, Line: line, Column: col})
 			i++
 			continue
 
 		case '/':
 			addToken()
-			tokens = append(tokens, Token{Type: Operator.Slash, Value: tkn, Line: line, Column: col})
+			tokens = append(tokens, Token{Type: SLASH, Lexeme: tkn, Line: line, Column: col})
 			i++
 			continue
 
 		case '(':
 			addToken()
-			tokens = append(tokens, Token{Type: Delimiter.LParen, Value: tkn, Line: line, Column: col})
+			tokens = append(tokens, Token{Type: OPN_PAREN, Lexeme: tkn, Line: line, Column: col})
 			i++
 			continue
 
 		case ')':
 			addToken()
-			tokens = append(tokens, Token{Type: Delimiter.RParen, Value: tkn, Line: line, Column: col})
+			tokens = append(tokens, Token{Type: CLS_PAREN, Lexeme: tkn, Line: line, Column: col})
 			i++
 			continue
 
 		case '{':
 			addToken()
-			tokens = append(tokens, Token{Type: Delimiter.LBrace, Value: tkn, Line: line, Column: col})
+			tokens = append(tokens, Token{Type: OPN_BRACE, Lexeme: tkn, Line: line, Column: col})
 			i++
 			continue
 
 		case '}':
 			addToken()
-			tokens = append(tokens, Token{Type: Delimiter.RBrace, Value: tkn, Line: line, Column: col})
+			tokens = append(tokens, Token{Type: CLS_BRACE, Lexeme: tkn, Line: line, Column: col})
 			i++
 			continue
 
 		case '[':
 			addToken()
-			tokens = append(tokens, Token{Type: Delimiter.LBrack, Value: tkn, Line: line, Column: col})
+			tokens = append(tokens, Token{Type: OPN_BRACK, Lexeme: tkn, Line: line, Column: col})
 			i++
 			continue
 
 		case ']':
 			addToken()
-			tokens = append(tokens, Token{Type: Delimiter.RBrack, Value: tkn, Line: line, Column: col})
+			tokens = append(tokens, Token{Type: CLS_BRACK, Lexeme: tkn, Line: line, Column: col})
 			i++
 			continue
 
 		case ',':
 			addToken()
-			tokens = append(tokens, Token{Type: Delimiter.Comma, Value: tkn, Line: line, Column: col})
+			tokens = append(tokens, Token{Type: COMMA, Lexeme: tkn, Line: line, Column: col})
 			i++
 			continue
 
 		case ';':
-			// skip spaces and tabs
 			j := i + 1
 			for j < len(input) && (input[j] == ' ' || input[j] == '\t') {
 				j++
 			}
 			if j < len(input) && input[j] != '\n' && input[j] != '\r' {
-				// semicolon is meaningful at middle of line
 				addToken()
-				tokens = append(tokens, Token{Type: Delimiter.Semic, Value: tkn, Line: line, Column: col})
+				tokens = append(tokens, Token{Type: SEMICOLON, Lexeme: tkn, Line: line, Column: col})
 			}
 			i++
 			continue
 
 		case '<':
 			addToken()
-			tokens = append(tokens, Token{Kind: OperatorKind, Type: Operator.Lt, Value: tkn, Line: line, Column: col})
+			tokens = append(tokens, Token{Type: LT, Lexeme: tkn, Line: line, Column: col})
 			i++
 			continue
 
 		case '>':
 			addToken()
-			tokens = append(tokens, Token{Kind: OperatorKind, Type: Operator.Gt, Value: tkn, Line: line, Column: col})
+			tokens = append(tokens, Token{Type: GT, Lexeme: tkn, Line: line, Column: col})
 			i++
 			continue
 
@@ -350,13 +319,14 @@ func Lexer(input string) []Token {
 				col++
 			}
 			i++
-			tokens = append(tokens, Token{Type: OtherLiteral.String, Value: s.String(), Line: line, Column: startCol})
+			tokens = append(tokens, Token{Type: STRING, Lexeme: s.String(), Line: line, Column: startCol})
 			continue
 		}
 
 		current.WriteRune(r)
 		i++
 	}
+
 	addToken()
 	return tokens
 }
@@ -401,29 +371,73 @@ func isFloat(s string) bool {
 }
 
 func IsLiteral(tok Token) bool {
-	return tok.Kind == NumericLiteralKind || tok.Kind == OtherLiteralKind
+	switch tok.Type {
+	case INT, FLOAT, STRING, BOOL:
+		return true
+	}
+	return false
 }
 
 func IsNumericLiteral(tok Token) bool {
-	return tok.Kind == NumericLiteralKind
+	return tok.Type == INT || tok.Type == FLOAT
 }
 
 func IsKeyword(tok Token) bool {
-	return tok.Kind == KeywordKind
+	switch tok.Type {
+	case PACKAGE, IMPORT, TYPE, STRUCT, FUNC, VAR, CONST,
+		IF, ELSE, FOR, CONTINUE, BREAK, RETURN, FALLTHROUGH, GOTO:
+		return true
+	}
+	return false
 }
 
 func IsOperator(tok Token) bool {
-	return tok.Kind == OperatorKind
+	switch tok.Type {
+	case PLUS, MINUS, STAR, SLASH,
+		ASSIGN, DEFINE, EQ, NEQ,
+		LT, GT, LTE, GTE,
+		AND, OR, NOT, DOT:
+		return true
+	}
+	return false
 }
 
 func IsDelimiter(tok Token) bool {
-	return tok.Kind == DelimiterKind
+	switch tok.Type {
+	case OPN_PAREN, CLS_PAREN,
+		OPN_BRACE, CLS_BRACE,
+		OPN_BRACK, CLS_BRACK,
+		COMMA, SEMICOLON:
+		return true
+	}
+	return false
 }
+
 func (t Token) String() string {
 	return fmt.Sprintf(
 		"{Type: %s, Value: '%s', File: %s, Line: %d, Column: %d}",
-		t.Type, t.Value, "test.fox", t.Line, t.Column,
+		t.Type, t.Lexeme, "test.fox", t.Line, t.Column,
 	)
+}
+
+func (tt TokenType) String() string {
+	switch tt {
+	case IDENT:
+		return "IDENT"
+	case INT:
+		return "INT"
+	case FLOAT:
+		return "FLOAT"
+	case STRING:
+		return "STRING"
+	case PLUS:
+		return "PLUS"
+	case IF:
+		return "IF"
+	// أكمل باقي الـ TokenTypes...
+	default:
+		return "UNKNOWN"
+	}
 }
 
 // ================= END =================
