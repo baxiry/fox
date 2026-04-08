@@ -18,10 +18,14 @@ func main() {
 	fmt.Println("input src:\n", sdata)
 
 	tokens := Lexer(sdata)
-	fmt.Println("indexs & tokens:")
-	for k, token := range tokens {
-		fmt.Print(k, " ", token.Lexeme, ", ")
+
+	fmt.Println("lexem.len == 2:\n", sdata)
+	for k, v := range tokens {
+		if len(v.Lexeme) == 2 {
+			fmt.Println(k, " ", v.Lexeme)
+		}
 	}
+	println()
 
 	fmt.Println("\nresult as AST:")
 	pretty.Print(astBuilder(tokens))

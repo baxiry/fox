@@ -1,3 +1,21 @@
 
 fn Update(obj *Obj) {
+
     obj.value = 10 
+
+    a := 3
+
+    if a == 1 {
+
+    }
+
+    for ;; {
+
+    }
+
+    if true {
+
+    } else {
+
+    }
+}

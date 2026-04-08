@@ -148,8 +148,7 @@ func parseExpr(tokens []Token, pos *int) Expression {
 	return parseEquality(tokens, pos)
 }
 
-//  Functions
-
+// Functions
 func parseFunc(tokens []Token, pos *int) FuncDecl {
 	funcNode := FuncDecl{}
 
@@ -184,18 +183,35 @@ func parseFunc(tokens []Token, pos *int) FuncDecl {
 	// return signature
 	funcNode.Returns = parseRetSign(tokens, pos)
 
-	expectType(tokens, pos, OPN_BRACE)
+	// parse frameBlock | body
+	//expectType(tokens, pos, OPN_BRACE)
+	/*
+		frameBlock := &FrameBlock{Stmts: []Statement{}}
+		for tokens[*pos].Type != CLS_BRACE {
+			stmt := parseStatement(tokens, pos)
+			frameBlock.Stmts = append(frameBlock.Stmts, stmt)
+			funcNode.Body = frameBlock
+		}
 
-	frameBlock := &FrameBlock{}
-	for tokens[*pos].Type != CLS_BRACE {
-		stmt := parseStatement(tokens, pos)
-		frameBlock.Stmts = append(frameBlock.Stmts, stmt)
-		funcNode.Body = frameBlock
-	}
-
-	expectType(tokens, pos, CLS_BRACE)
+		expectType(tokens, pos, CLS_BRACE)
+	*/
+	funcNode.Body = parseBlock(tokens, pos)
 
 	return funcNode
+}
+
+// Block Parsing
+
+func parseBlock(tokens []Token, pos *int) *FrameBlock {
+	expectType(tokens, pos, OPN_BRACE)
+	frameBlock := &FrameBlock{Stmts: []Statement{}}
+
+	for *pos < len(tokens) && tokens[*pos].Type != CLS_BRACE {
+		frameBlock.Stmts = append(frameBlock.Stmts, parseStatement(tokens, pos))
+	}
+	expectType(tokens, pos, CLS_BRACE)
+
+	return frameBlock
 }
 
 // AST Builder
@@ -232,9 +248,9 @@ func astBuilder(tokens []Token) *AST {
 
 func parsePackage(tokens []Token, pos *int) string {
 	expectType(tokens, pos, PACKAGE)
-	pkg := tokens[*pos].Type
+	pkg := tokens[*pos].Lexeme
 	*pos++
-	return pkg.String()
+	return pkg
 }
 
 func parseImport(tokens []Token, pos *int) []string {

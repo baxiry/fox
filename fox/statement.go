@@ -134,22 +134,6 @@ func parseStatements(tokens []Token, pos *int) Statement {
 	}
 }
 
-// Block Parsing
-
-func fblock(stmts []Statement) *FrameBlock {
-	return &FrameBlock{Stmts: stmts}
-}
-
-func parseBlock(tokens []Token, pos *int) []Statement {
-	stmts := []Statement{}
-	expectType(tokens, pos, OPN_BRACE)
-	for *pos < len(tokens) && tokens[*pos].Type != CLS_BRACE {
-		stmts = append(stmts, parseStatement(tokens, pos))
-	}
-	expectType(tokens, pos, CLS_BRACE)
-	return stmts
-}
-
 //  Statement Parsers
 
 func parseIf(tokens []Token, pos *int) Statement {
@@ -157,13 +141,13 @@ func parseIf(tokens []Token, pos *int) Statement {
 	cond := parseExpr(tokens, pos)
 	thenBlock := parseBlock(tokens, pos)
 
-	var elseBlock []Statement
+	var elseBlock *FrameBlock
 	if *pos < len(tokens) && tokens[*pos].Type == ELSE {
 		*pos++
 		elseBlock = parseBlock(tokens, pos)
 	}
 
-	return IfStmt{Cond: cond, Then: fblock(thenBlock), Else: fblock(elseBlock)}
+	return IfStmt{Cond: cond, Then: thenBlock, Else: elseBlock}
 }
 
 func (t Token) IsOperator() bool {
@@ -228,7 +212,7 @@ func parseFor(tokens []Token, pos *int) Statement {
 
 	//  BODY
 
-	forStmt.Body = fblock(parseBlock(tokens, pos))
+	forStmt.Body = parseBlock(tokens, pos)
 	return forStmt
 }
 

@@ -293,8 +293,6 @@ func Lexer(input string) []Token {
 				addToken()
 				tokens = append(tokens, Token{Type: SEMICOLON, Lexeme: tkn, Line: line, Column: col})
 			}
-			addToken()
-			tokens = append(tokens, Token{Type: SEMICOLON, Lexeme: tkn, Line: line, Column: col})
 			i++
 			continue
 
@@ -432,10 +430,8 @@ func (tt TokenType) String() string {
 		return "FLOAT"
 	case STRING:
 		return "STRING"
-	case PLUS:
-		return "PLUS"
-	case IF:
-		return "IF"
+
+		// Delimiters
 	case OPN_PAREN:
 		return "OPN_PAREN"
 	case CLS_PAREN:
@@ -452,6 +448,40 @@ func (tt TokenType) String() string {
 		return "COMMA"
 	case SEMICOLON:
 		return "SEMICOLON"
+
+	// Operators
+	case PLUS:
+		return "PLUS"
+	case MINUS:
+		return "MINUS"
+	case STAR:
+		return "STAR"
+	case SLASH:
+		return "SLASH"
+	case ASSIGN:
+		return "ASSIGN"
+	case DEFINE:
+		return "DEFINE"
+	case EQ:
+		return "EQ"
+	case NEQ:
+		return "NEQ"
+	case LT:
+		return "LT"
+	case GT:
+		return "GT"
+	case LTE:
+		return "LTE"
+	case GTE:
+		return "GTE"
+	case AND:
+		return "AND"
+	case OR:
+		return "OR"
+	case NOT:
+		return "NOT"
+	case DOT:
+		return "DOT"
 
 	default:
 		return "UNKNOWN"
