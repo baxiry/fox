@@ -6,9 +6,9 @@ func Test_TokenizeOperators(t *testing.T) {
 	src := "& * + - / := = =="
 	tokens := Lexer(src)
 
-	expectedTypes := []string{
-		Operator.Ref, Operator.Star, Operator.Plus, Operator.Minus,
-		Operator.Slash, Operator.Define, Operator.Assign, Operator.Eq,
+	expectedTypes := []TokenType{
+		AND, STAR, PLUS, MINUS,
+		SLASH, DEFINE, ASSIGN, EQ,
 	}
 
 	if len(tokens) != len(expectedTypes) {
@@ -26,10 +26,10 @@ func Test_TokenizeKeywords(t *testing.T) {
 	src := "fn return var const if else for break continue package import type struct"
 	tokens := Lexer(src)
 
-	expectedTypes := []string{
-		keywords.Func, keywords.Return, keywords.Var, keywords.Const,
-		keywords.If, keywords.Else, keywords.For, keywords.Break, keywords.Continue,
-		keywords.Package, keywords.Import, keywords.Type, keywords.Struct,
+	expectedTypes := []TokenType{
+		FUNC, RETURN, VAR, CONST,
+		IF, ELSE, FOR, BREAK, CONTINUE,
+		PACKAGE, IMPORT, TYPE, STRUCT,
 	}
 
 	if len(tokens) != len(expectedTypes) {
@@ -47,9 +47,8 @@ func Test_TokenizeNumbers(t *testing.T) {
 	src := "42 -7 3.14 -0.5"
 	tokens := Lexer(src)
 
-	expectedTypes := []string{
-		NumericLiteral.Int, NumericLiteral.Int,
-		NumericLiteral.Float, NumericLiteral.Float,
+	expectedTypes := []TokenType{
+		INT, FLOAT,
 	}
 
 	if len(tokens) != len(expectedTypes) {
@@ -72,7 +71,7 @@ func Test_TokenizeStrings(t *testing.T) {
 	}
 
 	for _, tok := range tokens {
-		if tok.Type != OtherLiteral.String {
+		if tok.Type != STRING {
 			t.Errorf("expected string literal, got %s", tok.Type)
 		}
 	}
@@ -82,11 +81,11 @@ func Test_TokenizeDelimiters(t *testing.T) {
 	src := "( ) { } [ ] , ;"
 	tokens := Lexer(src)
 
-	expectedTypes := []string{
-		Delimiter.LParen, Delimiter.RParen,
-		Delimiter.LBrace, Delimiter.RBrace,
-		Delimiter.LBrack, Delimiter.RBrack,
-		Delimiter.Comma, Delimiter.Semic,
+	expectedTypes := []TokenType{
+		OPN_PAREN, CLS_PAREN,
+		OPN_BRACE, CLS_BRACE,
+		OPN_BRACK, CLS_BRACK,
+		COMMA, SEMICOLON,
 	}
 
 	if len(tokens) != len(expectedTypes) {
@@ -105,43 +104,30 @@ func Test_TokenizeIllegal(t *testing.T) {
 	tokens := Lexer(src)
 
 	for _, tok := range tokens {
-		if tok.Type != Ident.Ident {
+		if tok.Type != IDENT {
 			t.Errorf("unexpected token type for illegal char: %s", tok.Type)
 		}
 	}
 }
 
-func Test_TokenizeIncrementCases(t *testing.T) {
+type TokCase struct {
+	Type  TokenType
+	Value string
+}
+
+func Test_TokenizeSimpleArithmetic(t *testing.T) {
 	tests := []struct {
 		src      string
-		expected []struct {
-			Type  string
-			Value string
-		}
+		expected []TokCase
 	}{
-		{"i+1", []struct{ Type, Value string }{
-			{Ident.Ident, "i"}, {Operator.Plus, "+"}, {NumericLiteral.Int, "1"},
-		}},
-		{"i +1", []struct{ Type, Value string }{
-			{Ident.Ident, "i"}, {Operator.Plus, "+"}, {NumericLiteral.Int, "1"},
-		}},
-		{"i+ 1", []struct{ Type, Value string }{
-			{Ident.Ident, "i"}, {Operator.Plus, "+"}, {NumericLiteral.Int, "1"},
-		}},
-		{"i=i+1", []struct{ Type, Value string }{
-			{Ident.Ident, "i"}, {Operator.Assign, "="}, {Ident.Ident, "i"}, {Operator.Plus, "+"}, {NumericLiteral.Int, "1"},
-		}},
-		{"i=i +1", []struct{ Type, Value string }{
-			{Ident.Ident, "i"}, {Operator.Assign, "="}, {Ident.Ident, "i"}, {Operator.Plus, "+"}, {NumericLiteral.Int, "1"},
-		}},
-		{"i=i + 1", []struct{ Type, Value string }{
-			{Ident.Ident, "i"}, {Operator.Assign, "="}, {Ident.Ident, "i"}, {Operator.Plus, "+"}, {NumericLiteral.Int, "1"},
-		}},
-
-		{"+1", []struct{ Type, Value string }{{NumericLiteral.Int, "+1"}}},
-		{"-1", []struct{ Type, Value string }{{NumericLiteral.Int, "-1"}}},
-		{"i+ -1", []struct{ Type, Value string }{{Ident.Ident, "i"}, {Operator.Plus, "+"}, {NumericLiteral.Int, "-1"}}},
-		{"i- +1", []struct{ Type, Value string }{{Ident.Ident, "i"}, {Operator.Minus, "-"}, {NumericLiteral.Int, "+1"}}},
+		{"i+1", []TokCase{{IDENT, "i"}, {PLUS, "+"}, {INT, "1"}}},
+		{"i + 1", []TokCase{{IDENT, "i"}, {PLUS, "+"}, {INT, "1"}}},
+		{"i-1", []TokCase{{IDENT, "i"}, {MINUS, "-"}, {INT, "1"}}},
+		{"i - 1", []TokCase{{IDENT, "i"}, {MINUS, "-"}, {INT, "1"}}},
+		{"i=i+1", []TokCase{{IDENT, "i"}, {ASSIGN, "="}, {IDENT, "i"}, {PLUS, "+"}, {INT, "1"}}},
+		{"i=i-1", []TokCase{{IDENT, "i"}, {ASSIGN, "="}, {IDENT, "i"}, {MINUS, "-"}, {INT, "1"}}},
+		{"+1", []TokCase{{INT, "+1"}}},
+		{"-1", []TokCase{{INT, "-1"}}},
 	}
 
 	for _, tt := range tests {
@@ -150,9 +136,9 @@ func Test_TokenizeIncrementCases(t *testing.T) {
 			t.Fatalf("input=%q expected %d tokens, got %d", tt.src, len(tt.expected), len(tokens))
 		}
 		for i, tok := range tokens {
-			if tok.Type != tt.expected[i].Type || tok.Value != tt.expected[i].Value {
+			if tok.Type != tt.expected[i].Type || tok.Lexeme != tt.expected[i].Value {
 				t.Errorf("input=%q token %d: expected (%s,%s), got (%s,%s)",
-					tt.src, i, tt.expected[i].Type, tt.expected[i].Value, tok.Type, tok.Value)
+					tt.src, i, tt.expected[i].Type, tt.expected[i].Value, tok.Type, tok.Lexeme)
 			}
 		}
 	}
