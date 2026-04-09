@@ -25,12 +25,14 @@ func expectIdent(tokens []Token, pos *int) Token {
 	return tok
 }
 
+/*
 func expectValue(tokens []Token, pos *int, value string) Token {
 	if *pos >= len(tokens) {
 		panic("unexpected end of input, expected " + value)
 	}
 	tok := tokens[*pos]
 
+	//	fmt.Println("lexem:", tok.Lexeme, "we need , ", value)
 	if tok.Lexeme != value {
 		panic(fmt.Sprintf(
 			"syntax error at line %d: expected '%s', got '%s'",
@@ -41,6 +43,7 @@ func expectValue(tokens []Token, pos *int, value string) Token {
 	*pos++
 	return tok
 }
+*/
 
 func expectType(tokens []Token, pos *int, expected TokenType) Token {
 
@@ -50,6 +53,7 @@ func expectType(tokens []Token, pos *int, expected TokenType) Token {
 	tok := tokens[*pos]
 
 	if tok.Type != expected {
+		fmt.Println("token: ", tok.Lexeme)
 		panic(fmt.Sprintf(
 			"syntax error at line %d: expected %s, got %s",
 			tok.Line, expected.String(), tok.Type,

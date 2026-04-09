@@ -19,12 +19,9 @@ func main() {
 
 	tokens := Lexer(sdata)
 
-	fmt.Println("lexem.len == 2:\n", sdata)
-	for k, v := range tokens {
-		if len(v.Lexeme) == 2 {
-			fmt.Println(k, " ", v.Lexeme)
-		}
-	}
+	//for k, v := range tokens {
+	//fmt.Println(k, " ", v.Lexeme)
+	//}
 	println()
 
 	fmt.Println("\nresult as AST:")

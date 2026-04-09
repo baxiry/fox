@@ -35,6 +35,12 @@ type Assign struct {
 	Value  Expression
 }
 
+type VarDeclar struct {
+	Name  string
+	Type  Type
+	Value Expression
+}
+
 type Declar struct {
 	Name  Expression
 	Op    string
@@ -45,20 +51,106 @@ type ExprStmt struct {
 	Expr Expression
 }
 
-func (ReturnStmt) isStat()   {}
-func (ContinueNode) isStat() {}
-func (IfStmt) isStat()       {}
-func (BreakNode) isStat()    {}
-func (ForStmt) isStat()      {}
-func (Assign) isStat()       {}
-func (Declar) isStat()       {}
-func (ExprStmt) isStat()     {}
+type CompositeLiteralExpr struct {
+	Type   Type         // like "Obj"
+	Fields []FieldValue // field's value {"age": NumberExpr{5}}
+}
+
+type FieldValue struct {
+	Field IdentExpr  // something like 'obj'
+	Value Expression // NumberExpr{10}
+}
+
+func (CompositeLiteralExpr) isExpr() {}
+func (VarDeclar) isStat()            {}
+func (ReturnStmt) isStat()           {}
+func (ContinueNode) isStat()         {}
+func (IfStmt) isStat()               {}
+func (BreakNode) isStat()            {}
+func (ForStmt) isStat()              {}
+func (Assign) isStat()               {}
+func (Declar) isStat()               {}
+func (ExprStmt) isStat()             {}
 
 // Parsing Helpers
+func isTypeStart(tok Token) bool {
+	switch tok.Type {
+	case IDENT: // Obj, X, User ...
+		return true
+	case STAR: // *Obj
+		return true
+	default:
+		return false
+	}
+}
+
+func parseStructBlock(tokens []Token, pos *int) CompositeLiteralExpr {
+	// Obj{}, Obj{a:10}
+
+	expectType(tokens, pos, OPN_BRACE)
+
+	var compLiterExp CompositeLiteralExpr
+	compLiterExp.Type = Type{Name: tokens[*pos-2].Lexeme} // , PtrDepth: ?
+
+	fieldVal := FieldValue{}
+
+	for tokens[*pos].Type != CLS_BRACE {
+		field := expectType(tokens, pos, IDENT).Lexeme
+		expectType(tokens, pos, DUBLE_DOT)
+		value := parseExpr(tokens, pos)
+
+		fieldVal.Field = IdentExpr{field}
+		fieldVal.Value = value
+		compLiterExp.Fields = append(compLiterExp.Fields, fieldVal)
+
+		if tokens[*pos].Type == COMMA {
+			*pos++
+		}
+	}
+	expectType(tokens, pos, CLS_BRACE)
+	return compLiterExp
+}
+
+func parseVarDeclar(tokens []Token, pos *int) Statement {
+	// var obj Obj
+	// var i int
+	// var i int = 10
+	// var i = 10 + 10
+
+	// consome var
+	expectType(tokens, pos, VAR)
+
+	// consume variable name
+	nameTok := expectType(tokens, pos, IDENT)
+
+	var typ *Type = nil
+	var value Expression = nil
+
+	// case one & three, type
+	if isTypeStart(tokens[*pos]) {
+		t := parseType(tokens, pos)
+		typ = &t
+	}
+
+	// case 3 & 4 =
+	if tokens[*pos].Type == ASSIGN {
+		*pos++
+		value = parseExpr(tokens, pos)
+	}
+
+	return VarDeclar{
+		Name:  nameTok.Lexeme,
+		Type:  *typ,
+		Value: value,
+	}
+}
+
 func parseStatement(tokens []Token, pos *int) Statement {
 	tok := tokens[*pos]
 
 	switch tok.Lexeme {
+	case "var":
+		return parseVarDeclar(tokens, pos)
 	case "return":
 		return parseReturn(tokens, pos)
 	case "if":

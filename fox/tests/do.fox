@@ -1,21 +1,10 @@
+fn do() {
+    var o Obj
+    var p *Obj
 
-fn Update(obj *Obj) {
+    o = Obj{age:5}
+    p = &Obj{age:10}
 
-    obj.value = 10 
-
-    a := 3
-
-    if a == 1 {
-
-    }
-
-    for ;; {
-
-    }
-
-    if true {
-
-    } else {
-
-    }
+    x := Obj{age:15, grade:30}
+    y := &Obj{age:20, grade:40, name:"dodo"}
 }

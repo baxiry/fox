@@ -11,6 +11,12 @@ type Expression interface {
 	isExpr()
 }
 
+type TypeExpr struct {
+	Name string
+}
+
+func (TypeExpr) isExpr() {}
+
 type NumberExpr struct {
 	Literal string
 }

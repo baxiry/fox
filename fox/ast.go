@@ -7,7 +7,7 @@ type AST struct {
 	Funcs       []FuncDecl
 }
 
-type Node interface{}
+type Node any
 
 type Type struct {
 	Name     string

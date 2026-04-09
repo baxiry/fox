@@ -43,10 +43,17 @@ func parsePrimary(tokens []Token, pos *int) Expression {
 	tok := tokens[*pos]
 	switch tok.Type {
 	case IDENT:
+		//name := tok.Lexeme
 		*pos++
 		if *pos < len(tokens) && tokens[*pos].Type == OPN_PAREN {
 			return parseCall(tok.Lexeme, tokens, pos)
 		}
+
+		// struct Block
+		if *pos < len(tokens) && tokens[*pos].Type == OPN_BRACE {
+			return parseStructBlock(tokens, pos)
+		}
+
 		return IdentExpr{Name: tok.Lexeme}
 
 	case INT, FLOAT:
