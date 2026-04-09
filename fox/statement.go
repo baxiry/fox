@@ -274,7 +274,15 @@ func parseExprUntil(tokens []Token, pos *int, stop string) Expression {
 
 func parseFor(tokens []Token, pos *int) Statement {
 	expectType(tokens, pos, FOR)
+
 	forStmt := ForStmt{}
+
+	// for {}
+
+	if tokens[*pos].Type == OPN_BRACE {
+		forStmt.Body = parseBlock(tokens, pos)
+		return forStmt
+	}
 
 	//  INIT
 	// check ";" "{" befor init
@@ -300,6 +308,12 @@ func parseFor(tokens []Token, pos *int) Statement {
 		} else if tokens[*pos].Type != CLS_BRACE {
 			forStmt.Post = parseExprStatement(tokens, pos)
 		}
+	}
+
+	// for {}
+	if tokens[*pos].Type == OPN_BRACE {
+		forStmt.Body = parseBlock(tokens, pos)
+		return forStmt
 	}
 
 	//  BODY
