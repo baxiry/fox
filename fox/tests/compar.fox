@@ -1,0 +1,15 @@
+fn do() {
+   t := true
+   f := false
+
+   c := t == f
+   d := c != t
+
+    a + b * c
+    a * b + c
+    a == b && c
+    a & b == c
+    &a + b
+
+   a == b && c || d
+}

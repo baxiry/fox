@@ -80,14 +80,39 @@ func parseCall(name string, tokens []Token, pos *int) Expression {
 }
 
 func parseExprOrAssign(tokens []Token, pos *int) Statement {
-	if lookAheadIsAssign(tokens, *pos) {
-		return parseAssign(tokens, pos)
-	}
-	expr := parseExpr(tokens, pos)
-	return ExprStmt{Expr: expr}
-}
+	target := parsePostfix(tokens, pos)
 
+	if *pos < len(tokens) {
+		switch tokens[*pos].Type {
+
+		case ASSIGN:
+			*pos++
+			value := parseExpr(tokens, pos)
+			return Assign{
+				Target: target,
+				Op:     "=",
+				Value:  value,
+			}
+
+		case DEFINE:
+			*pos++
+			ident, ok := target.(IdentExpr)
+			if !ok {
+				panic("left side of := must be identifier")
+			}
+			value := parseExpr(tokens, pos)
+			return Declar{
+				Name:  ident,
+				Value: value,
+				Op:    DEFINE.String(),
+			}
+		}
+	}
+
+	return ExprStmt{Expr: target}
+}
 func lookAheadIsAssign(tokens []Token, pos int) bool {
+
 	if pos+1 >= len(tokens) {
 		return false
 	}

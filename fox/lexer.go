@@ -56,6 +56,7 @@ const (
 	LTE
 	GTE
 	AND
+	AMP
 	OR
 	NOT
 	DOT
@@ -72,7 +73,10 @@ const (
 	COMMA
 	SEMICOLON
 	DUBLE_DOT
+	NEW_LINE
 	END_DELIMITERS
+
+	COMMENT
 )
 
 type Token struct {
@@ -147,12 +151,21 @@ func Lexer(input string) []Token {
 
 		if r == '\n' {
 			addToken()
+
+			if len(tokens) == 0 || tokens[len(tokens)-1].Type != NEW_LINE {
+				tokens = append(tokens, Token{
+					Type:   NEW_LINE,
+					Lexeme: "\n",
+					Line:   line,
+					Column: col,
+				})
+			}
+
 			line++
 			col = 0
 			i++
 			continue
 		}
-
 		if unicode.IsSpace(r) {
 			addToken()
 			i++
@@ -181,6 +194,26 @@ func Lexer(input string) []Token {
 				i += 2
 				col++
 				continue
+			case "&&":
+				addToken()
+				tokens = append(tokens, Token{Type: AND, Lexeme: "&&", Line: line, Column: col})
+				i += 2
+				col++
+				continue
+			case "||":
+				addToken()
+				tokens = append(tokens, Token{Type: OR, Lexeme: "||", Line: line, Column: col})
+				i += 2
+				col++
+				continue
+
+			case "//":
+				addToken()
+				tokens = append(tokens, Token{Type: COMMENT, Lexeme: "//", Line: line, Column: col})
+				i += 2
+				col++
+				continue
+
 			}
 		}
 
@@ -190,7 +223,7 @@ func Lexer(input string) []Token {
 
 		case '&':
 			addToken()
-			tokens = append(tokens, Token{Type: AND, Lexeme: tkn, Line: line, Column: col})
+			tokens = append(tokens, Token{Type: AMP, Lexeme: string(r), Line: line, Column: col})
 			i++
 			continue
 
@@ -403,7 +436,7 @@ func IsOperator(tok Token) bool {
 	case PLUS, MINUS, STAR, SLASH,
 		ASSIGN, DEFINE, EQ, NEQ,
 		LT, GT, LTE, GTE,
-		AND, OR, NOT, DOT:
+		AND, AMP, OR, NOT, DOT:
 		return true
 	}
 	return false
@@ -438,6 +471,11 @@ func (tt TokenType) String() string {
 	case STRING:
 		return "STRING"
 
+	case FOR:
+		return "FOR"
+	case IF:
+		return "IF"
+
 		// Delimiters
 	case OPN_PAREN:
 		return "OPN_PAREN"
@@ -455,6 +493,8 @@ func (tt TokenType) String() string {
 		return "COMMA"
 	case SEMICOLON:
 		return "SEMICOLON"
+	case NEW_LINE:
+		return "NEW_LINE"
 
 	// Operators
 	case PLUS:
@@ -483,6 +523,8 @@ func (tt TokenType) String() string {
 		return "GTE"
 	case AND:
 		return "AND"
+	case AMP:
+		return "AMP"
 	case OR:
 		return "OR"
 	case NOT:
@@ -491,6 +533,8 @@ func (tt TokenType) String() string {
 		return "DOT"
 	case DUBLE_DOT:
 		return "DUBLE_DOT"
+	case COMMENT:
+		return "COMMENT"
 
 	default:
 		return "UNKNOWN"

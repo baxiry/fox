@@ -4,6 +4,44 @@ import (
 	"fmt"
 )
 
+func parseLogicAnd(tokens []Token, pos *int) Expression {
+	left := parseEquality(tokens, pos)
+
+	for *pos < len(tokens) && tokens[*pos].Type == AND {
+		op := tokens[*pos]
+		*pos++
+
+		right := parseEquality(tokens, pos)
+
+		left = &BinaryExpr{
+			Left:  left,
+			Op:    op.Lexeme,
+			Right: right,
+		}
+	}
+
+	return left
+}
+
+func parseLogicOr(tokens []Token, pos *int) Expression {
+	left := parseLogicAnd(tokens, pos)
+
+	for *pos < len(tokens) && tokens[*pos].Type == OR {
+		op := tokens[*pos]
+		*pos++
+
+		right := parseLogicAnd(tokens, pos)
+
+		left = &BinaryExpr{
+			Left:  left,
+			Op:    op.Lexeme,
+			Right: right,
+		}
+	}
+
+	return left
+}
+
 func parseUnary(tokens []Token, pos *int) Expression {
 	if *pos >= len(tokens) {
 		panic("unexpected end of input while parsing unary expression")
@@ -11,7 +49,7 @@ func parseUnary(tokens []Token, pos *int) Expression {
 
 	tok := tokens[*pos]
 
-	if tok.Type == STAR || tok.Type == AND || tok.Type == NOT || tok.Type == MINUS {
+	if tok.Type == STAR || tok.Type == AMP || tok.Type == NOT || tok.Type == MINUS {
 		(*pos)++
 		if *pos >= len(tokens) {
 			panic(fmt.Sprintf("unexpected end of input after unary operator '%s'", tok.Lexeme))
@@ -24,10 +62,14 @@ func parseUnary(tokens []Token, pos *int) Expression {
 }
 
 func parsePostfix(tokens []Token, pos *int) Expression {
+	skip(tokens, pos)
+
 	expr := parsePrimary(tokens, pos)
 
-	for *pos < len(tokens) && tokens[*pos].Lexeme == "." {
+	for *pos < len(tokens) && tokens[*pos].Type == DOT {
 		*pos++ // consume '.'
+
+		skip(tokens, pos)
 		field := expectIdent(tokens, pos).Lexeme
 		expr = FieldAccessExpr{Object: expr, Field: field}
 	}
@@ -40,6 +82,8 @@ func parsePrimary(tokens []Token, pos *int) Expression {
 		panic("unexpected end of input while parsing expression")
 	}
 
+	skipNewlines(tokens, pos)
+
 	tok := tokens[*pos]
 	switch tok.Type {
 	case IDENT:
@@ -47,11 +91,6 @@ func parsePrimary(tokens []Token, pos *int) Expression {
 		*pos++
 		if *pos < len(tokens) && tokens[*pos].Type == OPN_PAREN {
 			return parseCall(tok.Lexeme, tokens, pos)
-		}
-
-		// struct Block
-		if *pos < len(tokens) && tokens[*pos].Type == OPN_BRACE {
-			return parseStructBlock(tokens, pos)
 		}
 
 		return IdentExpr{Name: tok.Lexeme}
@@ -81,7 +120,7 @@ func parseType(tokens []Token, pos *int) Type {
 		panic("unexpected end of input while parsing type")
 	}
 
-	if tokens[*pos].Type == AND { // &
+	if tokens[*pos].Type == AMP { // &
 		panic(fmt.Sprintf(
 			"syntax error at line %d, column %d: cannot use & in parameter signature",
 			tokens[*pos].Line, tokens[*pos].Column,
@@ -113,16 +152,16 @@ func parseMul(tokens []Token, pos *int) Expression {
 		op := tokens[*pos]
 		*pos++
 		right := parseUnary(tokens, pos)
-		left = BinaryExpr{Left: left, Op: op.Lexeme, Right: right}
+		left = &BinaryExpr{Left: left, Op: op.Lexeme, Right: right}
 	}
 	return left
 }
 
-// Equality == & !=
-func parseEquality(tokens []Token, pos *int) Expression {
+// Bitwise AND &
+func parseBitwiseAnd(tokens []Token, pos *int) Expression {
 	left := parseAdd(tokens, pos)
 
-	for tokens[*pos].Lexeme == "==" || tokens[*pos].Lexeme == "!=" {
+	for tokens[*pos].Lexeme == "&" {
 		op := tokens[*pos]
 		*pos++
 		right := parseAdd(tokens, pos)
@@ -136,6 +175,27 @@ func parseEquality(tokens []Token, pos *int) Expression {
 
 	return left
 }
+
+// Equality == & !=
+func parseEquality(tokens []Token, pos *int) Expression {
+	left := parseBitwiseAnd(tokens, pos)
+
+	for tokens[*pos].Lexeme == "==" || tokens[*pos].Lexeme == "!=" {
+		op := tokens[*pos]
+		*pos++
+		right := parseBitwiseAnd(tokens, pos)
+
+		left = &BinaryExpr{
+			Left:  left,
+			Op:    op.Lexeme,
+			Right: right,
+		}
+	}
+
+	return left
+}
+
+/// TODO   parseTerm
 
 // parse + and -
 func parseAdd(tokens []Token, pos *int) Expression {
@@ -151,8 +211,8 @@ func parseAdd(tokens []Token, pos *int) Expression {
 
 // top-level expression
 func parseExpr(tokens []Token, pos *int) Expression {
-	// TODO: need && ||. ex: parseLogic()
-	return parseEquality(tokens, pos)
+
+	return parseLogicOr(tokens, pos)
 }
 
 // Functions
@@ -190,35 +250,89 @@ func parseFunc(tokens []Token, pos *int) FuncDecl {
 	// return signature
 	funcNode.Returns = parseRetSign(tokens, pos)
 
-	// parse frameBlock | body
-	//expectType(tokens, pos, OPN_BRACE)
-	/*
-		frameBlock := &FrameBlock{Stmts: []Statement{}}
-		for tokens[*pos].Type != CLS_BRACE {
-			stmt := parseStatement(tokens, pos)
-			frameBlock.Stmts = append(frameBlock.Stmts, stmt)
-			funcNode.Body = frameBlock
-		}
-
-		expectType(tokens, pos, CLS_BRACE)
-	*/
 	funcNode.Body = parseBlock(tokens, pos)
 
 	return funcNode
 }
 
 // Block Parsing
-
 func parseBlock(tokens []Token, pos *int) *FrameBlock {
 	expectType(tokens, pos, OPN_BRACE)
 	frameBlock := &FrameBlock{Stmts: []Statement{}}
 
+	skip(tokens, pos)
 	for *pos < len(tokens) && tokens[*pos].Type != CLS_BRACE {
+		skip(tokens, pos)
+
 		frameBlock.Stmts = append(frameBlock.Stmts, parseStatement(tokens, pos))
+
+		skip(tokens, pos)
 	}
 	expectType(tokens, pos, CLS_BRACE)
 
 	return frameBlock
+}
+
+// Top-Level Parsers
+
+// parse package
+func parsePackage(tokens []Token, pos *int) string {
+	expectType(tokens, pos, PACKAGE)
+	pkg := tokens[*pos].Lexeme
+	*pos++
+	return pkg
+}
+
+// import
+func parseImport(tokens []Token, pos *int) []string {
+	expectType(tokens, pos, IMPORT)
+	expectType(tokens, pos, OPN_PAREN)
+
+	libs := []string{}
+
+	for {
+		skipNewlines(tokens, pos)
+
+		if tokens[*pos].Type == CLS_PAREN {
+			break
+		}
+
+		pkg := expectIdent(tokens, pos)
+		libs = append(libs, pkg.Lexeme)
+	}
+
+	expectType(tokens, pos, CLS_PAREN)
+	return libs
+}
+
+func parseStruct(tokens []Token, pos *int) StructDecl {
+	expectType(tokens, pos, TYPE)
+	name := expectIdent(tokens, pos)
+	expectType(tokens, pos, STRUCT)
+	expectType(tokens, pos, OPN_BRACE)
+
+	fields := []FieldDecl{}
+	for {
+		skip(tokens, pos)
+
+		if tokens[*pos].Type == CLS_BRACE {
+			break
+		}
+
+		if tokens[*pos].Type != IDENT {
+			panic(fmt.Sprintf("expected field name, got %v", tokens[*pos]))
+		}
+		fields = append(fields, parseField(tokens, pos))
+	}
+
+	expectType(tokens, pos, CLS_BRACE)
+	return StructDecl{Name: name.Lexeme, Fields: fields}
+}
+
+func parseField(tokens []Token, pos *int) FieldDecl {
+	nameTok := expectIdent(tokens, pos)
+	typeTok := expectIdent(tokens, pos)
+	return FieldDecl{Name: nameTok.Lexeme, Type: typeTok.Lexeme}
 }
 
 // AST Builder
@@ -249,47 +363,4 @@ func astBuilder(tokens []Token) *AST {
 		}
 	}
 	return ast
-}
-
-// ===== Top-Level Parsers =====
-
-func parsePackage(tokens []Token, pos *int) string {
-	expectType(tokens, pos, PACKAGE)
-	pkg := tokens[*pos].Lexeme
-	*pos++
-	return pkg
-}
-
-func parseImport(tokens []Token, pos *int) []string {
-	expectType(tokens, pos, IMPORT)
-	expectType(tokens, pos, OPN_PAREN)
-
-	libs := []string{}
-	for tokens[*pos].Lexeme != ")" {
-		pkg := expectIdent(tokens, pos)
-		libs = append(libs, pkg.Lexeme)
-	}
-	expectType(tokens, pos, CLS_PAREN)
-	return libs
-}
-
-func parseStruct(tokens []Token, pos *int) StructDecl {
-	expectType(tokens, pos, TYPE)
-	name := expectIdent(tokens, pos)
-	expectType(tokens, pos, STRUCT)
-	expectType(tokens, pos, OPN_BRACE)
-
-	fields := []FieldDecl{}
-	for tokens[*pos].Lexeme != "}" {
-		fields = append(fields, parseField(tokens, pos))
-	}
-	expectType(tokens, pos, CLS_BRACE)
-
-	return StructDecl{Name: name.Lexeme, Fields: fields}
-}
-
-func parseField(tokens []Token, pos *int) FieldDecl {
-	nameTok := expectIdent(tokens, pos)
-	typeTok := expectIdent(tokens, pos)
-	return FieldDecl{Name: nameTok.Lexeme, Type: typeTok.Lexeme}
 }

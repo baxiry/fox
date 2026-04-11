@@ -25,25 +25,12 @@ func expectIdent(tokens []Token, pos *int) Token {
 	return tok
 }
 
-/*
-func expectValue(tokens []Token, pos *int, value string) Token {
-	if *pos >= len(tokens) {
-		panic("unexpected end of input, expected " + value)
+func skip(tokens []Token, pos *int) {
+	for *pos < len(tokens) &&
+		(tokens[*pos].Type == NEW_LINE || tokens[*pos].Type == COMMENT) {
+		*pos++
 	}
-	tok := tokens[*pos]
-
-	//	fmt.Println("lexem:", tok.Lexeme, "we need , ", value)
-	if tok.Lexeme != value {
-		panic(fmt.Sprintf(
-			"syntax error at line %d: expected '%s', got '%s'",
-			tok.Line, value, tok.Lexeme,
-		))
-	}
-
-	*pos++
-	return tok
 }
-*/
 
 func expectType(tokens []Token, pos *int, expected TokenType) Token {
 
@@ -63,12 +50,30 @@ func expectType(tokens []Token, pos *int, expected TokenType) Token {
 	return tok
 }
 
-func isAssign(tokens []Token, pos *int) bool {
-	if *pos+1 >= len(tokens) {
-		return false
+/*
+func isAssign(tokens []Token, pos int) bool {
+	for i := pos; i < len(tokens); i++ {
+		if tokens[i].Type == ASSIGN {
+			return true
+		}
+		if tokens[i].Type == SEMICOLON || tokens[i].Type == CLS_BRACE {
+			return false
+		}
 	}
-	return tokens[*pos].Is(IDENT) && (tokens[*pos+1].Is(ASSIGN) || tokens[*pos+1].Is(DEFINE))
+	return false
 }
+func isDefine(tokens []Token, pos int) bool {
+	for i := pos; i < len(tokens); i++ {
+		if tokens[i].Type == DEFINE {
+			return true
+		}
+		if tokens[i].Type == SEMICOLON || tokens[i].Type == CLS_BRACE {
+			return false
+		}
+	}
+	return false
+}
+*/
 
 func (t Token) Is(tt TokenType) bool {
 	return t.Type == tt

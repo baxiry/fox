@@ -1,5 +1,7 @@
 package main
 
+import "fmt"
+
 type Statement interface {
 	isStat()
 }
@@ -148,81 +150,23 @@ func parseVarDeclar(tokens []Token, pos *int) Statement {
 func parseStatement(tokens []Token, pos *int) Statement {
 	tok := tokens[*pos]
 
-	switch tok.Lexeme {
-	case "var":
+	switch tok.Type {
+	case VAR:
 		return parseVarDeclar(tokens, pos)
-	case "return":
+	case RETURN:
 		return parseReturn(tokens, pos)
-	case "if":
+	case IF:
 		return parseIf(tokens, pos)
-	case "for":
+	case FOR:
 		return parseFor(tokens, pos)
-	case "break":
+	case BREAK:
 		*pos++
 		return BreakNode{Tok: tok}
-	case "continue":
+	case CONTINUE:
 		*pos++
 		return ContinueNode{Tok: tok}
 	default:
-
-		startPos := *pos
-		_ = parsePostfix(tokens, pos)
-
-		if *pos < len(tokens) {
-			next := tokens[*pos]
-			if next.Type == ASSIGN {
-				*pos = startPos
-				return parseAssign(tokens, pos)
-			}
-			if next.Type == DEFINE {
-				*pos = startPos
-				return parseDefine(tokens, pos)
-			}
-		}
-
-		// fallback → expression statement
-		*pos = startPos
-		return parseExprStatement(tokens, pos)
-	}
-}
-
-func parseStatements(tokens []Token, pos *int) Statement {
-	tok := tokens[*pos]
-
-	switch tok.Lexeme {
-	case "return":
-		results := parseReturn(tokens, pos)
-		return results
-
-	case "if":
-		return parseIf(tokens, pos)
-
-	case "for":
-		return parseFor(tokens, pos)
-
-	case "break":
-		*pos++
-		return BreakNode{Tok: tok}
-
-	case "continue":
-		*pos++
-		return ContinueNode{Tok: tok}
-
-	default:
-		if *pos < len(tokens) {
-			// peek ahead
-			if *pos+1 < len(tokens) {
-				next := tokens[*pos+1]
-				if next.Type == ASSIGN {
-					return parseAssign(tokens, pos)
-				}
-				if next.Type == DEFINE {
-					return parseDefine(tokens, pos)
-				}
-			}
-		}
-
-		return parseExprStatement(tokens, pos)
+		return parseExprOrAssign(tokens, pos)
 	}
 }
 
@@ -242,16 +186,6 @@ func parseIf(tokens []Token, pos *int) Statement {
 	return IfStmt{Cond: cond, Then: thenBlock, Else: elseBlock}
 }
 
-func (t Token) IsOperator() bool {
-	switch t.Type {
-	case PLUS, MINUS, STAR, SLASH, ASSIGN, DEFINE,
-		EQ, NEQ, LT, GT, LTE, GTE, AND, OR, NOT, DOT:
-		return true
-	default:
-		return false
-	}
-}
-
 func parseExprUntil(tokens []Token, pos *int, stop string) Expression {
 	expr := parseExpr(tokens, pos)
 
@@ -263,7 +197,7 @@ func parseExprUntil(tokens []Token, pos *int, stop string) Expression {
 		*pos++
 
 		right := parseExpr(tokens, pos)
-		expr = BinaryExpr{
+		expr = &BinaryExpr{
 			Op:    op.Lexeme,
 			Left:  expr,
 			Right: right,
@@ -278,10 +212,27 @@ func parseFor(tokens []Token, pos *int) Statement {
 	forStmt := ForStmt{}
 
 	// for {}
-
 	if tokens[*pos].Type == OPN_BRACE {
 		forStmt.Body = parseBlock(tokens, pos)
 		return forStmt
+	}
+
+	// for condition {}
+	if tokens[*pos].Type == IDENT {
+		ps := *pos
+		composite := false
+		for tokens[ps].Type != OPN_BRACE {
+			if tokens[ps].Type == SEMICOLON {
+				composite = true
+				break
+			}
+			ps++
+		}
+		if !composite {
+			fmt.Println("parse non composite")
+			forStmt.Cond = parseExpr(tokens, pos)
+			return forStmt
+		}
 	}
 
 	//  INIT
@@ -338,7 +289,16 @@ func parseReturn(tokens []Token, pos *int) Statement {
 	return ReturnStmt{Results: results}
 }
 
+func skipNewlines(tokens []Token, pos *int) {
+	for *pos < len(tokens) && tokens[*pos].Type == NEW_LINE {
+		*pos++
+	}
+}
+
 func parseExprStatement(tokens []Token, pos *int) Statement {
+
+	skip(tokens, pos)
+
 	expr := parseExpr(tokens, pos)
 	if *pos < len(tokens) && tokens[*pos].Type == SEMICOLON {
 		*pos++
@@ -386,13 +346,18 @@ func parseRetSign(tokens []Token, pos *int) []ReturnSig {
 }
 
 func parseAssign(tokens []Token, pos *int) Statement {
-	target := parsePostfix(tokens, pos)
+	target := parsePrimary(tokens, pos)
 
 	switch target.(type) {
 	case IdentExpr, *IdentExpr, FieldAccessExpr, *FieldAccessExpr:
 	default:
 		panic("left-hand side of assignment must be an identifier or field access")
 	}
+
+	fmt.Println("POS:", *pos)
+	fmt.Println("CUR:", tokens[*pos])
+	fmt.Println("CUR-1:", tokens[*pos-1])
+	fmt.Println("CUR-2:", tokens[*pos-2])
 
 	opTok := tokens[*pos]
 	if opTok.Type != ASSIGN {
@@ -439,6 +404,17 @@ func parseDefOrAssign(tokens []Token, pos *int) Statement {
 		return parseDefine(tokens, pos)
 	}
 	return parseAssign(tokens, pos)
+}
+
+func (t Token) IsOperator() bool {
+
+	switch t.Type {
+	case PLUS, MINUS, STAR, SLASH, ASSIGN, DEFINE,
+		EQ, NEQ, LT, GT, LTE, GTE, AND, OR, NOT, DOT:
+		return true
+	default:
+		return false
+	}
 }
 
 // end
