@@ -130,12 +130,14 @@ func precedence(t TokenType) (int, bool) {
 		return 2, true
 	case EQ, NEQ:
 		return 3, true
+	case LT, GT, LTE, GTE:
+		return 4, true
 	case PLUS, MINUS:
 		return 4, true
 	case STAR, SLASH:
 		return 5, true
-	case AMP:
-		return 6, true
+	// AMP not correct here!.
+
 	default:
 		return 0, false
 	}
