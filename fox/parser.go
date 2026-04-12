@@ -4,58 +4,71 @@ import (
 	"fmt"
 )
 
-func parseLogicAnd(tokens []Token, pos *int) Expression {
-	left := parseEquality(tokens, pos)
+/*
+	func parseLogicAnd(tokens []Token, pos *int) Expression {
+		left := parseEquality(tokens, pos)
 
-	for *pos < len(tokens) && tokens[*pos].Type == AND {
-		op := tokens[*pos]
-		*pos++
+		for *pos < len(tokens) && tokens[*pos].Type == AND {
+			op := tokens[*pos]
+			*pos++
 
-		right := parseEquality(tokens, pos)
+			right := parseEquality(tokens, pos)
 
-		left = &BinaryExpr{
-			Left:  left,
-			Op:    op.Lexeme,
-			Right: right,
+			left = &BinaryExpr{
+				Left:  left,
+				Op:    op.Lexeme,
+				Right: right,
+			}
 		}
+
+		return left
 	}
 
-	return left
-}
+	func parseLogicOr(tokens []Token, pos *int) Expression {
+		left := parseLogicAnd(tokens, pos)
 
-func parseLogicOr(tokens []Token, pos *int) Expression {
-	left := parseLogicAnd(tokens, pos)
+		for *pos < len(tokens) && tokens[*pos].Type == OR {
+			op := tokens[*pos]
+			*pos++
 
-	for *pos < len(tokens) && tokens[*pos].Type == OR {
-		op := tokens[*pos]
-		*pos++
+			right := parseLogicAnd(tokens, pos)
 
-		right := parseLogicAnd(tokens, pos)
-
-		left = &BinaryExpr{
-			Left:  left,
-			Op:    op.Lexeme,
-			Right: right,
+			left = &BinaryExpr{
+				Left:  left,
+				Op:    op.Lexeme,
+				Right: right,
+			}
 		}
+
+		return left
+	}
+*/
+func isStartOfPrimary(tok Token) bool {
+	switch tok.Type {
+
+	case IDENT,
+		INT, FLOAT, STRING,
+		TRUE, FALSE,
+		OPN_PAREN:
+
+		return true
 	}
 
-	return left
+	return false
 }
 
 func parseUnary(tokens []Token, pos *int) Expression {
-	if *pos >= len(tokens) {
-		panic("unexpected end of input while parsing unary expression")
-	}
+	//skip(tokens, pos)
 
-	tok := tokens[*pos]
+	if *pos < len(tokens) {
+		switch tokens[*pos].Type {
+		case NOT, MINUS, AMP, STAR:
+			op := tokens[*pos]
+			*pos++
 
-	if tok.Type == STAR || tok.Type == AMP || tok.Type == NOT || tok.Type == MINUS {
-		(*pos)++
-		if *pos >= len(tokens) {
-			panic(fmt.Sprintf("unexpected end of input after unary operator '%s'", tok.Lexeme))
+			right := parseUnary(tokens, pos)
+			return UnaryExpr{Op: op.Lexeme, Expr: right}
 		}
-		expr := parseUnary(tokens, pos)
-		return UnaryExpr{Op: tok.Lexeme, Expr: expr, Line: tok.Line}
 	}
 
 	return parsePostfix(tokens, pos)
@@ -64,27 +77,101 @@ func parseUnary(tokens []Token, pos *int) Expression {
 func parsePostfix(tokens []Token, pos *int) Expression {
 	skip(tokens, pos)
 
+	// IMPORTANT: start from primary ONLY (no unary call here)
 	expr := parsePrimary(tokens, pos)
 
-	for *pos < len(tokens) && tokens[*pos].Type == DOT {
-		*pos++ // consume '.'
+	for *pos < len(tokens) {
+		switch tokens[*pos].Type {
 
-		skip(tokens, pos)
-		field := expectIdent(tokens, pos).Lexeme
-		expr = FieldAccessExpr{Object: expr, Field: field}
+		case DOT:
+			*pos++
+			skip(tokens, pos)
+			field := expectIdent(tokens, pos).Lexeme
+			expr = FieldAccessExpr{Object: expr, Field: field}
+
+		default:
+			return expr
+		}
 	}
 
 	return expr
+}
+
+func parseBinary(tokens []Token, pos *int, minPrec int) Expression {
+	left := parseUnary(tokens, pos)
+
+	for *pos < len(tokens) {
+		op := tokens[*pos]
+
+		prec, ok := precedence(op.Type)
+		if !ok || prec < minPrec {
+			break
+		}
+
+		*pos++ // consume operator
+
+		right := parseBinary(tokens, pos, prec+1)
+
+		left = BinaryExpr{
+			Left:  left,
+			Op:    op.Lexeme,
+			Right: right,
+		}
+	}
+
+	return left
+}
+
+func precedence(t TokenType) (int, bool) {
+	switch t {
+	case OR:
+		return 1, true
+	case AND:
+		return 2, true
+	case EQ, NEQ:
+		return 3, true
+	case PLUS, MINUS:
+		return 4, true
+	case STAR, SLASH:
+		return 5, true
+	case AMP:
+		return 6, true
+	default:
+		return 0, false
+	}
+}
+func getPrecedence(t TokenType) int {
+	switch t {
+	case STAR:
+		return 5
+	case PLUS:
+		return 4
+	case EQ, NEQ:
+		return 3
+	case AND:
+		return 2
+	case OR:
+		return 1
+	default:
+		return -1
+	}
+}
+
+func isUnaryStart(tok Token) bool {
+	return tok.Type == AMP ||
+		tok.Type == STAR ||
+		tok.Type == NOT ||
+		tok.Type == MINUS
 }
 
 func parsePrimary(tokens []Token, pos *int) Expression {
 	if *pos >= len(tokens) {
 		panic("unexpected end of input while parsing expression")
 	}
-
-	skipNewlines(tokens, pos)
-
 	tok := tokens[*pos]
+	fmt.Printf("PRIMARY -> pos=%d token=%+v\n", *pos, tokens[*pos])
+
+	tok = tokens[*pos]
 	switch tok.Type {
 	case IDENT:
 		//name := tok.Lexeme
@@ -110,6 +197,9 @@ func parsePrimary(tokens []Token, pos *int) Expression {
 		return expr
 
 	default:
+		if tok.Type == STAR {
+			return parseUnary(tokens, pos)
+		}
 		panic(fmt.Sprintf("expected expression at line %d, got %s (%q)", tok.Line, tok.Type, tok.Lexeme))
 	}
 }
@@ -212,7 +302,7 @@ func parseAdd(tokens []Token, pos *int) Expression {
 // top-level expression
 func parseExpr(tokens []Token, pos *int) Expression {
 
-	return parseLogicOr(tokens, pos)
+	return parseBinary(tokens, pos, 0)
 }
 
 // Functions

@@ -76,6 +76,9 @@ const (
 	NEW_LINE
 	END_DELIMITERS
 
+	TRUE
+	FALSE
+
 	COMMENT
 )
 
@@ -470,6 +473,10 @@ func (tt TokenType) String() string {
 		return "FLOAT"
 	case STRING:
 		return "STRING"
+	case TRUE:
+		return "TRUE"
+	case FALSE:
+		return "FALSE"
 
 	case FOR:
 		return "FOR"

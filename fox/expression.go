@@ -80,7 +80,7 @@ func parseCall(name string, tokens []Token, pos *int) Expression {
 }
 
 func parseExprOrAssign(tokens []Token, pos *int) Statement {
-	target := parsePostfix(tokens, pos)
+	target := parseBinary(tokens, pos, 0)
 
 	if *pos < len(tokens) {
 		switch tokens[*pos].Type {
