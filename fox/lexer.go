@@ -49,6 +49,8 @@ const (
 	SLASH
 	ASSIGN
 	DEFINE
+	PLUS_ASSIGN
+	PLUS_DEFINE
 	EQ
 	NEQ
 	LT
@@ -79,6 +81,8 @@ const (
 	TRUE
 	FALSE
 
+	SPAWN
+
 	COMMENT
 )
 
@@ -105,6 +109,7 @@ var keywords = map[string]TokenType{
 	"import":      IMPORT,
 	"break":       BREAK,
 	"continue":    CONTINUE,
+	"spawn":       SPAWN,
 }
 
 func Lexer(input string) []Token {
@@ -117,6 +122,7 @@ func Lexer(input string) []Token {
 			return
 		}
 		val := current.String()
+		fmt.Println("currnet: ", val)
 		current.Reset()
 
 		// Keywords
@@ -273,6 +279,11 @@ func Lexer(input string) []Token {
 			i++
 			continue
 
+		case '!':
+			addToken()
+			tokens = append(tokens, Token{Type: NOT, Lexeme: tkn, Line: line, Column: col})
+			i++
+			continue
 		case '/':
 			addToken()
 			tokens = append(tokens, Token{Type: SLASH, Lexeme: tkn, Line: line, Column: col})

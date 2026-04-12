@@ -19,10 +19,7 @@ func main() {
 
 	tokens := Lexer(sdata)
 
-	for k, v := range tokens {
-		fmt.Print(k, " ", v.Type, " ", v.Lexeme, ", ")
-	}
-	println()
+	//	for k, v := range tokens {	fmt.Print(k, " ", v.Type, " ", v.Lexeme, ", ")} println()
 
 	fmt.Println("\nresult as AST:")
 	pretty.Print(astBuilder(tokens))

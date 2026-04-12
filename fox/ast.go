@@ -7,8 +7,6 @@ type AST struct {
 	Funcs       []FuncDecl
 }
 
-type Node any
-
 type Type struct {
 	Name     string
 	PtrDepth int
@@ -18,6 +16,7 @@ type StructDecl struct {
 	Name   string
 	Fields []FieldDecl
 }
+
 type FieldDecl struct {
 	Name string
 	Type string
@@ -48,21 +47,8 @@ type FieldAccessExpr struct {
 	Object Expression
 	Field  string
 }
-
-func (FieldAccessExpr) isExpr() {}
-
 type TypeNode interface {
 	isType()
 }
 
-type SimpleType struct {
-	Name string
-}
-
-func (SimpleType) isType() {}
-
-type PointerType struct {
-	Base TypeNode
-}
-
-func (PointerType) isType() {}
+func (FieldAccessExpr) isExpr() {}

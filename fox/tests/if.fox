@@ -1,0 +1,5 @@
+fn do(){
+   if !ok {}
+   if ok {} else {}
+}
+

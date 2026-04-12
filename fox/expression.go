@@ -58,7 +58,7 @@ type CallExpr struct {
 
 func (CallExpr) isExpr() {}
 
-func parseCall(name string, tokens []Token, pos *int) Expression {
+func parseCall(name string, tokens []Token, pos *int) CallExpr {
 	expectType(tokens, pos, OPN_PAREN)
 
 	args := []Expression{}

@@ -63,6 +63,10 @@ type FieldValue struct {
 	Value Expression // NumberExpr{10}
 }
 
+type SpawnStmt struct {
+	Call Expression
+}
+
 func (CompositeLiteralExpr) isExpr() {}
 func (VarDeclar) isStat()            {}
 func (ReturnStmt) isStat()           {}
@@ -73,6 +77,7 @@ func (ForStmt) isStat()              {}
 func (Assign) isStat()               {}
 func (Declar) isStat()               {}
 func (ExprStmt) isStat()             {}
+func (SpawnStmt) isStat()            {}
 
 // Parsing Helpers
 func isTypeStart(tok Token) bool {
@@ -162,15 +167,27 @@ func parseStatement(tokens []Token, pos *int) Statement {
 	case BREAK:
 		*pos++
 		return BreakNode{Tok: tok}
+
 	case CONTINUE:
 		*pos++
 		return ContinueNode{Tok: tok}
+	case SPAWN:
+		fmt.Println("we at spawn case")
+		return parseSpawn(tokens, pos)
+
 	default:
 		return parseExprOrAssign(tokens, pos)
 	}
 }
 
 //  Statement Parsers
+
+func parseSpawn(tokens []Token, pos *int) Statement {
+	fmt.Println("we ar at parseSpawn func")
+	expectType(tokens, pos, SPAWN)
+	exp := parseExpr(tokens, pos)
+	return SpawnStmt{Call: exp}
+}
 
 func parseIf(tokens []Token, pos *int) Statement {
 	expectType(tokens, pos, IF)
@@ -217,6 +234,82 @@ func parseFor(tokens []Token, pos *int) Statement {
 		return forStmt
 	}
 
+	// for condition {} (NO semicolons ahead)
+	if tokens[*pos].Type != SEMICOLON && tokens[*pos].Type != OPN_BRACE {
+
+		ps := *pos
+		hasSemicolon := false
+
+		for ps < len(tokens) && tokens[ps].Type != OPN_BRACE {
+			if tokens[ps].Type == SEMICOLON {
+				hasSemicolon = true
+				break
+			}
+			ps++
+		}
+
+		if !hasSemicolon {
+			forStmt.Cond = parseExpr(tokens, pos)
+			forStmt.Body = parseBlock(tokens, pos)
+			return forStmt
+		}
+	}
+
+	// INIT
+	if tokens[*pos].Type != SEMICOLON && tokens[*pos].Type != OPN_BRACE {
+
+		if *pos+1 < len(tokens) &&
+			(tokens[*pos+1].Type == ASSIGN || tokens[*pos+1].Type == DEFINE) {
+
+			forStmt.Init = parseDefOrAssign(tokens, pos)
+		} else {
+			forStmt.Init = parseExprStatement(tokens, pos)
+		}
+	}
+
+	expectType(tokens, pos, SEMICOLON)
+
+	// CONDITION
+	if tokens[*pos].Type != SEMICOLON && tokens[*pos].Type != OPN_BRACE {
+		forStmt.Cond = parseExprUntil(tokens, pos, ";")
+	}
+
+	expectType(tokens, pos, SEMICOLON)
+
+	// POST
+	if tokens[*pos].Type != OPN_BRACE && tokens[*pos].Type != CLS_BRACE {
+
+		if *pos+1 < len(tokens) &&
+			(tokens[*pos+1].Type == ASSIGN || tokens[*pos+1].Type == DEFINE) {
+
+			forStmt.Post = parseDefOrAssign(tokens, pos)
+		} else {
+			forStmt.Post = parseExprStatement(tokens, pos)
+		}
+	}
+
+	// BODY
+	if tokens[*pos].Type == OPN_BRACE {
+		forStmt.Body = parseBlock(tokens, pos)
+		return forStmt
+	}
+
+	// fallback safety
+	forStmt.Body = parseBlock(tokens, pos)
+	return forStmt
+}
+
+func parseFor_Old(tokens []Token, pos *int) Statement {
+	expectType(tokens, pos, FOR)
+
+	forStmt := ForStmt{}
+
+	// for {}
+	if tokens[*pos].Type == OPN_BRACE {
+		forStmt.Body = parseBlock(tokens, pos)
+		return forStmt
+	}
+
 	// for condition {}
 	if tokens[*pos].Type == IDENT {
 		ps := *pos
@@ -229,7 +322,6 @@ func parseFor(tokens []Token, pos *int) Statement {
 			ps++
 		}
 		if !composite {
-			fmt.Println("parse non composite")
 			forStmt.Cond = parseExpr(tokens, pos)
 			return forStmt
 		}
@@ -272,10 +364,33 @@ func parseFor(tokens []Token, pos *int) Statement {
 	forStmt.Body = parseBlock(tokens, pos)
 	return forStmt
 }
+func isExprStart(tok Token) bool {
+	switch tok.Type {
+
+	case IDENT,
+		INT, FLOAT, STRING,
+		TRUE, FALSE,
+
+		OPN_PAREN, // (a + b)
+		AMP,       // &a
+		STAR,      // *a
+		NOT,       // !a
+		MINUS:     // -a
+
+		return true
+	}
+
+	return false
+}
 
 func parseReturn(tokens []Token, pos *int) Statement {
 	expectType(tokens, pos, RETURN)
 
+	if !isExprStart(tokens[*pos]) {
+		return ReturnStmt{
+			Results: nil,
+		}
+	}
 	results := []Expression{}
 
 	if tokens[*pos].Type != SEMICOLON && tokens[*pos].Type != CLS_BRACE {
@@ -354,11 +469,6 @@ func parseAssign(tokens []Token, pos *int) Statement {
 		panic("left-hand side of assignment must be an identifier or field access")
 	}
 
-	fmt.Println("POS:", *pos)
-	fmt.Println("CUR:", tokens[*pos])
-	fmt.Println("CUR-1:", tokens[*pos-1])
-	fmt.Println("CUR-2:", tokens[*pos-2])
-
 	opTok := tokens[*pos]
 	if opTok.Type != ASSIGN {
 		panic("expected = for assignment")
@@ -415,6 +525,20 @@ func (t Token) IsOperator() bool {
 	default:
 		return false
 	}
+}
+
+func isAssignmentAhead(tokens []Token, pos int) bool {
+	for i := pos; i < len(tokens); i++ {
+		if tokens[i].Type == ASSIGN ||
+			tokens[i].Type == DEFINE ||
+			tokens[i].Type == PLUS_ASSIGN {
+			return true
+		}
+		if tokens[i].Type == NEW_LINE {
+			break
+		}
+	}
+	return false
 }
 
 // end

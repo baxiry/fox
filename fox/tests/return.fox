@@ -1,9 +1,18 @@
-
-
-
 fn make(a bool) *Object {
     if a {
         return &A
     }
     return &B
+}
+
+fn do(a bool) *Object {
+    if &a {
+        return 
+    }
+    if !ok {
+
+    } else {
+       return
+    }
+    return
 }

@@ -4,45 +4,6 @@ import (
 	"fmt"
 )
 
-/*
-	func parseLogicAnd(tokens []Token, pos *int) Expression {
-		left := parseEquality(tokens, pos)
-
-		for *pos < len(tokens) && tokens[*pos].Type == AND {
-			op := tokens[*pos]
-			*pos++
-
-			right := parseEquality(tokens, pos)
-
-			left = &BinaryExpr{
-				Left:  left,
-				Op:    op.Lexeme,
-				Right: right,
-			}
-		}
-
-		return left
-	}
-
-	func parseLogicOr(tokens []Token, pos *int) Expression {
-		left := parseLogicAnd(tokens, pos)
-
-		for *pos < len(tokens) && tokens[*pos].Type == OR {
-			op := tokens[*pos]
-			*pos++
-
-			right := parseLogicAnd(tokens, pos)
-
-			left = &BinaryExpr{
-				Left:  left,
-				Op:    op.Lexeme,
-				Right: right,
-			}
-		}
-
-		return left
-	}
-*/
 func isStartOfPrimary(tok Token) bool {
 	switch tok.Type {
 
@@ -58,16 +19,14 @@ func isStartOfPrimary(tok Token) bool {
 }
 
 func parseUnary(tokens []Token, pos *int) Expression {
-	//skip(tokens, pos)
 
 	if *pos < len(tokens) {
 		switch tokens[*pos].Type {
-		case NOT, MINUS, AMP, STAR:
+
+		case NOT, MINUS, STAR, AMP:
 			op := tokens[*pos]
 			*pos++
-
-			right := parseUnary(tokens, pos)
-			return UnaryExpr{Op: op.Lexeme, Expr: right}
+			return UnaryExpr{Op: op.Lexeme, Expr: parseUnary(tokens, pos)}
 		}
 	}
 
@@ -142,6 +101,7 @@ func precedence(t TokenType) (int, bool) {
 		return 0, false
 	}
 }
+
 func getPrecedence(t TokenType) int {
 	switch t {
 	case STAR:
@@ -171,7 +131,7 @@ func parsePrimary(tokens []Token, pos *int) Expression {
 		panic("unexpected end of input while parsing expression")
 	}
 	tok := tokens[*pos]
-	fmt.Printf("PRIMARY -> pos=%d token=%+v\n", *pos, tokens[*pos])
+	//fmt.Printf("PRIMARY -> pos=%d token=%+v\n", *pos, tokens[*pos])
 
 	tok = tokens[*pos]
 	switch tok.Type {
