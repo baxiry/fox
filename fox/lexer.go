@@ -74,7 +74,7 @@ const (
 	CLS_BRACK
 	COMMA
 	SEMICOLON
-	DUBLE_DOT
+	COLON
 	NEW_LINE
 	END_DELIMITERS
 
@@ -82,7 +82,6 @@ const (
 	FALSE
 
 	SPAWN
-
 	COMMENT
 )
 
@@ -358,7 +357,7 @@ func Lexer(input string) []Token {
 
 		case ':':
 			addToken()
-			tokens = append(tokens, Token{Type: DUBLE_DOT, Lexeme: tkn, Line: line, Column: col})
+			tokens = append(tokens, Token{Type: COLON, Lexeme: tkn, Line: line, Column: col})
 			i++
 			continue
 
@@ -549,8 +548,8 @@ func (tt TokenType) String() string {
 		return "NOT"
 	case DOT:
 		return "DOT"
-	case DUBLE_DOT:
-		return "DUBLE_DOT"
+	case COLON:
+		return "COLON"
 	case COMMENT:
 		return "COMMENT"
 

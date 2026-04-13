@@ -53,11 +53,6 @@ type ExprStmt struct {
 	Expr Expression
 }
 
-type CompositeLiteralExpr struct {
-	Type   Type         // like "Obj"
-	Fields []FieldValue // field's value {"age": NumberExpr{5}}
-}
-
 type FieldValue struct {
 	Field IdentExpr  // something like 'obj'
 	Value Expression // NumberExpr{10}
@@ -67,17 +62,16 @@ type SpawnStmt struct {
 	Call Expression
 }
 
-func (CompositeLiteralExpr) isExpr() {}
-func (VarDeclar) isStat()            {}
-func (ReturnStmt) isStat()           {}
-func (ContinueNode) isStat()         {}
-func (IfStmt) isStat()               {}
-func (BreakNode) isStat()            {}
-func (ForStmt) isStat()              {}
-func (Assign) isStat()               {}
-func (Declar) isStat()               {}
-func (ExprStmt) isStat()             {}
-func (SpawnStmt) isStat()            {}
+func (VarDeclar) isStat()    {}
+func (ReturnStmt) isStat()   {}
+func (ContinueNode) isStat() {}
+func (IfStmt) isStat()       {}
+func (BreakNode) isStat()    {}
+func (ForStmt) isStat()      {}
+func (Assign) isStat()       {}
+func (Declar) isStat()       {}
+func (ExprStmt) isStat()     {}
+func (SpawnStmt) isStat()    {}
 
 // Parsing Helpers
 func isTypeStart(tok Token) bool {
@@ -89,33 +83,6 @@ func isTypeStart(tok Token) bool {
 	default:
 		return false
 	}
-}
-
-func parseStructBlock(tokens []Token, pos *int) CompositeLiteralExpr {
-	// Obj{}, Obj{a:10}
-
-	expectType(tokens, pos, OPN_BRACE)
-
-	var compLiterExp CompositeLiteralExpr
-	compLiterExp.Type = Type{Name: tokens[*pos-2].Lexeme} // , PtrDepth: ?
-
-	fieldVal := FieldValue{}
-
-	for tokens[*pos].Type != CLS_BRACE {
-		field := expectType(tokens, pos, IDENT).Lexeme
-		expectType(tokens, pos, DUBLE_DOT)
-		value := parseExpr(tokens, pos)
-
-		fieldVal.Field = IdentExpr{field}
-		fieldVal.Value = value
-		compLiterExp.Fields = append(compLiterExp.Fields, fieldVal)
-
-		if tokens[*pos].Type == COMMA {
-			*pos++
-		}
-	}
-	expectType(tokens, pos, CLS_BRACE)
-	return compLiterExp
 }
 
 func parseVarDeclar(tokens []Token, pos *int) Statement {
@@ -149,34 +116,6 @@ func parseVarDeclar(tokens []Token, pos *int) Statement {
 		Name:  nameTok.Lexeme,
 		Type:  *typ,
 		Value: value,
-	}
-}
-
-func parseStatement(tokens []Token, pos *int) Statement {
-	tok := tokens[*pos]
-
-	switch tok.Type {
-	case VAR:
-		return parseVarDeclar(tokens, pos)
-	case RETURN:
-		return parseReturn(tokens, pos)
-	case IF:
-		return parseIf(tokens, pos)
-	case FOR:
-		return parseFor(tokens, pos)
-	case BREAK:
-		*pos++
-		return BreakNode{Tok: tok}
-
-	case CONTINUE:
-		*pos++
-		return ContinueNode{Tok: tok}
-	case SPAWN:
-		fmt.Println("we at spawn case")
-		return parseSpawn(tokens, pos)
-
-	default:
-		return parseExprOrAssign(tokens, pos)
 	}
 }
 
@@ -404,24 +343,6 @@ func parseReturn(tokens []Token, pos *int) Statement {
 	return ReturnStmt{Results: results}
 }
 
-func skipNewlines(tokens []Token, pos *int) {
-	for *pos < len(tokens) && tokens[*pos].Type == NEW_LINE {
-		*pos++
-	}
-}
-
-func parseExprStatement(tokens []Token, pos *int) Statement {
-
-	skip(tokens, pos)
-
-	expr := parseExpr(tokens, pos)
-	if *pos < len(tokens) && tokens[*pos].Type == SEMICOLON {
-		*pos++
-	}
-
-	return ExprStmt{Expr: expr}
-}
-
 func parseRetSign(tokens []Token, pos *int) []ReturnSig {
 
 	var retSigns []ReturnSig
@@ -458,6 +379,17 @@ func parseRetSign(tokens []Token, pos *int) []ReturnSig {
 	}
 
 	return retSigns
+}
+func parseExprStatement(tokens []Token, pos *int) Statement {
+
+	skip(tokens, pos)
+
+	expr := parseExpr(tokens, pos)
+	if *pos < len(tokens) && tokens[*pos].Type == SEMICOLON {
+		*pos++
+	}
+
+	return ExprStmt{Expr: expr}
 }
 
 func parseAssign(tokens []Token, pos *int) Statement {
@@ -517,7 +449,6 @@ func parseDefOrAssign(tokens []Token, pos *int) Statement {
 }
 
 func (t Token) IsOperator() bool {
-
 	switch t.Type {
 	case PLUS, MINUS, STAR, SLASH, ASSIGN, DEFINE,
 		EQ, NEQ, LT, GT, LTE, GTE, AND, OR, NOT, DOT:
@@ -527,18 +458,31 @@ func (t Token) IsOperator() bool {
 	}
 }
 
-func isAssignmentAhead(tokens []Token, pos int) bool {
-	for i := pos; i < len(tokens); i++ {
-		if tokens[i].Type == ASSIGN ||
-			tokens[i].Type == DEFINE ||
-			tokens[i].Type == PLUS_ASSIGN {
-			return true
-		}
-		if tokens[i].Type == NEW_LINE {
-			break
-		}
+func parseStatement(tokens []Token, pos *int) Statement {
+	tok := tokens[*pos]
+
+	switch tok.Type {
+	case VAR:
+		return parseVarDeclar(tokens, pos)
+	case RETURN:
+		return parseReturn(tokens, pos)
+	case IF:
+		return parseIf(tokens, pos)
+	case FOR:
+		return parseFor(tokens, pos)
+	case BREAK:
+		*pos++
+		return BreakNode{Tok: tok}
+
+	case CONTINUE:
+		*pos++
+		return ContinueNode{Tok: tok}
+	case SPAWN:
+		return parseSpawn(tokens, pos)
+
+	default:
+		return parseExprOrAssign(tokens, pos)
 	}
-	return false
 }
 
 // end

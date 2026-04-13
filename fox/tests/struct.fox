@@ -1,0 +1,6 @@
+fn do() {
+  o := Obj{}
+  user := User{name: "dada", age: 20}
+  user = User{name: "adam", age: 12}
+
+}

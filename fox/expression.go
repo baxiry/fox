@@ -15,31 +15,21 @@ type TypeExpr struct {
 	Name string
 }
 
-func (TypeExpr) isExpr() {}
-
 type NumberExpr struct {
 	Literal string
 }
-
-func (NumberExpr) isExpr() {}
 
 type StringExpr struct {
 	Literal string
 }
 
-func (StringExpr) isExpr() {}
-
 type LiteralExpr struct {
 	Value string
 }
 
-func (LiteralExpr) isExpr() {}
-
 type IdentExpr struct {
 	Name string
 }
-
-func (IdentExpr) isExpr() {}
 
 type BinaryExpr struct {
 	Op    string
@@ -47,16 +37,19 @@ type BinaryExpr struct {
 	Right Expression
 }
 
-func (BinaryExpr) isExpr() {}
-
-func (UnaryExpr) isExpr() {}
-
 type CallExpr struct {
 	Callee Expression
 	Args   []Expression
 }
 
-func (CallExpr) isExpr() {}
+func (TypeExpr) isExpr()    {}
+func (NumberExpr) isExpr()  {}
+func (StringExpr) isExpr()  {}
+func (LiteralExpr) isExpr() {}
+func (IdentExpr) isExpr()   {}
+func (BinaryExpr) isExpr()  {}
+func (UnaryExpr) isExpr()   {}
+func (CallExpr) isExpr()    {}
 
 func parseCall(name string, tokens []Token, pos *int) CallExpr {
 	expectType(tokens, pos, OPN_PAREN)

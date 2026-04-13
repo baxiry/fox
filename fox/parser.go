@@ -4,18 +4,10 @@ import (
 	"fmt"
 )
 
-func isStartOfPrimary(tok Token) bool {
-	switch tok.Type {
-
-	case IDENT,
-		INT, FLOAT, STRING,
-		TRUE, FALSE,
-		OPN_PAREN:
-
-		return true
+func skipNewlines(tokens []Token, pos *int) {
+	for *pos < len(tokens) && tokens[*pos].Type == NEW_LINE {
+		*pos++
 	}
-
-	return false
 }
 
 func parseUnary(tokens []Token, pos *int) Expression {
@@ -60,6 +52,7 @@ func parseBinary(tokens []Token, pos *int, minPrec int) Expression {
 	left := parseUnary(tokens, pos)
 
 	for *pos < len(tokens) {
+
 		op := tokens[*pos]
 
 		prec, ok := precedence(op.Type)
@@ -102,23 +95,6 @@ func precedence(t TokenType) (int, bool) {
 	}
 }
 
-func getPrecedence(t TokenType) int {
-	switch t {
-	case STAR:
-		return 5
-	case PLUS:
-		return 4
-	case EQ, NEQ:
-		return 3
-	case AND:
-		return 2
-	case OR:
-		return 1
-	default:
-		return -1
-	}
-}
-
 func isUnaryStart(tok Token) bool {
 	return tok.Type == AMP ||
 		tok.Type == STAR ||
@@ -136,10 +112,13 @@ func parsePrimary(tokens []Token, pos *int) Expression {
 	tok = tokens[*pos]
 	switch tok.Type {
 	case IDENT:
-		//name := tok.Lexeme
+		name := tok.Lexeme
 		*pos++
 		if *pos < len(tokens) && tokens[*pos].Type == OPN_PAREN {
 			return parseCall(tok.Lexeme, tokens, pos)
+		}
+		if tokens[*pos].Type == OPN_BRACE {
+			return parseStructLiteral(tokens, pos, name)
 		}
 
 		return IdentExpr{Name: tok.Lexeme}
@@ -263,7 +242,6 @@ func parseAdd(tokens []Token, pos *int) Expression {
 
 // top-level expression
 func parseExpr(tokens []Token, pos *int) Expression {
-
 	return parseBinary(tokens, pos, 0)
 }
 
@@ -358,6 +336,7 @@ func parseImport(tokens []Token, pos *int) []string {
 }
 
 func parseStruct(tokens []Token, pos *int) StructDecl {
+
 	expectType(tokens, pos, TYPE)
 	name := expectIdent(tokens, pos)
 	expectType(tokens, pos, STRUCT)
@@ -385,6 +364,88 @@ func parseField(tokens []Token, pos *int) FieldDecl {
 	nameTok := expectIdent(tokens, pos)
 	typeTok := expectIdent(tokens, pos)
 	return FieldDecl{Name: nameTok.Lexeme, Type: typeTok.Lexeme}
+}
+
+func parseFieldAssign(tokens []Token, pos *int) FieldDecl {
+	nameTok := expectIdent(tokens, pos)
+	typeTok := expectIdent(tokens, pos)
+	return FieldDecl{Name: nameTok.Lexeme, Type: typeTok.Lexeme}
+}
+
+func parseVarDecl(tokens []Token, pos *int) VarDeclar {
+
+	name := expectIdent(tokens, pos)
+	expectType(tokens, pos, DEFINE) // :=
+
+	typeName := expectIdent(tokens, pos)
+
+	if tokens[*pos].Type == OPN_BRACE {
+		value := parseStructLiteral(tokens, pos, "ok")
+
+		return VarDeclar{
+			Name:  name.Lexeme,
+			Type:  Type{Name: typeName.Lexeme},
+			Value: value,
+		}
+	}
+
+	return VarDeclar{
+		Name:  name.Lexeme,
+		Type:  Type{Name: typeName.Lexeme},
+		Value: nil,
+	}
+}
+
+func parseStructLiteral(tokens []Token, pos *int, typeName string) Expression {
+	expectType(tokens, pos, OPN_BRACE)
+
+	fields := []FieldInit{}
+
+	for tokens[*pos].Type != CLS_BRACE {
+
+		if tokens[*pos].Type == IDENT && tokens[*pos+1].Type == COLON {
+			name := expectIdent(tokens, pos)
+
+			expectType(tokens, pos, COLON)
+			value := parseExpr(tokens, pos)
+
+			fields = append(fields, FieldInit{
+				Name:  name.Lexeme,
+				Value: value,
+			})
+		} else {
+			// shorthand or empty
+			value := parseExpr(tokens, pos)
+
+			fields = append(fields, FieldInit{
+				Name:  "",
+				Value: value,
+			})
+		}
+
+		if tokens[*pos].Type == COMMA {
+			expectType(tokens, pos, COMMA)
+		}
+	}
+
+	expectType(tokens, pos, CLS_BRACE)
+
+	return StructLiteral{
+		Type:   Type{Name: typeName},
+		Fields: fields,
+	}
+}
+
+type StructLiteral struct {
+	Type   Type
+	Fields []FieldInit
+}
+
+func (StructLiteral) isExpr() {}
+
+type FieldInit struct {
+	Name  string
+	Value Expression
 }
 
 // AST Builder

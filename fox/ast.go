@@ -47,8 +47,13 @@ type FieldAccessExpr struct {
 	Object Expression
 	Field  string
 }
+
+func (FieldAccessExpr) isExpr() {}
+
 type TypeNode interface {
 	isType()
 }
 
-func (FieldAccessExpr) isExpr() {}
+type TypeRef struct {
+	Name string
+}
