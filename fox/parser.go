@@ -107,7 +107,6 @@ func parsePrimary(tokens []Token, pos *int) Expression {
 		panic("unexpected end of input while parsing expression")
 	}
 	tok := tokens[*pos]
-	//fmt.Printf("PRIMARY -> pos=%d token=%+v\n", *pos, tokens[*pos])
 
 	tok = tokens[*pos]
 	switch tok.Type {

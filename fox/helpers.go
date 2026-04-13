@@ -4,7 +4,7 @@ import (
 	"fmt"
 )
 
-// ================= Utilities =================
+// Utilities
 
 func expectIdent(tokens []Token, pos *int) Token {
 
@@ -40,7 +40,6 @@ func expectType(tokens []Token, pos *int, expected TokenType) Token {
 	tok := tokens[*pos]
 
 	if tok.Type != expected {
-		fmt.Println("token: ", tok.Lexeme)
 		panic(fmt.Sprintf(
 			"syntax error at line %d: expected %s, got %s",
 			tok.Line, expected.String(), tok.Type,

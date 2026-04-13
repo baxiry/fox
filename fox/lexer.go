@@ -121,7 +121,7 @@ func Lexer(input string) []Token {
 			return
 		}
 		val := current.String()
-		fmt.Println("currnet: ", val)
+
 		current.Reset()
 
 		// Keywords

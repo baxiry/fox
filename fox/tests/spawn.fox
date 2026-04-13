@@ -1,3 +1,7 @@
 fn parall() {
-  spawn do()
+    spawn do()
+
+    spawn a
+    spawn a + b
+    spawn &x
 }

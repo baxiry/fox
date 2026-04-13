@@ -61,7 +61,9 @@ type FieldValue struct {
 type SpawnStmt struct {
 	Call Expression
 }
+type BadStmt struct{ Msg string }
 
+func (BadStmt) isStat()      {}
 func (VarDeclar) isStat()    {}
 func (ReturnStmt) isStat()   {}
 func (ContinueNode) isStat() {}
@@ -119,13 +121,20 @@ func parseVarDeclar(tokens []Token, pos *int) Statement {
 	}
 }
 
-//  Statement Parsers
-
+// Statement Parsers
 func parseSpawn(tokens []Token, pos *int) Statement {
-	fmt.Println("we ar at parseSpawn func")
+
 	expectType(tokens, pos, SPAWN)
-	exp := parseExpr(tokens, pos)
-	return SpawnStmt{Call: exp}
+	t := tokens[*pos]
+	expr := parseExpr(tokens, pos)
+	call, ok := expr.(CallExpr)
+	if !ok {
+		return BadStmt{
+			Msg: fmt.Sprintf("spawn expects function call at %d:%d", t.Line, t.Column),
+		}
+	}
+
+	return SpawnStmt{Call: call}
 }
 
 func parseIf(tokens []Token, pos *int) Statement {
