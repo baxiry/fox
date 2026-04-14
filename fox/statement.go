@@ -39,7 +39,7 @@ type Assign struct {
 
 type VarDeclar struct {
 	Name  string
-	Type  Type
+	Type  *Type
 	Value Expression
 }
 
@@ -114,9 +114,9 @@ func parseVarDeclar(tokens []Token, pos *int) Statement {
 		value = parseExpr(tokens, pos)
 	}
 
-	return VarDeclar{
+	return &VarDeclar{
 		Name:  nameTok.Lexeme,
-		Type:  *typ,
+		Type:  typ,
 		Value: value,
 	}
 }
@@ -219,7 +219,7 @@ func parseFor(tokens []Token, pos *int) Statement {
 
 	// CONDITION
 	if tokens[*pos].Type != SEMICOLON && tokens[*pos].Type != OPN_BRACE {
-		forStmt.Cond = parseExprUntil(tokens, pos, ";")
+		forStmt.Cond = parseExpr(tokens, pos) // parseExprUntil(tokens, pos, ";")
 	}
 
 	expectType(tokens, pos, SEMICOLON)
@@ -402,7 +402,7 @@ func parseExprStatement(tokens []Token, pos *int) Statement {
 }
 
 func parseAssign(tokens []Token, pos *int) Statement {
-	target := parsePrimary(tokens, pos)
+	target := parsePostfix(tokens, pos)
 
 	switch target.(type) {
 	case IdentExpr, *IdentExpr, FieldAccessExpr, *FieldAccessExpr:

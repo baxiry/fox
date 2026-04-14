@@ -111,15 +111,10 @@ func parsePrimary(tokens []Token, pos *int) Expression {
 	tok = tokens[*pos]
 	switch tok.Type {
 	case IDENT:
-		name := tok.Lexeme
 		*pos++
 		if *pos < len(tokens) && tokens[*pos].Type == OPN_PAREN {
 			return parseCall(tok.Lexeme, tokens, pos)
 		}
-		if tokens[*pos].Type == OPN_BRACE {
-			return parseStructLiteral(tokens, pos, name)
-		}
-
 		return IdentExpr{Name: tok.Lexeme}
 
 	case INT, FLOAT:
@@ -383,14 +378,14 @@ func parseVarDecl(tokens []Token, pos *int) VarDeclar {
 
 		return VarDeclar{
 			Name:  name.Lexeme,
-			Type:  Type{Name: typeName.Lexeme},
+			Type:  &Type{Name: typeName.Lexeme},
 			Value: value,
 		}
 	}
 
 	return VarDeclar{
 		Name:  name.Lexeme,
-		Type:  Type{Name: typeName.Lexeme},
+		Type:  &Type{Name: typeName.Lexeme},
 		Value: nil,
 	}
 }
@@ -400,9 +395,12 @@ func parseStructLiteral(tokens []Token, pos *int, typeName string) Expression {
 
 	fields := []FieldInit{}
 
-	for tokens[*pos].Type != CLS_BRACE {
+	//for tokens[*pos].Type != CLS_BRACE {
+	for *pos < len(tokens) && tokens[*pos].Type != CLS_BRACE {
 
-		if tokens[*pos].Type == IDENT && tokens[*pos+1].Type == COLON {
+		// if tokens[*pos].Type == IDENT && tokens[*pos+1].Type == COLON {
+		if *pos+1 < len(tokens) && tokens[*pos].Type == IDENT && tokens[*pos+1].Type == COLON {
+
 			name := expectIdent(tokens, pos)
 
 			expectType(tokens, pos, COLON)

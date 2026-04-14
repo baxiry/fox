@@ -15,16 +15,28 @@ type Obj struct {
     value int
 }
 
-fn Update(name Name, age Age, info *Info) User {
-
-    name  = "adam"
+fn Vars() {
+    name := "adam"
     age = 34
     info  = "someInfo" 
+
+	 var obj Obj
+	 var i int
+	 var i int = 10
+	 var i = 10 + 10
+}
+
+
+fn access() {
 
     user := User
     user.name = name
     user.age = age
     user.info = info
+
+}
+
+fn Call(name Name, age Age, info *Info) User {
 
     do(a,b,c)
     ptrfunc(*a,*b,*c)
@@ -50,56 +62,16 @@ fn bad() *Obj {
     return &o    
 }
 
-fn bad2(o *Obj) *Obj {
-    return &o    
-}
-
 fn parallel() {
     x := Obj
     spawn worker(&x)
+
+
+    spawn a
+    spawn a + b
+    spawn &x
 }
 
-fn Loops(x X, y Y, z *Z) Data, int  {
-    data := Data
-    x=X
-
-
-    for i:=0; i<10; i = i-1 {
-       data.x = i
-    }
-
-    for i:=0; i<10; i = i+1 {
-       data.x = i
-    }
-
-    i:=0
-    for ; i<10; i = i+1 {
-       data.x = i
-    }
-
-    for i:=0; ; i=i+1 {
-       data.x = i
-       if i == 10 {
-           break
-       }
-    }
-
-    for i:= 0; i <10; {
-       data.x = i
-       i =i+ 1
-    }
-
-    if i == 10 {
-        i= i + 1
-        if i == 100 {
-            return data, 100
-        }
-    } 
-
-    for {break}
-
-    return data, 100
-}
 
 fn grops() {
     a * (b + c)
