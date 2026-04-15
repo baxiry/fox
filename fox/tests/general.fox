@@ -6,6 +6,7 @@ import(
    io 
 )
 
+
 type X struct {
     a int
     b int
@@ -15,17 +16,22 @@ type Obj struct {
     value int
 }
 
+var obj Obj
+var a int
+var b int = 10
+var c = 10 + 10
+var d = 10 + (8*10)
+
 fn Vars() {
+	var obj Obj
+	var i int
+	var i int = 10
+	var i = 10 + 10
+
     name := "adam"
     age = 34
     info  = "someInfo" 
-
-	 var obj Obj
-	 var i int
-	 var i int = 10
-	 var i = 10 + 10
 }
-
 
 fn access() {
 
@@ -56,11 +62,6 @@ fn parent() {
 }
 
 fn worker(p *Obj) {}
-
-fn bad() *Obj {
-    o := Obj
-    return &o    
-}
 
 fn parallel() {
     x := Obj

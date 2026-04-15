@@ -2,6 +2,7 @@ package main
 
 import (
 	"fmt"
+	"fox/aster"
 	"os"
 
 	"github.com/kr/pretty"
@@ -17,10 +18,15 @@ func main() {
 	sdata := string(data)
 	fmt.Println("input src:\n", sdata)
 
-	tokens := Lexer(sdata)
+	tokens := aster.Lexer(sdata)
 
-	//	for k, v := range tokens {	fmt.Print(k, " ", v.Type, " ", v.Lexeme, ", ")} println()
+	/*
+		for k, v := range tokens {
+			fmt.Print(k, " ", v.Type, " ", v.Lexeme, ", ")
+		}
+		println()
+	*/
 
 	fmt.Println("\nresult as AST:")
-	pretty.Print(astBuilder(tokens))
+	pretty.Print(aster.Builder(tokens))
 }

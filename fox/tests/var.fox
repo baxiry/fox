@@ -1,6 +1,19 @@
+
+var obj Obj
+var i int
+var i int = 10
+var i = 10 + 10
+
+
 fn Vars() {
 	 var obj Obj
 	 var i int
 	 var i int = 10
 	 var i = 10 + 10
+
+    name := "adam"
+    age = 34
+    info  = "someInfo" 
 }
+
+

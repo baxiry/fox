@@ -1,4 +1,4 @@
-package main
+package aster
 
 import (
 	"fmt"
@@ -492,6 +492,9 @@ func (tt TokenType) String() string {
 		return "FOR"
 	case IF:
 		return "IF"
+
+	case VAR:
+		return "VAR"
 
 		// Delimiters
 	case OPN_PAREN:

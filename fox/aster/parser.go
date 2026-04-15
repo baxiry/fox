@@ -1,4 +1,4 @@
-package main
+package aster
 
 import (
 	"fmt"
@@ -240,12 +240,12 @@ func parseExpr(tokens []Token, pos *int) Expression {
 }
 
 // Functions
-func parseFunc(tokens []Token, pos *int) FuncDecl {
-	funcNode := FuncDecl{}
+func parseFunc(tokens []Token, pos *int) Func {
+	funcNode := Func{}
 
 	// parse func word then name func
 	expectType(tokens, pos, FUNC)
-	funcNode.Name = expectIdent(tokens, pos).Lexeme
+	funcNode.FuncName = expectIdent(tokens, pos).Lexeme
 
 	// parse open paren ( then params
 	expectType(tokens, pos, OPN_PAREN)
@@ -262,7 +262,7 @@ func parseFunc(tokens []Token, pos *int) FuncDecl {
 
 		typ := parseType(tokens, pos)
 
-		funcNode.Params = append(funcNode.Params, ParamDecl{
+		funcNode.Params = append(funcNode.Params, Param{
 			Name: name,
 			Type: typ,
 		})
@@ -329,14 +329,14 @@ func parseImport(tokens []Token, pos *int) []string {
 	return libs
 }
 
-func parseStruct(tokens []Token, pos *int) StructDecl {
+func parseStruct(tokens []Token, pos *int) Struct {
 
 	expectType(tokens, pos, TYPE)
 	name := expectIdent(tokens, pos)
 	expectType(tokens, pos, STRUCT)
 	expectType(tokens, pos, OPN_BRACE)
 
-	fields := []FieldDecl{}
+	fields := []Field{}
 	for {
 		skip(tokens, pos)
 
@@ -351,42 +351,52 @@ func parseStruct(tokens []Token, pos *int) StructDecl {
 	}
 
 	expectType(tokens, pos, CLS_BRACE)
-	return StructDecl{Name: name.Lexeme, Fields: fields}
+	return Struct{Name: name.Lexeme, Fields: fields}
 }
 
-func parseField(tokens []Token, pos *int) FieldDecl {
+func parseField(tokens []Token, pos *int) Field {
 	nameTok := expectIdent(tokens, pos)
 	typeTok := expectIdent(tokens, pos)
-	return FieldDecl{Name: nameTok.Lexeme, Type: typeTok.Lexeme}
+	return Field{Name: nameTok.Lexeme, Type: typeTok.Lexeme}
 }
 
-func parseFieldAssign(tokens []Token, pos *int) FieldDecl {
+func parseFieldAssign(tokens []Token, pos *int) Field {
 	nameTok := expectIdent(tokens, pos)
 	typeTok := expectIdent(tokens, pos)
-	return FieldDecl{Name: nameTok.Lexeme, Type: typeTok.Lexeme}
+	return Field{Name: nameTok.Lexeme, Type: typeTok.Lexeme}
 }
 
 func parseVarDecl(tokens []Token, pos *int) VarDeclar {
+	// 1. Consume the 'var' keyword
+	if tokens[*pos].Type == VAR {
+		*pos++
+	}
 
+	// 2. Expect the variable name (e.g., 'obj' or 'i')
 	name := expectIdent(tokens, pos)
-	expectType(tokens, pos, DEFINE) // :=
 
-	typeName := expectIdent(tokens, pos)
+	var typeNode *Type = nil
+	var value Expression = nil
 
-	if tokens[*pos].Type == OPN_BRACE {
-		value := parseStructLiteral(tokens, pos, "ok")
+	// 3. Optional: Check if the next token is a Type (IDENT)
+	// In 'var i int', the second IDENT is the type
+	if tokens[*pos].Type == IDENT {
+		typeName := expectIdent(tokens, pos)
+		typeNode = &Type{Name: typeName.Lexeme}
+	}
 
-		return VarDeclar{
-			Name:  name.Lexeme,
-			Type:  &Type{Name: typeName.Lexeme},
-			Value: value,
-		}
+	// 4. Optional: Check for assignment operator '='
+	// Note: Use ASSIGN (=) here, not DEFINE (:=)
+	if tokens[*pos].Type == ASSIGN {
+		*pos++
+		// Parse the expression on the right side
+		value = parseExpr(tokens, pos)
 	}
 
 	return VarDeclar{
 		Name:  name.Lexeme,
-		Type:  &Type{Name: typeName.Lexeme},
-		Value: nil,
+		Type:  typeNode,
+		Value: value,
 	}
 }
 
@@ -446,7 +456,7 @@ type FieldInit struct {
 }
 
 // AST Builder
-func astBuilder(tokens []Token) *AST {
+func Builder(tokens []Token) *AST {
 	p := 0
 	pos := &p
 	ast := &AST{}
@@ -467,6 +477,9 @@ func astBuilder(tokens []Token) *AST {
 
 		case "fn":
 			ast.Funcs = append(ast.Funcs, parseFunc(tokens, pos))
+
+		case "var":
+			ast.Vars = append(ast.Vars, parseVarDecl(tokens, pos))
 
 		default:
 			*pos++

@@ -1,4 +1,4 @@
-package main
+package aster
 
 type UnaryExpr struct {
 	Op   string // like "*", "&"

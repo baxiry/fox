@@ -1,4 +1,4 @@
-package main
+package aster
 
 import (
 	"fmt"
@@ -13,7 +13,7 @@ type ParseError struct {
 	Msg    string
 }
 
-func Dump(v interface{}) {
+func Dump(v any) {
 	dumpValue(reflect.ValueOf(v), 0)
 }
 
@@ -26,7 +26,7 @@ func dumpValue(val reflect.Value, indent int) {
 	}
 
 	switch val.Kind() {
-	case reflect.Ptr:
+	case reflect.Pointer:
 		if val.IsNil() {
 			fmt.Print("nil")
 			return

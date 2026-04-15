@@ -1,10 +1,11 @@
-package main
+package aster
 
 type AST struct {
 	PackageName string
 	Imports     []string
-	Structs     []StructDecl
-	Funcs       []FuncDecl
+	Structs     []Struct
+	Funcs       []Func
+	Vars        []VarDeclar
 }
 
 type Type struct {
@@ -12,12 +13,12 @@ type Type struct {
 	PtrDepth int
 }
 
-type StructDecl struct {
+type Struct struct {
 	Name   string
-	Fields []FieldDecl
+	Fields []Field
 }
 
-type FieldDecl struct {
+type Field struct {
 	Name string
 	Type string
 }
@@ -26,14 +27,16 @@ type FrameBlock struct {
 	Stmts []Statement
 }
 
-type FuncDecl struct {
-	Name    string
-	Params  []ParamDecl
-	Returns []ReturnSig
-	Body    *FrameBlock // BlockStmt
+func (FrameBlock) isStat() {}
+
+type Func struct {
+	FuncName string
+	Params   []Param
+	Returns  []ReturnSig
+	Body     *FrameBlock // BlockStmt
 }
 
-type ParamDecl struct {
+type Param struct {
 	Name string
 	Type Type
 }

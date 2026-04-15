@@ -1,4 +1,4 @@
-package main
+package aster
 
 import "fmt"
 
@@ -19,9 +19,10 @@ type ReturnStmt struct {
 }
 
 type IfStmt struct {
-	Cond Expression
-	Then *FrameBlock
-	Else *FrameBlock
+	Cond    Expression
+	Then    *FrameBlock
+	Else    Statement
+	HasElse bool
 }
 
 type ForStmt struct {
@@ -73,7 +74,7 @@ func (ForStmt) isStat()      {}
 func (Assign) isStat()       {}
 func (Declar) isStat()       {}
 func (ExprStmt) isStat()     {}
-func (SpawnStmt) isStat()    {}
+func (*SpawnStmt) isStat()   {}
 
 // Parsing Helpers
 func isTypeStart(tok Token) bool {
@@ -104,8 +105,8 @@ func parseVarDeclar(tokens []Token, pos *int) Statement {
 
 	// case one & three, type
 	if isTypeStart(tokens[*pos]) {
-		t := parseType(tokens, pos)
-		typ = &t
+		tmp := parseType(tokens, pos)
+		typ = &tmp
 	}
 
 	// case 3 & 4 =
@@ -134,7 +135,7 @@ func parseSpawn(tokens []Token, pos *int) Statement {
 		}
 	}
 
-	return SpawnStmt{Call: call}
+	return &SpawnStmt{Call: call}
 }
 
 func parseIf(tokens []Token, pos *int) Statement {
@@ -142,13 +143,27 @@ func parseIf(tokens []Token, pos *int) Statement {
 	cond := parseExpr(tokens, pos)
 	thenBlock := parseBlock(tokens, pos)
 
-	var elseBlock *FrameBlock
+	var elseStmt Statement = nil // Using Statement interface for flexibility
+
 	if *pos < len(tokens) && tokens[*pos].Type == ELSE {
 		*pos++
-		elseBlock = parseBlock(tokens, pos)
+
+		// If another IF follows ELSE, it's an 'else if'
+		if *pos < len(tokens) && tokens[*pos].Type == IF {
+			// Recursive call to build the chain
+			elseStmt = parseIf(tokens, pos)
+		} else {
+			// Normal ELSE block
+			elseStmt = parseBlock(tokens, pos)
+		}
 	}
 
-	return IfStmt{Cond: cond, Then: thenBlock, Else: elseBlock}
+	// Always return a pointer to satisfy the Statement interface
+	return &IfStmt{
+		Cond: cond,
+		Then: thenBlock,
+		Else: elseStmt,
+	}
 }
 
 func parseExprUntil(tokens []Token, pos *int, stop string) Expression {

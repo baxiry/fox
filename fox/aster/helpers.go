@@ -1,4 +1,4 @@
-package main
+package aster
 
 import (
 	"fmt"
@@ -47,37 +47,4 @@ func expectType(tokens []Token, pos *int, expected TokenType) Token {
 	}
 	*pos++
 	return tok
-}
-
-/*
-func isAssign(tokens []Token, pos int) bool {
-	for i := pos; i < len(tokens); i++ {
-		if tokens[i].Type == ASSIGN {
-			return true
-		}
-		if tokens[i].Type == SEMICOLON || tokens[i].Type == CLS_BRACE {
-			return false
-		}
-	}
-	return false
-}
-func isDefine(tokens []Token, pos int) bool {
-	for i := pos; i < len(tokens); i++ {
-		if tokens[i].Type == DEFINE {
-			return true
-		}
-		if tokens[i].Type == SEMICOLON || tokens[i].Type == CLS_BRACE {
-			return false
-		}
-	}
-	return false
-}
-*/
-
-func (t Token) Is(tt TokenType) bool {
-	return t.Type == tt
-}
-
-func (t Token) IsValue(val string) bool {
-	return t.Lexeme == val
 }

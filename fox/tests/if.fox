@@ -1,5 +1,22 @@
-fn do(){
+fn IfElseIf(){
    if !ok {}
-   if ok {} else {}
+
+   if ok {
+
+   }
+
+   if !ok {
+
+   } else {
+
+   }
+
+   if !ok {
+
+   } else if ok {
+
+   } else {
+
+   }
 }
 
