@@ -121,14 +121,22 @@ func (p *Parser) parsePrimary() Expression {
 	}
 	tok := p.tokens[p.pos]
 
-	tok = p.tokens[p.pos]
 	switch tok.Type {
 	case IDENT:
 		p.pos++
+		// Check for function call: name()
 		if p.pos < len(p.tokens) && p.tokens[p.pos].Type == OPN_PAREN {
 			return p.parseCall(tok.Lexeme)
 		}
+		// Check for struct literal: User{}
+		if p.pos < len(p.tokens) && p.tokens[p.pos].Type == OPN_BRACE {
+			return p.parseStructLiteral(tok.Lexeme)
+		}
 		return IdentExpr{Name: tok.Lexeme}
+
+	case BLANK:
+		p.pos++
+		return IdentExpr{Name: "_"}
 
 	case INT, FLOAT:
 		p.pos++
@@ -245,6 +253,21 @@ func (p *Parser) parseAdd() Expression {
 		left = &BinaryExpr{Left: left, Op: op.Lexeme, Right: right}
 	}
 	return left
+}
+
+func (p *Parser) parseExprList() []Expression {
+	exprs := []Expression{}
+
+	// Parse the first expression
+	exprs = append(exprs, p.parseExpr())
+
+	// Keep parsing as long as there are commas
+	for p.pos < len(p.tokens) && p.tokens[p.pos].Type == COMMA {
+		p.pos++ // consume COMMA
+		exprs = append(exprs, p.parseExpr())
+	}
+
+	return exprs
 }
 
 // top-level expression
@@ -415,41 +438,32 @@ func (p *Parser) parseVarDecl() VarDeclar {
 
 func (p *Parser) parseStructLiteral(typeName string) Expression {
 	p.expectType(OPN_BRACE)
-
 	fields := []FieldInit{}
-
-	//for p.tokens[p.pos].Type != CLS_BRACE {
+	// Loop until we find the closing brace or reach end of tokens
 	for p.pos < len(p.tokens) && p.tokens[p.pos].Type != CLS_BRACE {
-
-		// if p.tokens[p.pos].Type == IDENT && p.tokens[p.pos+1].Type == COLON {
+		// Check for named field: Key: value
 		if p.pos+1 < len(p.tokens) && p.tokens[p.pos].Type == IDENT && p.tokens[p.pos+1].Type == COLON {
-
-			name := p.expectIdent()
-
+			nameTok := p.expectIdent()
 			p.expectType(COLON)
 			value := p.parseExpr()
-
 			fields = append(fields, FieldInit{
-				Name:  name.Lexeme,
+				Name:  nameTok.Lexeme,
 				Value: value,
 			})
 		} else {
-			// shorthand or empty
+			// Handle positional value or expressions
 			value := p.parseExpr()
-
 			fields = append(fields, FieldInit{
 				Name:  "",
 				Value: value,
 			})
 		}
-
-		if p.tokens[p.pos].Type == COMMA {
+		// Consume optional comma after field
+		if p.pos < len(p.tokens) && p.tokens[p.pos].Type == COMMA {
 			p.expectType(COMMA)
 		}
 	}
-
 	p.expectType(CLS_BRACE)
-
 	return StructLiteral{
 		Type:   Type{Name: typeName},
 		Fields: fields,

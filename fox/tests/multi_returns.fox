@@ -1,0 +1,27 @@
+
+type User struct {
+   name string
+   age int
+}
+
+type Obj struct {
+   class string
+   size int
+}
+
+fn do() User , Obj {
+   var u User
+   var o Obj
+   return u, o
+}
+
+fn multiDefAss() {
+   u, o := User{name:"adam",age: 23}, Obj{class: "A", size:90}
+   u, o = do() 
+   x, y := do()
+   _ , y = do()
+   x , _ = do()
+   _,_ = do()
+   g, _ := do()
+   _, h := do()
+}

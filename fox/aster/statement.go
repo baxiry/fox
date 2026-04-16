@@ -45,9 +45,9 @@ type VarDeclar struct {
 }
 
 type Declar struct {
-	Name  Expression
-	Op    string
-	Value Expression
+	Names  []Expression
+	Op     string
+	Values []Expression
 }
 
 type ExprStmt struct {
@@ -458,9 +458,9 @@ func (p *Parser) parseDefine() Statement {
 	value := p.parseExpr()
 
 	return Declar{
-		Name:  target,
-		Op:    opTok.Lexeme,
-		Value: value,
+		Names:  []Expression{target},
+		Op:     opTok.Lexeme,
+		Values: []Expression{value},
 	}
 }
 

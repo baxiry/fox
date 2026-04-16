@@ -13,16 +13,16 @@ type TypeChecker struct {
 	Errors          []string
 }
 
-// Symbol
+// Sympol
 type Symbol struct {
-	Name       string
-	Type       aster.Type
-	ScopeID    string
-	Kind       string        // "var", "func", "struct"
-	Params     []aster.Param // For functions
-	ReturnType string        // For functions
-	Fields     []aster.Field // For structs
-	IsShared   bool          // shered btwn threads
+	Name        string
+	Type        aster.Type
+	ScopeID     string
+	Kind        string        // "var", "func", "struct"
+	Params      []aster.Param // For functions
+	ReturnTypes []aster.Type  // Changed: Slice of types for multiple returns
+	Fields      []aster.Field // For structs
+	IsShared    bool
 }
 
 // SymbolTable
@@ -99,37 +99,43 @@ func (tc *TypeChecker) checkBinaryExpr(expr *aster.BinaryExpr) string {
 
 func (tc *TypeChecker) inferType(expr aster.Expression) string {
 	switch e := expr.(type) {
+	// ... (Existing cases)
 
-	// 1. Literal Numbers (Default to int for now)
-	case aster.NumberExpr:
-		return "int"
-
-	// 2. Literal Strings
-	case aster.StringExpr:
-		return "string"
-
-	// 3. Identifiers (Variables/Constants)
-	case aster.IdentExpr:
-		sym, exists := tc.CurrentTable.Resolve(e.Name)
-		if !exists {
-			tc.Errors = append(tc.Errors, fmt.Sprintf("undefined: %s", e.Name))
+	case aster.CallExpr:
+		types := tc.inferReturnTypes(e)
+		if len(types) > 1 {
+			tc.Errors = append(tc.Errors, "multiple-value context error")
 			return "error"
 		}
-		return sym.Type.Name
-
-	// 4. Nested Binary Expressions (Recursive call)
-	case *aster.BinaryExpr:
-		return tc.checkBinaryExpr(e)
-
-	// 5. Unary Expressions (like &x or *x)
-	case *aster.UnaryExpr:
-		return tc.checkUnaryExpr(e)
+		if len(types) == 0 {
+			return "void" // Or handle functions with no return
+		}
+		return types[0]
 
 	default:
 		return "unknown"
 	}
 }
 
+func (tc *TypeChecker) inferReturnTypes(expr aster.Expression) []string {
+	if call, ok := expr.(aster.CallExpr); ok {
+		funcSym, exists := tc.GlobalTable.Resolve(call.Callee.(aster.IdentExpr).Name)
+		if !exists {
+			tc.Errors = append(tc.Errors, fmt.Sprintf("undefined function: %s", call.Callee))
+			return []string{"error"}
+		}
+
+		// Return all types from the slice we just updated in Symbol
+		var types []string
+		for _, t := range funcSym.ReturnTypes {
+			types = append(types, t.Name)
+		}
+		return types
+	}
+
+	// For non-call expressions, it's always a single type
+	return []string{tc.inferType(expr)}
+}
 func (tc *TypeChecker) checkVarDeclar(decl *aster.VarDeclar) {
 	var finalType string
 
@@ -164,6 +170,35 @@ func (tc *TypeChecker) checkVarDeclar(decl *aster.VarDeclar) {
 	if err != nil {
 		tc.Errors = append(tc.Errors, err.Error())
 	}
+}
+
+func (tc *TypeChecker) checkFieldAccess(expr aster.FieldAccessExpr) string {
+	objType := tc.inferType(expr.Object)
+	if objType == "error" {
+		return "error"
+	}
+
+	// Auto-dereference: if type is "*User", look up "User"
+	actualTypeName := objType
+	if len(objType) > 0 && objType[0] == '*' {
+		actualTypeName = objType[1:]
+	}
+
+	structSym, exists := tc.GlobalTable.Resolve(actualTypeName)
+	if !exists {
+		tc.Errors = append(tc.Errors, fmt.Sprintf("type %s is not defined", actualTypeName))
+		return "error"
+	}
+
+	// Check fields within the resolved struct symbol
+	for _, field := range structSym.Fields {
+		if field.Name == expr.Field {
+			return field.Type // Found the field, return its type
+		}
+	}
+
+	tc.Errors = append(tc.Errors, fmt.Sprintf("type %s has no field %s", actualTypeName, expr.Field))
+	return "error"
 }
 
 func (tc *TypeChecker) checkFuncDecl(fn *aster.Func) {
@@ -273,62 +308,35 @@ func (tc *TypeChecker) checkDeclar(decl aster.Declar) {
 }
 
 func (tc *TypeChecker) checkAssign(asgn aster.Assign) {
-	// 1. Get the type of the target (Left side)
-	// targetType will search for the variable in the SymbolTable
 	targetType := tc.inferType(asgn.Target)
-	if targetType == "error" {
-		return
+
+	var rhsTypes []aster.Type
+	if call, ok := asgn.Value.(aster.CallExpr); ok {
+		funcSym, exists := tc.GlobalTable.Resolve(call.Callee.(aster.IdentExpr).Name)
+		if exists && funcSym.Kind == "func" {
+			// Direct access to the slice, no string manipulation needed
+			rhsTypes = funcSym.ReturnTypes
+		}
+	} else {
+		// Wrap single type into a slice for consistency
+		singleType := tc.inferType(asgn.Value)
+		rhsTypes = []aster.Type{{Name: singleType}}
 	}
 
-	// 2. Get the type of the value (Right side)
-	valueType := tc.inferType(asgn.Value)
-	if valueType == "error" {
-		return
-	}
-
-	// 3. Strict Check: Target and Value must have the exact same type
-	if targetType != valueType {
-		msg := fmt.Sprintf("type error: cannot assign %s to variable of type %s", valueType, targetType)
+	// 3. Validation
+	if len(rhsTypes) > 1 {
+		msg := fmt.Sprintf("assignment mismatch: %d values but only 1 target", len(rhsTypes))
 		tc.Errors = append(tc.Errors, msg)
-	}
-}
-
-func (tc *TypeChecker) checkFieldAccess(expr aster.FieldAccessExpr) string {
-	// 1. Get the type of the object (e.g., "user")
-	objType := tc.inferType(expr.Object)
-	if objType == "error" {
-		return "error"
+		return
 	}
 
-	// 2. Lookup the Struct definition in the Global Table
-	// We assume objType is the name of the Struct (e.g., "User")
-	structSym, exists := tc.GlobalTable.Resolve(objType)
-	if !exists {
-		tc.Errors = append(tc.Errors, fmt.Sprintf("type %s is not defined", objType))
-		return "error"
-	}
-
-	// 3. Check if the field exists within this Struct
-	// Here we need to check the Fields of the Struct found in the AST
-	found := false
-	fieldType := ""
-
-	// We access the original Struct AST through the Symbol if stored
-	// For now, let's assume we can fetch field info from our Global Symbol
-	for _, field := range structSym.Fields {
-		if field.Name == expr.Field {
-			found = true
-			fieldType = field.Type
-			break
+	if len(rhsTypes) == 1 {
+		currentRhs := rhsTypes[0].Name
+		if targetType != "error" && currentRhs != "error" && targetType != currentRhs {
+			msg := fmt.Sprintf("cannot assign %s to %s", currentRhs, targetType)
+			tc.Errors = append(tc.Errors, msg)
 		}
 	}
-
-	if !found {
-		tc.Errors = append(tc.Errors, fmt.Sprintf("Error: type %s has no field %s", objType, expr.Field))
-		return "error"
-	}
-
-	return fieldType
 }
 
 func (tc *TypeChecker) checkStructLiteral(lit aster.StructLiteral) string {
@@ -438,7 +446,7 @@ func (tc *TypeChecker) checkCallExpr(call *aster.CallExpr) string {
 		return "error"
 	}
 
-	// 4. Validate each argument type against parameter type
+	// 5. Validate each argument type against parameter type
 	for i, arg := range call.Args {
 		expectedType := sym.Params[i].Type.Name
 		providedType := tc.inferType(arg)
@@ -450,8 +458,19 @@ func (tc *TypeChecker) checkCallExpr(call *aster.CallExpr) string {
 		}
 	}
 
-	// 5. Return the function's return type
-	return sym.ReturnType
+	// 6. Handle the new ReturnTypes slice
+	if len(sym.ReturnTypes) == 0 {
+		return "void"
+	}
+
+	if len(sym.ReturnTypes) > 1 {
+		// In a single-value context, returning multiple values is an error
+		// This string will be caught by the caller (like in assignments or binary exprs)
+		return "multi_value_error"
+	}
+
+	// Return the single available type name
+	return sym.ReturnTypes[0].Name
 }
 
 func (tc *TypeChecker) checkForStmt(stmt *aster.ForStmt) {

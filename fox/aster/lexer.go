@@ -80,8 +80,8 @@ const (
 
 	TRUE
 	FALSE
-
 	SPAWN
+	BLANK
 	COMMENT
 )
 
@@ -553,6 +553,8 @@ func (tt TokenType) String() string {
 		return "DOT"
 	case COLON:
 		return "COLON"
+	case BLANK:
+		return "BLANK"
 	case COMMENT:
 		return "COMMENT"
 

@@ -74,37 +74,30 @@ func (p *Parser) parseCall(name string) CallExpr {
 }
 
 func (p *Parser) parseExprOrAssign() Statement {
-	target := p.parseBinary(0)
+	// 1. Try to parse a list of expressions (LHS)
+	exprs := p.parseExprList()
 
+	// 2. Check for assignment or definition operators
 	if p.pos < len(p.tokens) {
-		switch p.tokens[p.pos].Type {
+		tok := p.tokens[p.pos]
+		if tok.Type == DEFINE || tok.Type == ASSIGN {
+			p.pos++ // consume := or =
 
-		case ASSIGN:
-			p.pos++
-			value := p.parseExpr()
-			return Assign{
-				Target: target,
-				Op:     "=",
-				Value:  value,
-			}
+			// 3. Parse the RHS as a list
+			values := p.parseExprList()
 
-		case DEFINE:
-			p.pos++
-			ident, ok := target.(IdentExpr)
-			if !ok {
-				panic("left side of := must be identifier")
-			}
-			value := p.parseExpr()
 			return Declar{
-				Name:  ident,
-				Value: value,
-				Op:    DEFINE.String(),
+				Names:  exprs,
+				Op:     tok.Lexeme,
+				Values: values,
 			}
 		}
 	}
 
-	return ExprStmt{Expr: target}
+	// 4. If no operator, return as an Expression Statement
+	return ExprStmt{Expr: exprs[0]}
 }
+
 func lookAheadIsAssign(tokens []Token, pos int) bool {
 
 	if pos+1 >= len(tokens) {
