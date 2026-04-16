@@ -4,40 +4,53 @@ import (
 	"fmt"
 )
 
-func skipNewlines(tokens []Token, pos *int) {
-	for *pos < len(tokens) && tokens[*pos].Type == NEW_LINE {
-		*pos++
+type Parser struct {
+	tokens []Token
+	pos    int
+}
+
+// New Parser
+func NewParser() *Parser {
+	return &Parser{
+		tokens: make([]Token, 0),
+		pos:    0,
 	}
 }
 
-func parseUnary(tokens []Token, pos *int) Expression {
+func (p *Parser) skipNewlines() {
+	for p.pos < len(p.tokens) && p.tokens[p.pos].Type == NEW_LINE {
+		p.pos++
+	}
+}
 
-	if *pos < len(tokens) {
-		switch tokens[*pos].Type {
+func (p *Parser) parseUnary() Expression {
+
+	if p.pos < len(p.tokens) {
+		switch p.tokens[p.pos].Type {
 
 		case NOT, MINUS, STAR, AMP:
-			op := tokens[*pos]
-			*pos++
-			return UnaryExpr{Op: op.Lexeme, Expr: parseUnary(tokens, pos)}
+			op := p.tokens[p.pos]
+			p.pos++
+			return UnaryExpr{Op: op.Lexeme, Expr: p.parseUnary()}
 		}
 	}
 
-	return parsePostfix(tokens, pos)
+	return p.parsePostfix()
 }
 
-func parsePostfix(tokens []Token, pos *int) Expression {
-	skip(tokens, pos)
+func (p *Parser) parsePostfix() Expression {
+	p.skip()
 
 	// IMPORTANT: start from primary ONLY (no unary call here)
-	expr := parsePrimary(tokens, pos)
+	expr := p.parsePrimary()
 
-	for *pos < len(tokens) {
-		switch tokens[*pos].Type {
+	for p.pos < len(p.tokens) {
+		switch p.tokens[p.pos].Type {
 
 		case DOT:
-			*pos++
-			skip(tokens, pos)
-			field := expectIdent(tokens, pos).Lexeme
+			p.pos++
+			p.skip()
+			field := p.expectIdent().Lexeme
 			expr = FieldAccessExpr{Object: expr, Field: field}
 
 		default:
@@ -48,21 +61,21 @@ func parsePostfix(tokens []Token, pos *int) Expression {
 	return expr
 }
 
-func parseBinary(tokens []Token, pos *int, minPrec int) Expression {
-	left := parseUnary(tokens, pos)
+func (p *Parser) parseBinary(minPrec int) Expression {
+	left := p.parseUnary()
 
-	for *pos < len(tokens) {
+	for p.pos < len(p.tokens) {
 
-		op := tokens[*pos]
+		op := p.tokens[p.pos]
 
 		prec, ok := precedence(op.Type)
 		if !ok || prec < minPrec {
 			break
 		}
 
-		*pos++ // consume operator
+		p.pos++ // consume operator
 
-		right := parseBinary(tokens, pos, prec+1)
+		right := p.parseBinary(prec + 1)
 
 		left = BinaryExpr{
 			Left:  left,
@@ -102,67 +115,67 @@ func isUnaryStart(tok Token) bool {
 		tok.Type == MINUS
 }
 
-func parsePrimary(tokens []Token, pos *int) Expression {
-	if *pos >= len(tokens) {
+func (p *Parser) parsePrimary() Expression {
+	if p.pos >= len(p.tokens) {
 		panic("unexpected end of input while parsing expression")
 	}
-	tok := tokens[*pos]
+	tok := p.tokens[p.pos]
 
-	tok = tokens[*pos]
+	tok = p.tokens[p.pos]
 	switch tok.Type {
 	case IDENT:
-		*pos++
-		if *pos < len(tokens) && tokens[*pos].Type == OPN_PAREN {
-			return parseCall(tok.Lexeme, tokens, pos)
+		p.pos++
+		if p.pos < len(p.tokens) && p.tokens[p.pos].Type == OPN_PAREN {
+			return p.parseCall(tok.Lexeme)
 		}
 		return IdentExpr{Name: tok.Lexeme}
 
 	case INT, FLOAT:
-		*pos++
+		p.pos++
 		return NumberExpr{Literal: tok.Lexeme}
 
 	case STRING:
-		*pos++
+		p.pos++
 		return StringExpr{Literal: tok.Lexeme}
 
 	case OPN_PAREN:
-		*pos++
-		expr := parseExpr(tokens, pos)
-		expectType(tokens, pos, CLS_PAREN)
+		p.pos++
+		expr := p.parseExpr()
+		p.expectType(CLS_PAREN)
 		return expr
 
 	default:
 		if tok.Type == STAR {
-			return parseUnary(tokens, pos)
+			return p.parseUnary()
 		}
 		panic(fmt.Sprintf("expected expression at line %d, got %s (%q)", tok.Line, tok.Type, tok.Lexeme))
 	}
 }
 
-func parseType(tokens []Token, pos *int) Type {
+func (p *Parser) parseType() Type {
 
-	if *pos >= len(tokens) {
+	if p.pos >= len(p.tokens) {
 		panic("unexpected end of input while parsing type")
 	}
 
-	if tokens[*pos].Type == AMP { // &
+	if p.tokens[p.pos].Type == AMP { // &
 		panic(fmt.Sprintf(
 			"syntax error at line %d, column %d: cannot use & in parameter signature",
-			tokens[*pos].Line, tokens[*pos].Column,
+			p.tokens[p.pos].Line, p.tokens[p.pos].Column,
 		))
 	}
 
 	ptrDepth := 0
-	for *pos < len(tokens) && tokens[*pos].Type == STAR {
+	for p.pos < len(p.tokens) && p.tokens[p.pos].Type == STAR {
 		ptrDepth++
-		*pos++
+		p.pos++
 	}
 
-	if *pos >= len(tokens) {
+	if p.pos >= len(p.tokens) {
 		panic("unexpected end of input while parsing type after pointers")
 	}
 
-	name := expectIdent(tokens, pos).Lexeme
+	name := p.expectIdent().Lexeme
 
 	return Type{
 		Name:     name,
@@ -171,25 +184,25 @@ func parseType(tokens []Token, pos *int) Type {
 }
 
 // parse * and /
-func parseMul(tokens []Token, pos *int) Expression {
-	left := parseUnary(tokens, pos)
-	for tokens[*pos].Type == STAR || tokens[*pos].Type == SLASH {
-		op := tokens[*pos]
-		*pos++
-		right := parseUnary(tokens, pos)
+func (p *Parser) parseMul() Expression {
+	left := p.parseUnary()
+	for p.tokens[p.pos].Type == STAR || p.tokens[p.pos].Type == SLASH {
+		op := p.tokens[p.pos]
+		p.pos++
+		right := p.parseUnary()
 		left = &BinaryExpr{Left: left, Op: op.Lexeme, Right: right}
 	}
 	return left
 }
 
 // Bitwise AND &
-func parseBitwiseAnd(tokens []Token, pos *int) Expression {
-	left := parseAdd(tokens, pos)
+func (p *Parser) parseBitwiseAnd() Expression {
+	left := p.parseAdd()
 
-	for tokens[*pos].Lexeme == "&" {
-		op := tokens[*pos]
-		*pos++
-		right := parseAdd(tokens, pos)
+	for p.tokens[p.pos].Lexeme == "&" {
+		op := p.tokens[p.pos]
+		p.pos++
+		right := p.parseAdd()
 
 		left = &BinaryExpr{
 			Left:  left,
@@ -202,13 +215,13 @@ func parseBitwiseAnd(tokens []Token, pos *int) Expression {
 }
 
 // Equality == & !=
-func parseEquality(tokens []Token, pos *int) Expression {
-	left := parseBitwiseAnd(tokens, pos)
+func (p *Parser) parseEquality() Expression {
+	left := p.parseBitwiseAnd()
 
-	for tokens[*pos].Lexeme == "==" || tokens[*pos].Lexeme == "!=" {
-		op := tokens[*pos]
-		*pos++
-		right := parseBitwiseAnd(tokens, pos)
+	for p.tokens[p.pos].Lexeme == "==" || p.tokens[p.pos].Lexeme == "!=" {
+		op := p.tokens[p.pos]
+		p.pos++
+		right := p.parseBitwiseAnd()
 
 		left = &BinaryExpr{
 			Left:  left,
@@ -223,44 +236,44 @@ func parseEquality(tokens []Token, pos *int) Expression {
 /// TODO   parseTerm
 
 // parse + and -
-func parseAdd(tokens []Token, pos *int) Expression {
-	left := parseMul(tokens, pos)
-	for tokens[*pos].Lexeme == "+" || tokens[*pos].Lexeme == "-" {
-		op := tokens[*pos]
-		*pos++
-		right := parseMul(tokens, pos)
+func (p *Parser) parseAdd() Expression {
+	left := p.parseMul()
+	for p.tokens[p.pos].Lexeme == "+" || p.tokens[p.pos].Lexeme == "-" {
+		op := p.tokens[p.pos]
+		p.pos++
+		right := p.parseMul()
 		left = &BinaryExpr{Left: left, Op: op.Lexeme, Right: right}
 	}
 	return left
 }
 
 // top-level expression
-func parseExpr(tokens []Token, pos *int) Expression {
-	return parseBinary(tokens, pos, 0)
+func (p *Parser) parseExpr() Expression {
+	return p.parseBinary(0)
 }
 
 // Functions
-func parseFunc(tokens []Token, pos *int) Func {
+func (p *Parser) parseFunc() Func {
 	funcNode := Func{}
 
 	// parse func word then name func
-	expectType(tokens, pos, FUNC)
-	funcNode.FuncName = expectIdent(tokens, pos).Lexeme
+	p.expectType(FUNC)
+	funcNode.FuncName = p.expectIdent().Lexeme
 
 	// parse open paren ( then params
-	expectType(tokens, pos, OPN_PAREN)
+	p.expectType(OPN_PAREN)
 
-	for tokens[*pos].Type != CLS_PAREN {
+	for p.tokens[p.pos].Type != CLS_PAREN {
 		// skip comma
-		if tokens[*pos].Type == COMMA {
-			*pos++
+		if p.tokens[p.pos].Type == COMMA {
+			p.pos++
 			continue
 		}
 
 		// param name
-		name := expectIdent(tokens, pos).Lexeme
+		name := p.expectIdent().Lexeme
 
-		typ := parseType(tokens, pos)
+		typ := p.parseType()
 
 		funcNode.Params = append(funcNode.Params, Param{
 			Name: name,
@@ -269,30 +282,30 @@ func parseFunc(tokens []Token, pos *int) Func {
 	}
 
 	// )
-	expectType(tokens, pos, CLS_PAREN)
+	p.expectType(CLS_PAREN)
 
 	// return signature
-	funcNode.Returns = parseRetSign(tokens, pos)
+	funcNode.Returns = p.parseRetSign()
 
-	funcNode.Body = parseBlock(tokens, pos)
+	funcNode.Body = p.parseBlock()
 
 	return funcNode
 }
 
 // Block Parsing
-func parseBlock(tokens []Token, pos *int) *FrameBlock {
-	expectType(tokens, pos, OPN_BRACE)
+func (p *Parser) parseBlock() *FrameBlock {
+	p.expectType(OPN_BRACE)
 	frameBlock := &FrameBlock{Stmts: []Statement{}}
 
-	skip(tokens, pos)
-	for *pos < len(tokens) && tokens[*pos].Type != CLS_BRACE {
-		skip(tokens, pos)
+	p.skip()
+	for p.pos < len(p.tokens) && p.tokens[p.pos].Type != CLS_BRACE {
+		p.skip()
 
-		frameBlock.Stmts = append(frameBlock.Stmts, parseStatement(tokens, pos))
+		frameBlock.Stmts = append(frameBlock.Stmts, p.parseStatement())
 
-		skip(tokens, pos)
+		p.skip()
 	}
-	expectType(tokens, pos, CLS_BRACE)
+	p.expectType(CLS_BRACE)
 
 	return frameBlock
 }
@@ -300,97 +313,97 @@ func parseBlock(tokens []Token, pos *int) *FrameBlock {
 // Top-Level Parsers
 
 // parse package
-func parsePackage(tokens []Token, pos *int) string {
-	expectType(tokens, pos, PACKAGE)
-	pkg := tokens[*pos].Lexeme
-	*pos++
+func (p *Parser) parsePackage() string {
+	p.expectType(PACKAGE)
+	pkg := p.tokens[p.pos].Lexeme
+	p.pos++
 	return pkg
 }
 
 // import
-func parseImport(tokens []Token, pos *int) []string {
-	expectType(tokens, pos, IMPORT)
-	expectType(tokens, pos, OPN_PAREN)
+func (p *Parser) parseImport() []string {
+	p.expectType(IMPORT)
+	p.expectType(OPN_PAREN)
 
 	libs := []string{}
 
 	for {
-		skipNewlines(tokens, pos)
+		p.skipNewlines()
 
-		if tokens[*pos].Type == CLS_PAREN {
+		if p.tokens[p.pos].Type == CLS_PAREN {
 			break
 		}
 
-		pkg := expectIdent(tokens, pos)
+		pkg := p.expectIdent()
 		libs = append(libs, pkg.Lexeme)
 	}
 
-	expectType(tokens, pos, CLS_PAREN)
+	p.expectType(CLS_PAREN)
 	return libs
 }
 
-func parseStruct(tokens []Token, pos *int) Struct {
+func (p *Parser) parseStruct() Struct {
 
-	expectType(tokens, pos, TYPE)
-	name := expectIdent(tokens, pos)
-	expectType(tokens, pos, STRUCT)
-	expectType(tokens, pos, OPN_BRACE)
+	p.expectType(TYPE)
+	name := p.expectIdent()
+	p.expectType(STRUCT)
+	p.expectType(OPN_BRACE)
 
 	fields := []Field{}
 	for {
-		skip(tokens, pos)
+		p.skip()
 
-		if tokens[*pos].Type == CLS_BRACE {
+		if p.tokens[p.pos].Type == CLS_BRACE {
 			break
 		}
 
-		if tokens[*pos].Type != IDENT {
-			panic(fmt.Sprintf("expected field name, got %v", tokens[*pos]))
+		if p.tokens[p.pos].Type != IDENT {
+			panic(fmt.Sprintf("expected field name, got %v", p.tokens[p.pos]))
 		}
-		fields = append(fields, parseField(tokens, pos))
+		fields = append(fields, p.parseField())
 	}
 
-	expectType(tokens, pos, CLS_BRACE)
+	p.expectType(CLS_BRACE)
 	return Struct{Name: name.Lexeme, Fields: fields}
 }
 
-func parseField(tokens []Token, pos *int) Field {
-	nameTok := expectIdent(tokens, pos)
-	typeTok := expectIdent(tokens, pos)
+func (p *Parser) parseField() Field {
+	nameTok := p.expectIdent()
+	typeTok := p.expectIdent()
 	return Field{Name: nameTok.Lexeme, Type: typeTok.Lexeme}
 }
 
-func parseFieldAssign(tokens []Token, pos *int) Field {
-	nameTok := expectIdent(tokens, pos)
-	typeTok := expectIdent(tokens, pos)
+func (p *Parser) parseFieldAssign() Field {
+	nameTok := p.expectIdent()
+	typeTok := p.expectIdent()
 	return Field{Name: nameTok.Lexeme, Type: typeTok.Lexeme}
 }
 
-func parseVarDecl(tokens []Token, pos *int) VarDeclar {
+func (p *Parser) parseVarDecl() VarDeclar {
 	// 1. Consume the 'var' keyword
-	if tokens[*pos].Type == VAR {
-		*pos++
+	if p.tokens[p.pos].Type == VAR {
+		p.pos++
 	}
 
 	// 2. Expect the variable name (e.g., 'obj' or 'i')
-	name := expectIdent(tokens, pos)
+	name := p.expectIdent()
 
 	var typeNode *Type = nil
 	var value Expression = nil
 
 	// 3. Optional: Check if the next token is a Type (IDENT)
 	// In 'var i int', the second IDENT is the type
-	if tokens[*pos].Type == IDENT {
-		typeName := expectIdent(tokens, pos)
+	if p.tokens[p.pos].Type == IDENT {
+		typeName := p.expectIdent()
 		typeNode = &Type{Name: typeName.Lexeme}
 	}
 
 	// 4. Optional: Check for assignment operator '='
 	// Note: Use ASSIGN (=) here, not DEFINE (:=)
-	if tokens[*pos].Type == ASSIGN {
-		*pos++
+	if p.tokens[p.pos].Type == ASSIGN {
+		p.pos++
 		// Parse the expression on the right side
-		value = parseExpr(tokens, pos)
+		value = p.parseExpr()
 	}
 
 	return VarDeclar{
@@ -400,21 +413,21 @@ func parseVarDecl(tokens []Token, pos *int) VarDeclar {
 	}
 }
 
-func parseStructLiteral(tokens []Token, pos *int, typeName string) Expression {
-	expectType(tokens, pos, OPN_BRACE)
+func (p *Parser) parseStructLiteral(typeName string) Expression {
+	p.expectType(OPN_BRACE)
 
 	fields := []FieldInit{}
 
-	//for tokens[*pos].Type != CLS_BRACE {
-	for *pos < len(tokens) && tokens[*pos].Type != CLS_BRACE {
+	//for p.tokens[p.pos].Type != CLS_BRACE {
+	for p.pos < len(p.tokens) && p.tokens[p.pos].Type != CLS_BRACE {
 
-		// if tokens[*pos].Type == IDENT && tokens[*pos+1].Type == COLON {
-		if *pos+1 < len(tokens) && tokens[*pos].Type == IDENT && tokens[*pos+1].Type == COLON {
+		// if p.tokens[p.pos].Type == IDENT && p.tokens[p.pos+1].Type == COLON {
+		if p.pos+1 < len(p.tokens) && p.tokens[p.pos].Type == IDENT && p.tokens[p.pos+1].Type == COLON {
 
-			name := expectIdent(tokens, pos)
+			name := p.expectIdent()
 
-			expectType(tokens, pos, COLON)
-			value := parseExpr(tokens, pos)
+			p.expectType(COLON)
+			value := p.parseExpr()
 
 			fields = append(fields, FieldInit{
 				Name:  name.Lexeme,
@@ -422,7 +435,7 @@ func parseStructLiteral(tokens []Token, pos *int, typeName string) Expression {
 			})
 		} else {
 			// shorthand or empty
-			value := parseExpr(tokens, pos)
+			value := p.parseExpr()
 
 			fields = append(fields, FieldInit{
 				Name:  "",
@@ -430,12 +443,12 @@ func parseStructLiteral(tokens []Token, pos *int, typeName string) Expression {
 			})
 		}
 
-		if tokens[*pos].Type == COMMA {
-			expectType(tokens, pos, COMMA)
+		if p.tokens[p.pos].Type == COMMA {
+			p.expectType(COMMA)
 		}
 	}
 
-	expectType(tokens, pos, CLS_BRACE)
+	p.expectType(CLS_BRACE)
 
 	return StructLiteral{
 		Type:   Type{Name: typeName},
@@ -456,33 +469,33 @@ type FieldInit struct {
 }
 
 // AST Builder
-func Builder(tokens []Token) *AST {
-	p := 0
-	pos := &p
+func (p *Parser) Builder(data []byte) *AST {
+	p.tokens = Lexer(string(data))
+
 	ast := &AST{}
 
-	fmt.Println("len of tokens  : ", len(tokens))
-	for *pos < len(tokens) {
-		token := tokens[*pos]
+	fmt.Println("len of p.tokens  : ", len(p.tokens))
+	for p.pos < len(p.tokens) {
+		token := p.tokens[p.pos]
 
 		switch token.Lexeme {
 		case "package":
-			ast.PackageName = parsePackage(tokens, pos)
+			ast.PackageName = p.parsePackage()
 
 		case "import":
-			ast.Imports = parseImport(tokens, pos)
+			ast.Imports = p.parseImport()
 
 		case "type":
-			ast.Structs = append(ast.Structs, parseStruct(tokens, pos))
+			ast.Structs = append(ast.Structs, p.parseStruct())
 
 		case "fn":
-			ast.Funcs = append(ast.Funcs, parseFunc(tokens, pos))
+			ast.Funcs = append(ast.Funcs, p.parseFunc())
 
 		case "var":
-			ast.Vars = append(ast.Vars, parseVarDecl(tokens, pos))
+			ast.Vars = append(ast.Vars, p.parseVarDecl())
 
 		default:
-			*pos++
+			p.pos++
 		}
 	}
 	return ast

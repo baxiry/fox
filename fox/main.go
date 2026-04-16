@@ -15,10 +15,7 @@ func main() {
 	if err != nil {
 		panic(err)
 	}
-	sdata := string(data)
-	fmt.Println("input src:\n", sdata)
-
-	tokens := aster.Lexer(sdata)
+	fmt.Println("input src:\n", string(data))
 
 	/*
 		for k, v := range tokens {
@@ -28,5 +25,6 @@ func main() {
 	*/
 
 	fmt.Println("\nresult as AST:")
-	pretty.Print(aster.Builder(tokens))
+	parser := aster.NewParser()
+	pretty.Print(parser.Builder(data))
 }

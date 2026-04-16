@@ -88,31 +88,31 @@ func isTypeStart(tok Token) bool {
 	}
 }
 
-func parseVarDeclar(tokens []Token, pos *int) Statement {
+func (p *Parser) parseVarDeclar() Statement {
 	// var obj Obj
 	// var i int
 	// var i int = 10
 	// var i = 10 + 10
 
 	// consome var
-	expectType(tokens, pos, VAR)
+	p.expectType(VAR)
 
 	// consume variable name
-	nameTok := expectType(tokens, pos, IDENT)
+	nameTok := p.expectType(IDENT)
 
 	var typ *Type = nil
 	var value Expression = nil
 
 	// case one & three, type
-	if isTypeStart(tokens[*pos]) {
-		tmp := parseType(tokens, pos)
+	if isTypeStart(p.tokens[p.pos]) {
+		tmp := p.parseType()
 		typ = &tmp
 	}
 
 	// case 3 & 4 =
-	if tokens[*pos].Type == ASSIGN {
-		*pos++
-		value = parseExpr(tokens, pos)
+	if p.tokens[p.pos].Type == ASSIGN {
+		p.pos++
+		value = p.parseExpr()
 	}
 
 	return &VarDeclar{
@@ -123,11 +123,11 @@ func parseVarDeclar(tokens []Token, pos *int) Statement {
 }
 
 // Statement Parsers
-func parseSpawn(tokens []Token, pos *int) Statement {
+func (p *Parser) parseSpawn() Statement {
 
-	expectType(tokens, pos, SPAWN)
-	t := tokens[*pos]
-	expr := parseExpr(tokens, pos)
+	p.expectType(SPAWN)
+	t := p.tokens[p.pos]
+	expr := p.parseExpr()
 	call, ok := expr.(CallExpr)
 	if !ok {
 		return BadStmt{
@@ -138,23 +138,23 @@ func parseSpawn(tokens []Token, pos *int) Statement {
 	return &SpawnStmt{Call: call}
 }
 
-func parseIf(tokens []Token, pos *int) Statement {
-	expectType(tokens, pos, IF)
-	cond := parseExpr(tokens, pos)
-	thenBlock := parseBlock(tokens, pos)
+func (p *Parser) parseIf() Statement {
+	p.expectType(IF)
+	cond := p.parseExpr()
+	thenBlock := p.parseBlock()
 
 	var elseStmt Statement = nil // Using Statement interface for flexibility
 
-	if *pos < len(tokens) && tokens[*pos].Type == ELSE {
-		*pos++
+	if p.pos < len(p.tokens) && p.tokens[p.pos].Type == ELSE {
+		p.pos++
 
 		// If another IF follows ELSE, it's an 'else if'
-		if *pos < len(tokens) && tokens[*pos].Type == IF {
+		if p.pos < len(p.tokens) && p.tokens[p.pos].Type == IF {
 			// Recursive call to build the chain
-			elseStmt = parseIf(tokens, pos)
+			elseStmt = p.parseIf()
 		} else {
 			// Normal ELSE block
-			elseStmt = parseBlock(tokens, pos)
+			elseStmt = p.parseBlock()
 		}
 	}
 
@@ -166,17 +166,17 @@ func parseIf(tokens []Token, pos *int) Statement {
 	}
 }
 
-func parseExprUntil(tokens []Token, pos *int, stop string) Expression {
-	expr := parseExpr(tokens, pos)
+func (p *Parser) parseExprUntil(stop string) Expression {
+	expr := p.parseExpr()
 
-	for *pos < len(tokens) && tokens[*pos].Lexeme != stop {
-		op := tokens[*pos]
+	for p.pos < len(p.tokens) && p.tokens[p.pos].Lexeme != stop {
+		op := p.tokens[p.pos]
 		if !op.IsOperator() {
 			break
 		}
-		*pos++
+		p.pos++
 
-		right := parseExpr(tokens, pos)
+		right := p.parseExpr()
 		expr = &BinaryExpr{
 			Op:    op.Lexeme,
 			Left:  expr,
@@ -186,25 +186,25 @@ func parseExprUntil(tokens []Token, pos *int, stop string) Expression {
 	return expr
 }
 
-func parseFor(tokens []Token, pos *int) Statement {
-	expectType(tokens, pos, FOR)
+func (p *Parser) parseFor() Statement {
+	p.expectType(FOR)
 
 	forStmt := ForStmt{}
 
 	// for {}
-	if tokens[*pos].Type == OPN_BRACE {
-		forStmt.Body = parseBlock(tokens, pos)
+	if p.tokens[p.pos].Type == OPN_BRACE {
+		forStmt.Body = p.parseBlock()
 		return forStmt
 	}
 
 	// for condition {} (NO semicolons ahead)
-	if tokens[*pos].Type != SEMICOLON && tokens[*pos].Type != OPN_BRACE {
+	if p.tokens[p.pos].Type != SEMICOLON && p.tokens[p.pos].Type != OPN_BRACE {
 
-		ps := *pos
+		ps := p.pos
 		hasSemicolon := false
 
-		for ps < len(tokens) && tokens[ps].Type != OPN_BRACE {
-			if tokens[ps].Type == SEMICOLON {
+		for ps < len(p.tokens) && p.tokens[ps].Type != OPN_BRACE {
+			if p.tokens[ps].Type == SEMICOLON {
 				hasSemicolon = true
 				break
 			}
@@ -212,119 +212,119 @@ func parseFor(tokens []Token, pos *int) Statement {
 		}
 
 		if !hasSemicolon {
-			forStmt.Cond = parseExpr(tokens, pos)
-			forStmt.Body = parseBlock(tokens, pos)
+			forStmt.Cond = p.parseExpr()
+			forStmt.Body = p.parseBlock()
 			return forStmt
 		}
 	}
 
 	// INIT
-	if tokens[*pos].Type != SEMICOLON && tokens[*pos].Type != OPN_BRACE {
+	if p.tokens[p.pos].Type != SEMICOLON && p.tokens[p.pos].Type != OPN_BRACE {
 
-		if *pos+1 < len(tokens) &&
-			(tokens[*pos+1].Type == ASSIGN || tokens[*pos+1].Type == DEFINE) {
+		if p.pos+1 < len(p.tokens) &&
+			(p.tokens[p.pos+1].Type == ASSIGN || p.tokens[p.pos+1].Type == DEFINE) {
 
-			forStmt.Init = parseDefOrAssign(tokens, pos)
+			forStmt.Init = p.parseDefOrAssign()
 		} else {
-			forStmt.Init = parseExprStatement(tokens, pos)
+			forStmt.Init = p.parseExprStatement()
 		}
 	}
 
-	expectType(tokens, pos, SEMICOLON)
+	p.expectType(SEMICOLON)
 
 	// CONDITION
-	if tokens[*pos].Type != SEMICOLON && tokens[*pos].Type != OPN_BRACE {
-		forStmt.Cond = parseExpr(tokens, pos) // parseExprUntil(tokens, pos, ";")
+	if p.tokens[p.pos].Type != SEMICOLON && p.tokens[p.pos].Type != OPN_BRACE {
+		forStmt.Cond = p.parseExpr() // parseExprUntil( ";")
 	}
 
-	expectType(tokens, pos, SEMICOLON)
+	p.expectType(SEMICOLON)
 
 	// POST
-	if tokens[*pos].Type != OPN_BRACE && tokens[*pos].Type != CLS_BRACE {
+	if p.tokens[p.pos].Type != OPN_BRACE && p.tokens[p.pos].Type != CLS_BRACE {
 
-		if *pos+1 < len(tokens) &&
-			(tokens[*pos+1].Type == ASSIGN || tokens[*pos+1].Type == DEFINE) {
+		if p.pos+1 < len(p.tokens) &&
+			(p.tokens[p.pos+1].Type == ASSIGN || p.tokens[p.pos+1].Type == DEFINE) {
 
-			forStmt.Post = parseDefOrAssign(tokens, pos)
+			forStmt.Post = p.parseDefOrAssign()
 		} else {
-			forStmt.Post = parseExprStatement(tokens, pos)
+			forStmt.Post = p.parseExprStatement()
 		}
 	}
 
 	// BODY
-	if tokens[*pos].Type == OPN_BRACE {
-		forStmt.Body = parseBlock(tokens, pos)
+	if p.tokens[p.pos].Type == OPN_BRACE {
+		forStmt.Body = p.parseBlock()
 		return forStmt
 	}
 
 	// fallback safety
-	forStmt.Body = parseBlock(tokens, pos)
+	forStmt.Body = p.parseBlock()
 	return forStmt
 }
 
-func parseFor_Old(tokens []Token, pos *int) Statement {
-	expectType(tokens, pos, FOR)
+func (p *Parser) parseFor_Old() Statement {
+	p.expectType(FOR)
 
 	forStmt := ForStmt{}
 
 	// for {}
-	if tokens[*pos].Type == OPN_BRACE {
-		forStmt.Body = parseBlock(tokens, pos)
+	if p.tokens[p.pos].Type == OPN_BRACE {
+		forStmt.Body = p.parseBlock()
 		return forStmt
 	}
 
 	// for condition {}
-	if tokens[*pos].Type == IDENT {
-		ps := *pos
+	if p.tokens[p.pos].Type == IDENT {
+		ps := p.pos
 		composite := false
-		for tokens[ps].Type != OPN_BRACE {
-			if tokens[ps].Type == SEMICOLON {
+		for p.tokens[ps].Type != OPN_BRACE {
+			if p.tokens[ps].Type == SEMICOLON {
 				composite = true
 				break
 			}
 			ps++
 		}
 		if !composite {
-			forStmt.Cond = parseExpr(tokens, pos)
+			forStmt.Cond = p.parseExpr()
 			return forStmt
 		}
 	}
 
 	//  INIT
 	// check ";" "{" befor init
-	if tokens[*pos].Type != SEMICOLON && tokens[*pos].Type != OPN_BRACE {
-		if *pos+1 < len(tokens) && (tokens[*pos+1].Type == ASSIGN || tokens[*pos+1].Type == DEFINE) {
-			forStmt.Init = parseDefOrAssign(tokens, pos)
+	if p.tokens[p.pos].Type != SEMICOLON && p.tokens[p.pos].Type != OPN_BRACE {
+		if p.pos+1 < len(p.tokens) && (p.tokens[p.pos+1].Type == ASSIGN || p.tokens[p.pos+1].Type == DEFINE) {
+			forStmt.Init = p.parseDefOrAssign()
 		} else {
-			forStmt.Init = parseExprStatement(tokens, pos)
+			forStmt.Init = p.parseExprStatement()
 		}
 	}
-	expectType(tokens, pos, SEMICOLON) // use ;
+	p.expectType(SEMICOLON) // use ;
 
 	// CONDITION
-	if tokens[*pos].Type != SEMICOLON && tokens[*pos].Type != OPN_BRACE {
-		forStmt.Cond = parseExprUntil(tokens, pos, ";")
+	if p.tokens[p.pos].Type != SEMICOLON && p.tokens[p.pos].Type != OPN_BRACE {
+		forStmt.Cond = p.parseExprUntil(";")
 	}
-	expectType(tokens, pos, SEMICOLON) // use ;
+	p.expectType(SEMICOLON) // use ;
 
 	// POST
-	if tokens[*pos].Type != OPN_BRACE {
-		if *pos+1 < len(tokens) && (tokens[*pos+1].Type == ASSIGN || tokens[*pos+1].Type == DEFINE) {
-			forStmt.Post = parseDefOrAssign(tokens, pos)
-		} else if tokens[*pos].Type != CLS_BRACE {
-			forStmt.Post = parseExprStatement(tokens, pos)
+	if p.tokens[p.pos].Type != OPN_BRACE {
+		if p.pos+1 < len(p.tokens) && (p.tokens[p.pos+1].Type == ASSIGN || p.tokens[p.pos+1].Type == DEFINE) {
+			forStmt.Post = p.parseDefOrAssign()
+		} else if p.tokens[p.pos].Type != CLS_BRACE {
+			forStmt.Post = p.parseExprStatement()
 		}
 	}
 
 	// for {}
-	if tokens[*pos].Type == OPN_BRACE {
-		forStmt.Body = parseBlock(tokens, pos)
+	if p.tokens[p.pos].Type == OPN_BRACE {
+		forStmt.Body = p.parseBlock()
 		return forStmt
 	}
 
 	//  BODY
 
-	forStmt.Body = parseBlock(tokens, pos)
+	forStmt.Body = p.parseBlock()
 	return forStmt
 }
 func isExprStart(tok Token) bool {
@@ -346,55 +346,55 @@ func isExprStart(tok Token) bool {
 	return false
 }
 
-func parseReturn(tokens []Token, pos *int) Statement {
-	expectType(tokens, pos, RETURN)
+func (p *Parser) parseReturn() Statement {
+	p.expectType(RETURN)
 
-	if !isExprStart(tokens[*pos]) {
+	if !isExprStart(p.tokens[p.pos]) {
 		return ReturnStmt{
 			Results: nil,
 		}
 	}
 	results := []Expression{}
 
-	if tokens[*pos].Type != SEMICOLON && tokens[*pos].Type != CLS_BRACE {
-		results = append(results, parseExpr(tokens, pos))
-		for *pos < len(tokens) && tokens[*pos].Type == COMMA {
-			*pos++
-			results = append(results, parseExpr(tokens, pos))
+	if p.tokens[p.pos].Type != SEMICOLON && p.tokens[p.pos].Type != CLS_BRACE {
+		results = append(results, p.parseExpr())
+		for p.pos < len(p.tokens) && p.tokens[p.pos].Type == COMMA {
+			p.pos++
+			results = append(results, p.parseExpr())
 		}
 	}
 
 	return ReturnStmt{Results: results}
 }
 
-func parseRetSign(tokens []Token, pos *int) []ReturnSig {
+func (p *Parser) parseRetSign() []ReturnSig {
 
 	var retSigns []ReturnSig
 
-	for *pos < len(tokens) && tokens[*pos].Type != OPN_BRACE {
+	for p.pos < len(p.tokens) && p.tokens[p.pos].Type != OPN_BRACE {
 
 		// skip commas
-		if tokens[*pos].Type == COMMA {
-			(*pos)++
+		if p.tokens[p.pos].Type == COMMA {
+			(p.pos)++
 			continue
 		}
 
-		if *pos >= len(tokens) || tokens[*pos].Type == OPN_BRACE {
+		if p.pos >= len(p.tokens) || p.tokens[p.pos].Type == OPN_BRACE {
 			break
 		}
 
 		var name string
 
 		// case: named return value  (name type)
-		if *pos+1 < len(tokens) &&
-			tokens[*pos].Type == IDENT &&
-			tokens[*pos+1].Type == IDENT {
+		if p.pos+1 < len(p.tokens) &&
+			p.tokens[p.pos].Type == IDENT &&
+			p.tokens[p.pos+1].Type == IDENT {
 
-			name = expectIdent(tokens, pos).Lexeme
+			name = p.expectIdent().Lexeme
 		}
 
 		// parse type (this handles Obj, *Obj, etc)
-		typ := parseType(tokens, pos)
+		typ := p.parseType()
 
 		retSigns = append(retSigns, ReturnSig{
 			Name: name,
@@ -404,20 +404,20 @@ func parseRetSign(tokens []Token, pos *int) []ReturnSig {
 
 	return retSigns
 }
-func parseExprStatement(tokens []Token, pos *int) Statement {
+func (p *Parser) parseExprStatement() Statement {
 
-	skip(tokens, pos)
+	p.skip()
 
-	expr := parseExpr(tokens, pos)
-	if *pos < len(tokens) && tokens[*pos].Type == SEMICOLON {
-		*pos++
+	expr := p.parseExpr()
+	if p.pos < len(p.tokens) && p.tokens[p.pos].Type == SEMICOLON {
+		p.pos++
 	}
 
 	return ExprStmt{Expr: expr}
 }
 
-func parseAssign(tokens []Token, pos *int) Statement {
-	target := parsePostfix(tokens, pos)
+func (p *Parser) parseAssign() Statement {
+	target := p.parsePostfix()
 
 	switch target.(type) {
 	case IdentExpr, *IdentExpr, FieldAccessExpr, *FieldAccessExpr:
@@ -425,13 +425,13 @@ func parseAssign(tokens []Token, pos *int) Statement {
 		panic("left-hand side of assignment must be an identifier or field access")
 	}
 
-	opTok := tokens[*pos]
+	opTok := p.tokens[p.pos]
 	if opTok.Type != ASSIGN {
 		panic("expected = for assignment")
 	}
-	*pos++
+	p.pos++
 
-	value := parseExpr(tokens, pos)
+	value := p.parseExpr()
 
 	return Assign{
 		Target: target,
@@ -440,8 +440,8 @@ func parseAssign(tokens []Token, pos *int) Statement {
 	}
 }
 
-func parseDefine(tokens []Token, pos *int) Statement {
-	target := parsePostfix(tokens, pos)
+func (p *Parser) parseDefine() Statement {
+	target := p.parsePostfix()
 
 	switch target.(type) {
 	case IdentExpr, *IdentExpr, FieldAccessExpr, *FieldAccessExpr:
@@ -449,13 +449,13 @@ func parseDefine(tokens []Token, pos *int) Statement {
 		panic("left-hand side of define must be an identifier or field access")
 	}
 
-	opTok := tokens[*pos]
+	opTok := p.tokens[p.pos]
 	if opTok.Type != DEFINE {
 		panic("expected := for definition")
 	}
-	*pos++
+	p.pos++
 
-	value := parseExpr(tokens, pos)
+	value := p.parseExpr()
 
 	return Declar{
 		Name:  target,
@@ -465,11 +465,11 @@ func parseDefine(tokens []Token, pos *int) Statement {
 }
 
 // For init/post
-func parseDefOrAssign(tokens []Token, pos *int) Statement {
-	if *pos+1 < len(tokens) && tokens[*pos+1].Type == DEFINE {
-		return parseDefine(tokens, pos)
+func (p *Parser) parseDefOrAssign() Statement {
+	if p.pos+1 < len(p.tokens) && p.tokens[p.pos+1].Type == DEFINE {
+		return p.parseDefine()
 	}
-	return parseAssign(tokens, pos)
+	return p.parseAssign()
 }
 
 func (t Token) IsOperator() bool {
@@ -482,30 +482,30 @@ func (t Token) IsOperator() bool {
 	}
 }
 
-func parseStatement(tokens []Token, pos *int) Statement {
-	tok := tokens[*pos]
+func (p *Parser) parseStatement() Statement {
+	tok := p.tokens[p.pos]
 
 	switch tok.Type {
 	case VAR:
-		return parseVarDeclar(tokens, pos)
+		return p.parseVarDeclar()
 	case RETURN:
-		return parseReturn(tokens, pos)
+		return p.parseReturn()
 	case IF:
-		return parseIf(tokens, pos)
+		return p.parseIf()
 	case FOR:
-		return parseFor(tokens, pos)
+		return p.parseFor()
 	case BREAK:
-		*pos++
+		p.pos++
 		return BreakNode{Tok: tok}
 
 	case CONTINUE:
-		*pos++
+		p.pos++
 		return ContinueNode{Tok: tok}
 	case SPAWN:
-		return parseSpawn(tokens, pos)
+		return p.parseSpawn()
 
 	default:
-		return parseExprOrAssign(tokens, pos)
+		return p.parseExprOrAssign()
 	}
 }
 

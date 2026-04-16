@@ -42,6 +42,8 @@ type CallExpr struct {
 	Args   []Expression
 }
 
+func (CallExpr) isExpr() {}
+
 func (TypeExpr) isExpr()    {}
 func (NumberExpr) isExpr()  {}
 func (StringExpr) isExpr()  {}
@@ -49,38 +51,37 @@ func (LiteralExpr) isExpr() {}
 func (IdentExpr) isExpr()   {}
 func (BinaryExpr) isExpr()  {}
 func (UnaryExpr) isExpr()   {}
-func (CallExpr) isExpr()    {}
 
-func parseCall(name string, tokens []Token, pos *int) CallExpr {
-	expectType(tokens, pos, OPN_PAREN)
+func (p *Parser) parseCall(name string) CallExpr {
+	p.expectType(OPN_PAREN)
 
 	args := []Expression{}
 
-	for tokens[*pos].Type != CLS_PAREN {
-		if tokens[*pos].Type == COMMA {
-			*pos++
+	for p.tokens[p.pos].Type != CLS_PAREN {
+		if p.tokens[p.pos].Type == COMMA {
+			p.pos++
 			continue
 		}
-		arg := parseExpr(tokens, pos)
+		arg := p.parseExpr()
 		args = append(args, arg)
 	}
 
-	expectType(tokens, pos, CLS_PAREN)
+	p.expectType(CLS_PAREN)
 	return CallExpr{
 		Callee: IdentExpr{Name: name},
 		Args:   args,
 	}
 }
 
-func parseExprOrAssign(tokens []Token, pos *int) Statement {
-	target := parseBinary(tokens, pos, 0)
+func (p *Parser) parseExprOrAssign() Statement {
+	target := p.parseBinary(0)
 
-	if *pos < len(tokens) {
-		switch tokens[*pos].Type {
+	if p.pos < len(p.tokens) {
+		switch p.tokens[p.pos].Type {
 
 		case ASSIGN:
-			*pos++
-			value := parseExpr(tokens, pos)
+			p.pos++
+			value := p.parseExpr()
 			return Assign{
 				Target: target,
 				Op:     "=",
@@ -88,12 +89,12 @@ func parseExprOrAssign(tokens []Token, pos *int) Statement {
 			}
 
 		case DEFINE:
-			*pos++
+			p.pos++
 			ident, ok := target.(IdentExpr)
 			if !ok {
 				panic("left side of := must be identifier")
 			}
-			value := parseExpr(tokens, pos)
+			value := p.parseExpr()
 			return Declar{
 				Name:  ident,
 				Value: value,

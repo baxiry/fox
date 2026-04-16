@@ -6,13 +6,13 @@ import (
 
 // Utilities
 
-func expectIdent(tokens []Token, pos *int) Token {
+func (p *Parser) expectIdent() Token {
 
-	if *pos >= len(tokens) {
+	if p.pos >= len(p.tokens) {
 		panic("unexpected end of input, expected identifier")
 	}
 
-	tok := tokens[*pos]
+	tok := p.tokens[p.pos]
 
 	if tok.Type != IDENT {
 		panic(fmt.Sprintf(
@@ -21,23 +21,23 @@ func expectIdent(tokens []Token, pos *int) Token {
 		))
 	}
 
-	*pos++
+	p.pos++
 	return tok
 }
 
-func skip(tokens []Token, pos *int) {
-	for *pos < len(tokens) &&
-		(tokens[*pos].Type == NEW_LINE || tokens[*pos].Type == COMMENT) {
-		*pos++
+func (p *Parser) skip() {
+	for p.pos < len(p.tokens) &&
+		(p.tokens[p.pos].Type == NEW_LINE || p.tokens[p.pos].Type == COMMENT) {
+		p.pos++
 	}
 }
 
-func expectType(tokens []Token, pos *int, expected TokenType) Token {
+func (p *Parser) expectType(expected TokenType) Token {
 
-	if *pos >= len(tokens) {
+	if p.pos >= len(p.tokens) {
 		panic("unexpected end of input")
 	}
-	tok := tokens[*pos]
+	tok := p.tokens[p.pos]
 
 	if tok.Type != expected {
 		panic(fmt.Sprintf(
@@ -45,6 +45,6 @@ func expectType(tokens []Token, pos *int, expected TokenType) Token {
 			tok.Line, expected.String(), tok.Type,
 		))
 	}
-	*pos++
+	p.pos++
 	return tok
 }
