@@ -9,16 +9,19 @@ import (
 func (p *Parser) expectIdent() Token {
 
 	if p.pos >= len(p.tokens) {
-		panic("unexpected end of input, expected identifier")
+		p.errors = append(p.errors, fmt.Sprintf("unexpected end of input, expected identifier"))
+		return Token{}
 	}
 
 	tok := p.tokens[p.pos]
 
 	if tok.Type != IDENT {
-		panic(fmt.Sprintf(
+
+		p.errors = append(p.errors, fmt.Sprintf(
 			"syntax error at line %d: expected IDENT, got %s",
-			tok.Line, tok.Type,
-		))
+			tok.Line, tok.Type))
+
+		return Token{}
 	}
 
 	p.pos++
@@ -35,15 +38,19 @@ func (p *Parser) skip() {
 func (p *Parser) expectType(expected TokenType) Token {
 
 	if p.pos >= len(p.tokens) {
-		panic("unexpected end of input")
+
+		p.errors = append(p.errors, "unexpected end of input")
+		return Token{}
 	}
+
 	tok := p.tokens[p.pos]
 
 	if tok.Type != expected {
-		panic(fmt.Sprintf(
+		p.errors = append(p.errors, fmt.Sprintf(
 			"syntax error at line %d: expected %s, got %s",
 			tok.Line, expected.String(), tok.Type,
 		))
+		return Token{}
 	}
 	p.pos++
 	return tok

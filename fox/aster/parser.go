@@ -8,6 +8,7 @@ type Parser struct {
 	tokens      []Token
 	pos         int
 	inCondition bool
+	errors      []string
 }
 
 // New Parser
@@ -24,6 +25,26 @@ func (p *Parser) skipNewlines() {
 	}
 }
 
+func (p *Parser) synchronize() {
+	// Skip the token that caused the error
+	p.pos++
+
+	for p.pos < len(p.tokens) {
+		// If we hit a semicolon (end of statement), we are likely safe to resume
+		if p.tokens[p.pos-1].Type == SEMICOLON || p.tokens[p.pos-1].Type == NEW_LINE {
+			return
+		}
+
+		// Check if the current token is a major keyword that starts a new block/statement
+		switch p.tokens[p.pos].Type {
+		case FUNC, TYPE, IF, FOR, RETURN, VAR:
+			return
+		}
+
+		// Keep skipping if we haven't found a safe spot
+		p.pos++
+	}
+}
 func (p *Parser) parseUnary() Expression {
 
 	if p.pos < len(p.tokens) {
@@ -51,8 +72,12 @@ func (p *Parser) parsePostfix() Expression {
 		case DOT:
 			p.pos++
 			p.skip()
-			field := p.expectIdent().Lexeme
-			expr = FieldAccessExpr{Object: expr, Field: field}
+			field := p.expectIdent()
+			if field.Type == ERROR {
+				p.synchronize() // Jump to the next safe statement
+				return nil
+			}
+			expr = FieldAccessExpr{Object: expr, Field: field.Lexeme}
 
 		case OPN_BRACE:
 			// Follow Go's rule: Struct literals must start the brace on the same line.
@@ -222,10 +247,15 @@ func (p *Parser) parseType() Type {
 		panic("unexpected end of input while parsing type after pointers")
 	}
 
-	name := p.expectIdent().Lexeme
+	name := p.expectIdent()
+
+	if name.Type == ERROR {
+		p.synchronize() // Jump to the next safe statement
+		return Type{}
+	}
 
 	return Type{
-		Name:     name,
+		Name:     name.Lexeme,
 		PtrDepth: ptrDepth,
 	}
 }
@@ -321,6 +351,9 @@ func (p *Parser) parseFunc() Func {
 	// parse func word then name func
 	p.expectType(FUNC)
 	funcNode.FuncName = p.expectIdent().Lexeme
+	if funcNode.FuncName == "ERROR" {
+
+	}
 
 	// parse open paren ( then params
 	p.expectType(OPN_PAREN)

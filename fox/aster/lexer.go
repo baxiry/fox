@@ -9,21 +9,19 @@ import (
 type TokenType int
 
 const (
-	// Special
-	EOF TokenType = iota
-	ILLEGAL
+	ERROR TokenType = iota
 
 	// Identifiers & literals
-	START_IDENTIFIERS
+	//START_IDENTIFIERS
 	IDENT
 	INT
 	FLOAT
 	STRING
 	BOOL
-	END_IDENTIF
+	//END_IDENTIF
 
 	// Keywords
-	START_KEYWORDS
+	//START_KEYWORDS
 	PACKAGE
 	IMPORT
 	TYPE
@@ -39,10 +37,10 @@ const (
 	RETURN
 	FALLTHROUGH
 	GOTO
-	END_KEYWORDS
+	//END_KEYWORDS
 
 	// Operators
-	START_OPERATORS
+	// START_OPERATORS
 	PLUS
 	MINUS
 	STAR
@@ -62,10 +60,10 @@ const (
 	OR
 	NOT
 	DOT
-	EDN_OPERATORS
+	//EDN_OPERATORS
 
 	// Delimiters
-	START_DELIMITERS
+	//START_DELIMITERS
 	OPN_PAREN
 	CLS_PAREN
 	OPN_BRACE
@@ -76,12 +74,16 @@ const (
 	SEMICOLON
 	COLON
 	NEW_LINE
-	END_DELIMITERS
+	//END_DELIMITERS
 
 	TRUE
 	FALSE
 	SPAWN
 	BLANK
+
+	// Special
+	EOF
+	ILLEGAL
 	COMMENT
 )
 
@@ -555,6 +557,9 @@ func (tt TokenType) String() string {
 		return "COLON"
 	case BLANK:
 		return "BLANK"
+	case ERROR:
+		return "ERROR"
+
 	case COMMENT:
 		return "COMMENT"
 
