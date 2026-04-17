@@ -10,36 +10,29 @@ import (
 func main() {
 
 	foxFile := os.Args[1]
-	data, err := os.ReadFile(foxFile)
+	content, err := os.ReadFile(foxFile)
 	if err != nil {
 		panic(err)
 	}
 
-	fmt.Println("input src:\n", string(data))
-
-	parser := aster.NewParser()
-
 	/*
-		for k, v := range tokens {
-			fmt.Print(k, " ", v.Type, " ", v.Lexeme, ", ")
-		}
-		println()
+		fmt.Println("input src:\n", string(data))
 
-		fmt.Println("\nresult as AST:")
-
+		parser := aster.NewParser()
 		pretty.Print(parser.Builder(data))
 	*/
 
-	// 2. Type Checking stage
+	println("input src:\n", string(content))
+
+	parser := aster.NewParser()
 
 	tc := tchecker.NewTypeChecker()
 
-	tc.Check(parser.Builder(data))
+	tc.Check(parser.Builder(content))
 
-	fmt.Println("output:")
-	fmt.Println()
+	println("\noutput:\n")
 
-	// 3. IMPORTANT: Stop if there are semantic errors
+	// error exists
 	if len(tc.Errors) > 0 {
 		fmt.Printf("Found %d type errors:\n", len(tc.Errors))
 		for _, err := range tc.Errors {
@@ -49,8 +42,7 @@ func main() {
 		os.Exit(1)
 	}
 
-	// 4. Execution stage (Only if no errors were found)
+	// ok
 	fmt.Println("Type check passed. Running program...")
-	// runInterpreter(ast)
 
 }

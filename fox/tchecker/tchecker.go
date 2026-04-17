@@ -9,6 +9,7 @@ import (
 type TypeChecker struct {
 	GlobalTable     *SymbolTable
 	CurrentTable    *SymbolTable
+	CurrentFunction *Symbol
 	CurrentRetTypes []string
 	CurrentLine     int
 	Errors          []string
@@ -19,10 +20,10 @@ type Symbol struct {
 	Name        string
 	Type        aster.Type
 	ScopeID     string
-	Kind        string        // "var", "func", "struct"
-	Params      []aster.Param // For functions
-	ReturnTypes []aster.Type  // Changed: Slice of types for multiple returns
-	Fields      []aster.Field // For structs
+	Kind        string            // "var", "func", "struct"
+	Params      []aster.Param     // For functions
+	ReturnTypes []aster.ReturnSig // Changed: Slice of types for multiple returns
+	Fields      []aster.Field     // For structs
 	IsShared    bool
 }
 
@@ -145,31 +146,40 @@ func (tc *TypeChecker) inferType(expr aster.Expression) string {
 
 func (tc *TypeChecker) inferReturnTypes(expr aster.Expression) []string {
 	if call, ok := expr.(aster.CallExpr); ok {
-		var name string
-		if ident, ok := call.Callee.(aster.IdentExpr); ok {
-			name = ident.Name
-		}
+		// Use the already existing checkCallExpr logic
+		// This will populate tc.Errors if types mismatch
+		_ = tc.checkCallExpr(&call)
 
-		// Use tc.GlobalTable as seen in your previous snippet
-		funcSym, exists := tc.GlobalTable.Resolve(name)
+		// Now fetch the symbol to return the types
+		callee, _ := call.Callee.(aster.IdentExpr)
+		sym, exists := tc.CurrentTable.Resolve(callee.Name)
 		if !exists {
-			tc.Errors = append(tc.Errors, fmt.Sprintf("undefined function: %s", name))
 			return []string{"error"}
 		}
 
 		var names []string
-		for _, t := range funcSym.ReturnTypes {
-			names = append(names, t.Name) // Extract name from aster.Type
+		for _, t := range sym.ReturnTypes {
+			names = append(names, t.Name)
 		}
-
 		if len(names) == 0 {
 			return []string{"void"}
 		}
 		return names
 	}
-
-	// Wrap the string result of inferType in a slice
 	return []string{tc.inferType(expr)}
+}
+
+func (tc *TypeChecker) registerFunctions(ast *aster.AST) {
+	for _, f := range ast.Funcs {
+		sym := &Symbol{
+			Name:        f.FuncName,
+			Kind:        "func",
+			ReturnTypes: f.Returns,
+			Params:      f.Params,
+		}
+
+		tc.GlobalTable.Define(f.FuncName, sym)
+	}
 }
 
 func (tc *TypeChecker) checkVarDeclar(decl *aster.VarDeclar) {
@@ -240,6 +250,17 @@ func (tc *TypeChecker) checkFieldAccess(expr aster.FieldAccessExpr) string {
 	return "error"
 }
 
+func (tc *TypeChecker) checkFuncDecls(f aster.Func) {
+	// Retrieve the function code from the global table
+	sym, _ := tc.GlobalTable.Resolve(f.FuncName)
+	// Store the current func.
+	tc.CurrentFunction = sym
+
+	tc.checkBlock(f.Body)
+
+	tc.CurrentFunction = nil // reset
+}
+
 func (tc *TypeChecker) checkFuncDecl(fn *aster.Func) {
 	// 1. Create a new child SymbolTable for the function
 	childScopeID := tc.CurrentTable.generateChildID()
@@ -275,6 +296,10 @@ func (tc *TypeChecker) checkFuncDecl(fn *aster.Func) {
 
 	// 5. Restore context back to the parent scope
 	tc.CurrentTable = previousTable
+
+	// reset func
+
+	tc.CurrentFunction = nil // reset
 }
 
 func (st *SymbolTable) generateChildID() string {
@@ -481,6 +506,7 @@ func (tc *TypeChecker) Check(a *aster.AST) {
 	// 1. Register Structs first (so variables can use them as types)
 
 	tc.checkGlobalVarsAndStructs(a)
+	tc.registerFunctions(a)
 
 	for _, s := range a.Structs {
 		tc.GlobalTable.Define(s.Name, &Symbol{
@@ -509,9 +535,9 @@ func (tc *TypeChecker) Check(a *aster.AST) {
 	}
 }
 
-func (tc *TypeChecker) checkGlobalVarsAndStructs(prog *aster.AST) {
+func (tc *TypeChecker) checkGlobalVarsAndStructs(ast *aster.AST) {
 	// 1. Register all Structs first
-	for _, s := range prog.Structs {
+	for _, s := range ast.Structs {
 		sym := &Symbol{
 			Name: s.Name,
 			Kind: "struct",
