@@ -101,32 +101,43 @@ func (tc *TypeChecker) checkBinaryExpr(expr *aster.BinaryExpr) string {
 func (tc *TypeChecker) inferType(expr aster.Expression) string {
 	switch e := expr.(type) {
 
-	case aster.CallExpr:
-		// Get all return types as a slice of strings
-		types := tc.inferReturnTypes(e)
+	// Literals
+	case aster.StringExpr:
+		return "string"
 
-		// IDIOM: In Go, a multi-value function call in a single-value context is an error.
+	case aster.NumberExpr:
+		return "int" //TODO float
+
+	case aster.BoolExpr:
+		return "bool"
+
+	case aster.CallExpr:
+		types := tc.inferReturnTypes(e)
+		if len(types) == 0 {
+			return "void"
+		}
+
 		if len(types) > 1 {
 			tc.Errors = append(tc.Errors, "multiple-value call in single-value context")
 			return "error"
 		}
 
-		if len(types) == 0 {
-			return "void"
-		}
-
-		// Return the only type available
 		return types[0]
 
 	case aster.IdentExpr:
-		sym, exists := tc.GlobalTable.Resolve(e.Name)
+		sym, exists := tc.CurrentTable.Resolve(e.Name)
 		if !exists {
 			tc.Errors = append(tc.Errors, "undefined variable: "+e.Name)
 			return "error"
 		}
 		return sym.Type.Name
 
-	// ... other cases
+	case aster.FieldAccessExpr:
+		return tc.checkFieldAccess(e)
+
+	case aster.StructLiteral:
+		return tc.checkStructLiteral(e)
+
 	default:
 		return "unknown"
 	}
@@ -199,11 +210,10 @@ func (tc *TypeChecker) checkVarDeclar(decl *aster.VarDeclar) {
 
 func (tc *TypeChecker) checkFieldAccess(expr aster.FieldAccessExpr) string {
 	objType := tc.inferType(expr.Object)
-	if objType == "error" {
+	if objType == "error" || objType == "unknown" {
 		return "error"
 	}
 
-	// Auto-dereference: if type is "*User", look up "User"
 	actualTypeName := objType
 	if len(objType) > 0 && objType[0] == '*' {
 		actualTypeName = objType[1:]
@@ -215,14 +225,18 @@ func (tc *TypeChecker) checkFieldAccess(expr aster.FieldAccessExpr) string {
 		return "error"
 	}
 
-	// Check fields within the resolved struct symbol
+	if structSym.Kind != "struct" {
+		tc.Errors = append(tc.Errors, fmt.Sprintf("%s is not a struct", actualTypeName))
+		return "error"
+	}
+
 	for _, field := range structSym.Fields {
 		if field.Name == expr.Field {
-			return field.Type // Found the field, return its type
+			return field.Name
 		}
 	}
 
-	tc.Errors = append(tc.Errors, fmt.Sprintf("type %s has no field %s", actualTypeName, expr.Field))
+	tc.Errors = append(tc.Errors, fmt.Sprintf("line %d: type %s has no field %s", 0, actualTypeName, expr.Field))
 	return "error"
 }
 
@@ -406,7 +420,7 @@ func (tc *TypeChecker) checkAssign(asgn aster.Assign) {
 		inferredRhsType := rightSideTypes[i]
 		if inferredRhsType != "error" && existingSym.Type.Name != inferredRhsType {
 			tc.Errors = append(tc.Errors, fmt.Sprintf(
-				"cannot assign %s to variable %s of type %s",
+				"Line %d cannot assign %s to variable %s of type %s", asgn.Line,
 				inferredRhsType, varName, existingSym.Type.Name,
 			))
 		}
@@ -442,7 +456,7 @@ func (tc *TypeChecker) checkStructLiteral(lit aster.StructLiteral) string {
 
 		// Strict Check: Ensure types match exactly
 		if providedType != expectedType {
-			msg := fmt.Sprintf("type mismatch in %s.%s: expected %s, got %s",
+			msg := fmt.Sprintf("Line ? type mismatch in %s.%s: expected %s, got %s",
 				structName, providedField.Name, expectedType, providedType)
 			tc.Errors = append(tc.Errors, msg)
 		}
@@ -465,6 +479,9 @@ func (tc *TypeChecker) checkGlobalVars(vars []aster.VarDeclar) {
 // check
 func (tc *TypeChecker) Check(a *aster.AST) {
 	// 1. Register Structs first (so variables can use them as types)
+
+	tc.checkGlobalVarsAndStructs(a)
+
 	for _, s := range a.Structs {
 		tc.GlobalTable.Define(s.Name, &Symbol{
 			Name:   s.Name,
@@ -492,6 +509,29 @@ func (tc *TypeChecker) Check(a *aster.AST) {
 	}
 }
 
+func (tc *TypeChecker) checkGlobalVarsAndStructs(prog *aster.AST) {
+	// 1. Register all Structs first
+	for _, s := range prog.Structs {
+		sym := &Symbol{
+			Name: s.Name,
+			Kind: "struct",
+		}
+
+		// Map AST fields to Symbol fields
+		for _, f := range s.Fields {
+			// If your Symbol doesn't have a 'Fields' slice yet,
+			// make sure to add it to your Symbol struct definition.
+			sym.Fields = append(sym.Fields, aster.Field{
+				Name: f.Name,
+				Type: f.Type,
+			})
+		}
+
+		// Add to GlobalTable so functions can resolve this type
+		tc.GlobalTable.Define(s.Name, sym)
+	}
+}
+
 func (tc *TypeChecker) checkCallExpr(call *aster.CallExpr) string {
 	// 1. Assert that Callee is an IdentExpr to get the Name
 	callee, ok := call.Callee.(aster.IdentExpr)
@@ -509,7 +549,7 @@ func (tc *TypeChecker) checkCallExpr(call *aster.CallExpr) string {
 
 	// 3. Ensure the symbol is actually a function
 	if sym.Kind != "func" {
-		tc.Errors = append(tc.Errors, fmt.Sprintf("%s is not a function", callee.Name))
+		tc.Errors = append(tc.Errors, fmt.Sprintf("Line ? , %s is not a function", callee.Name))
 		return "error"
 	}
 
@@ -521,6 +561,7 @@ func (tc *TypeChecker) checkCallExpr(call *aster.CallExpr) string {
 	}
 
 	// 5. Validate each argument type against parameter type
+
 	for i, arg := range call.Args {
 		expectedType := sym.Params[i].Type.Name
 		providedType := tc.inferType(arg)

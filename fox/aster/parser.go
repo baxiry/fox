@@ -515,7 +515,6 @@ func (p *Parser) Builder(data []byte) *AST {
 
 	ast := &AST{}
 
-	fmt.Println("len of p.tokens  : ", len(p.tokens))
 	for p.pos < len(p.tokens) {
 		token := p.tokens[p.pos]
 

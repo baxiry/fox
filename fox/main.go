@@ -31,8 +31,13 @@ func main() {
 	*/
 
 	// 2. Type Checking stage
+
 	tc := tchecker.NewTypeChecker()
+
 	tc.Check(parser.Builder(data))
+
+	fmt.Println("output:")
+	fmt.Println()
 
 	// 3. IMPORTANT: Stop if there are semantic errors
 	if len(tc.Errors) > 0 {

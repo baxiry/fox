@@ -7,6 +7,8 @@ type UnaryExpr struct {
 	// Col int later
 }
 
+func (UnaryExpr) isExpr() {}
+
 type Expression interface {
 	isExpr()
 }
@@ -15,21 +17,49 @@ type TypeExpr struct {
 	Name string
 }
 
+func (TypeExpr) isExpr() {}
+
 type NumberExpr struct {
 	Literal string
 }
+
+func (NumberExpr) isExpr() {}
 
 type StringExpr struct {
 	Literal string
 }
 
+func (StringExpr) isExpr() {}
+
+type IntExpr struct {
+	Literal string
+}
+
+func (IntExpr) isExpr() {}
+
+type FloatExpr struct {
+	Literal string
+}
+
+func (FloatExpr) isExpr() {}
+
+type BoolExpr struct {
+	Literal string
+}
+
+func (BoolExpr) isExpr() {}
+
 type LiteralExpr struct {
 	Value string
 }
 
+func (LiteralExpr) isExpr() {}
+
 type IdentExpr struct {
 	Name string
 }
+
+func (IdentExpr) isExpr() {}
 
 type BinaryExpr struct {
 	Op    string
@@ -37,30 +67,26 @@ type BinaryExpr struct {
 	Right Expression
 }
 
+func (BinaryExpr) isExpr() {}
+
 type CallExpr struct {
 	Callee Expression
 	Args   []Expression
 }
+
+func (CallExpr) isExpr() {}
 
 type StructLiteral struct {
 	Type   Type
 	Fields []FieldInit
 }
 
+func (StructLiteral) isExpr() {}
+
 type FieldInit struct {
 	Name  string
 	Value Expression
 }
-
-func (CallExpr) isExpr()      {}
-func (StructLiteral) isExpr() {}
-func (TypeExpr) isExpr()      {}
-func (NumberExpr) isExpr()    {}
-func (StringExpr) isExpr()    {}
-func (LiteralExpr) isExpr()   {}
-func (IdentExpr) isExpr()     {}
-func (BinaryExpr) isExpr()    {}
-func (UnaryExpr) isExpr()     {}
 
 func (p *Parser) parseCall(name string) CallExpr {
 	p.expectType(OPN_PAREN)
