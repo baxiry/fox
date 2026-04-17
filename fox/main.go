@@ -5,8 +5,6 @@ import (
 	"fox/aster"
 	"fox/tchecker"
 	"os"
-
-	"github.com/kr/pretty"
 )
 
 func main() {
@@ -19,17 +17,18 @@ func main() {
 
 	fmt.Println("input src:\n", string(data))
 
+	parser := aster.NewParser()
+
 	/*
 		for k, v := range tokens {
 			fmt.Print(k, " ", v.Type, " ", v.Lexeme, ", ")
 		}
 		println()
+
+		fmt.Println("\nresult as AST:")
+
+		pretty.Print(parser.Builder(data))
 	*/
-
-	fmt.Println("\nresult as AST:")
-
-	parser := aster.NewParser()
-	pretty.Print(parser.Builder(data))
 
 	// 2. Type Checking stage
 	tc := tchecker.NewTypeChecker()

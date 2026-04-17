@@ -1,0 +1,7 @@
+
+
+fn main() {
+    x := 10
+    s := "hello"
+    x = s 
+}

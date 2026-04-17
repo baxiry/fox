@@ -1,0 +1,11 @@
+
+
+type User struct {
+    name string
+}
+
+fn main() {
+    u := User{name: "adam"}
+    age := u.age 
+}
+

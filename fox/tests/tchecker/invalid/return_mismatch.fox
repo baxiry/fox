@@ -1,0 +1,8 @@
+
+fn getInt() int {
+    return "not an int" 
+}
+
+fn multi() int, string {
+    return "hello", 10 
+}

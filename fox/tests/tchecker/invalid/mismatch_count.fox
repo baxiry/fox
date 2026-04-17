@@ -1,0 +1,10 @@
+
+fn do() int, int {
+    return 1, 2
+}
+
+fn fail() {
+    x := do() 
+    a, b, c := do() 
+}
+

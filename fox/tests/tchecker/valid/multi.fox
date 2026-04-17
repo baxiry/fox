@@ -1,0 +1,10 @@
+
+fn swap(a int, b int) int, int {
+    return b, a
+}
+
+fn test() {
+    x, y := 1, 2
+    x, y = swap(x, y)
+    _, _ = swap(10, 20)
+}

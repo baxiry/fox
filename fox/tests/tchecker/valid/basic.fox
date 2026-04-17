@@ -1,0 +1,19 @@
+
+type Point struct {
+    x int
+    y int
+}
+
+fn getPoint() Point {
+    p := Point{x: 10, y: 20}
+    return p
+}
+
+fn main() {
+    p := getPoint()
+    x := p.x
+    ok := true
+    if ok {
+        p.x = x + 5
+    }
+}
