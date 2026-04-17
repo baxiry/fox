@@ -47,7 +47,11 @@ fn Loops(x X, y Y, z *Z) Data, int  {
        }
     }
     
-    for {}
+
+
+    for {
+       do()
+    }
 
     return data, 30 
 }

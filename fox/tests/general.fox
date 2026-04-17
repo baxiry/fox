@@ -61,6 +61,17 @@ fn parent() {
     p := &x   
 }
 
+fn multiDefAss() {
+   u, o := User{name:"adam",age: 23}, Obj{class: "A", size:90}
+   u, o = do() 
+   x, y := do()
+   _ , y = do()
+   x , _ = do()
+   _,_ = do()
+   g, _ := do()
+   _, h := do()
+}
+
 fn worker(p *Obj) {}
 
 fn parallel() {
@@ -150,5 +161,16 @@ fn Loops(x X, y Y, z *Z) Data, int  {
     for {}
 
     return data, 30 
+}
+
+fn multiDefAss() {
+   u, o := User{name:"adam",age: 23}, Obj{class: "A", size:90}
+   u, o = do() 
+   x, y := do()
+   _ , y = do()
+   x , _ = do()
+   _,_ = do()
+   g, _ := do()
+   _, h := do()
 }
 

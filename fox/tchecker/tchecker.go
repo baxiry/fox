@@ -1,4 +1,4 @@
-package tcheck
+package tchecker
 
 import (
 	"fmt"
@@ -10,6 +10,7 @@ type TypeChecker struct {
 	GlobalTable     *SymbolTable
 	CurrentTable    *SymbolTable
 	CurrentRetTypes []string
+	CurrentLine     int
 	Errors          []string
 }
 
@@ -99,19 +100,33 @@ func (tc *TypeChecker) checkBinaryExpr(expr *aster.BinaryExpr) string {
 
 func (tc *TypeChecker) inferType(expr aster.Expression) string {
 	switch e := expr.(type) {
-	// ... (Existing cases)
 
 	case aster.CallExpr:
+		// Get all return types as a slice of strings
 		types := tc.inferReturnTypes(e)
+
+		// IDIOM: In Go, a multi-value function call in a single-value context is an error.
 		if len(types) > 1 {
-			tc.Errors = append(tc.Errors, "multiple-value context error")
+			tc.Errors = append(tc.Errors, "multiple-value call in single-value context")
 			return "error"
 		}
+
 		if len(types) == 0 {
-			return "void" // Or handle functions with no return
+			return "void"
 		}
+
+		// Return the only type available
 		return types[0]
 
+	case aster.IdentExpr:
+		sym, exists := tc.GlobalTable.Resolve(e.Name)
+		if !exists {
+			tc.Errors = append(tc.Errors, "undefined variable: "+e.Name)
+			return "error"
+		}
+		return sym.Type.Name
+
+	// ... other cases
 	default:
 		return "unknown"
 	}
@@ -119,23 +134,33 @@ func (tc *TypeChecker) inferType(expr aster.Expression) string {
 
 func (tc *TypeChecker) inferReturnTypes(expr aster.Expression) []string {
 	if call, ok := expr.(aster.CallExpr); ok {
-		funcSym, exists := tc.GlobalTable.Resolve(call.Callee.(aster.IdentExpr).Name)
+		var name string
+		if ident, ok := call.Callee.(aster.IdentExpr); ok {
+			name = ident.Name
+		}
+
+		// Use tc.GlobalTable as seen in your previous snippet
+		funcSym, exists := tc.GlobalTable.Resolve(name)
 		if !exists {
-			tc.Errors = append(tc.Errors, fmt.Sprintf("undefined function: %s", call.Callee))
+			tc.Errors = append(tc.Errors, fmt.Sprintf("undefined function: %s", name))
 			return []string{"error"}
 		}
 
-		// Return all types from the slice we just updated in Symbol
-		var types []string
+		var names []string
 		for _, t := range funcSym.ReturnTypes {
-			types = append(types, t.Name)
+			names = append(names, t.Name) // Extract name from aster.Type
 		}
-		return types
+
+		if len(names) == 0 {
+			return []string{"void"}
+		}
+		return names
 	}
 
-	// For non-call expressions, it's always a single type
+	// Wrap the string result of inferType in a slice
 	return []string{tc.inferType(expr)}
 }
+
 func (tc *TypeChecker) checkVarDeclar(decl *aster.VarDeclar) {
 	var finalType string
 
@@ -273,68 +298,117 @@ func (tc *TypeChecker) checkBlock(block *aster.FrameBlock) {
 }
 
 func (tc *TypeChecker) checkDeclar(decl aster.Declar) {
-	// 1. := always requires an expression on the right
-	if decl.Value == nil {
-		tc.Errors = append(tc.Errors, "syntax error: := must have a value on the right")
+	// 1. Basic syntax check: Ensure the right side is not empty
+	if len(decl.Values) == 0 {
+		tc.Errors = append(tc.Errors, "syntax error: := must have values on the right")
 		return
 	}
 
-	// 2. Infer type from the value (Value is mandatory here)
-	finalType := tc.inferType(decl.Value)
-	if finalType == "error" {
+	// 2. Collect and unpack all types from the right-hand side
+	var rightSideTypes []string
+	for _, valExpr := range decl.Values {
+		// The "..." operator flattens return types from functions or literals
+		rightSideTypes = append(rightSideTypes, tc.inferReturnTypes(valExpr)...)
+	}
+
+	// 3. Structural check: Count of identifiers must match count of types
+	if len(decl.Names) != len(rightSideTypes) {
+		tc.Errors = append(tc.Errors, fmt.Sprintf(
+			"assignment mismatch: %d names on the left but %d values on the right",
+			len(decl.Names), len(rightSideTypes),
+		))
 		return
 	}
 
-	// 3. Register the symbol (Assuming Name is an IdentExpr)
-	varName := ""
-	if ident, ok := decl.Name.(aster.IdentExpr); ok {
-		varName = ident.Name
-	} else {
-		tc.Errors = append(tc.Errors, "invalid left-hand side in := declaration")
-		return
-	}
+	// 4. Register each name into the current scope
+	for i, nameExpr := range decl.Names {
+		ident, ok := nameExpr.(aster.IdentExpr)
+		if !ok {
+			tc.Errors = append(tc.Errors, "invalid identifier on the left side of :=")
+			continue
+		}
 
-	sym := &Symbol{
-		Name:    varName,
-		Type:    aster.Type{Name: finalType},
-		ScopeID: tc.CurrentTable.ScopeID,
-	}
+		varName := ident.Name
 
-	// 4. Reuse Define to prevent redeclaration in the same scope
-	err := tc.CurrentTable.Define(varName, sym)
-	if err != nil {
-		tc.Errors = append(tc.Errors, err.Error())
+		// 5. Blank identifier "_": skip symbol table registration
+		if varName == "_" {
+			continue
+		}
+
+		// 6. Safety check: Don't define variables with "error" type
+		inferredType := rightSideTypes[i]
+		if inferredType == "error" {
+			continue
+		}
+
+		// Create the symbol and add it to the table
+		sym := &Symbol{
+			Name:    varName,
+			Type:    aster.Type{Name: inferredType},
+			ScopeID: tc.CurrentTable.ScopeID,
+		}
+
+		// Define handles redeclaration checks internally
+		if err := tc.CurrentTable.Define(varName, sym); err != nil {
+			tc.Errors = append(tc.Errors, err.Error())
+		}
 	}
 }
 
 func (tc *TypeChecker) checkAssign(asgn aster.Assign) {
-	targetType := tc.inferType(asgn.Target)
 
-	var rhsTypes []aster.Type
-	if call, ok := asgn.Value.(aster.CallExpr); ok {
-		funcSym, exists := tc.GlobalTable.Resolve(call.Callee.(aster.IdentExpr).Name)
-		if exists && funcSym.Kind == "func" {
-			// Direct access to the slice, no string manipulation needed
-			rhsTypes = funcSym.ReturnTypes
-		}
-	} else {
-		// Wrap single type into a slice for consistency
-		singleType := tc.inferType(asgn.Value)
-		rhsTypes = []aster.Type{{Name: singleType}}
+	// 1. Ensure the right side is not empty
+	if len(asgn.Values) == 0 {
+
+		tc.Errors = append(tc.Errors, "syntax error: assignment must have values on the right")
+		return
 	}
 
-	// 3. Validation
-	if len(rhsTypes) > 1 {
-		msg := fmt.Sprintf("assignment mismatch: %d values but only 1 target", len(rhsTypes))
+	// 2. Collect and flatten all types from the right-hand side
+	var rightSideTypes []string
+	for _, valExpr := range asgn.Values {
+		// This handles both single values and multiple returns from functions
+		rightSideTypes = append(rightSideTypes, tc.inferReturnTypes(valExpr)...)
+	}
+
+	// 3. Structural check: Count of variables on the left must match types on the right
+	if len(asgn.Targets) != len(rightSideTypes) {
+
+		msg := fmt.Sprintf("line %d: assignment mismatch: %d variables but %d values provided",
+			asgn.Line, len(asgn.Targets), len(rightSideTypes))
 		tc.Errors = append(tc.Errors, msg)
 		return
 	}
 
-	if len(rhsTypes) == 1 {
-		currentRhs := rhsTypes[0].Name
-		if targetType != "error" && currentRhs != "error" && targetType != currentRhs {
-			msg := fmt.Sprintf("cannot assign %s to %s", currentRhs, targetType)
-			tc.Errors = append(tc.Errors, msg)
+	// 4. Validate each variable and its type consistency
+	for i, nameExpr := range asgn.Targets {
+		ident, ok := nameExpr.(aster.IdentExpr)
+		if !ok {
+			tc.Errors = append(tc.Errors, "invalid left-hand side in assignment")
+			continue
+		}
+
+		varName := ident.Name
+
+		// 5. Blank identifier "_": skip validation as it can accept any type
+		if varName == "_" {
+			continue
+		}
+
+		// 6. Resolve variable: it must be declared before assignment (=)
+		existingSym, exists := tc.CurrentTable.Resolve(varName)
+		if !exists {
+			tc.Errors = append(tc.Errors, fmt.Sprintf("undefined variable: %s", varName))
+			continue
+		}
+
+		// 7. Type Consistency: Ensure new value type matches the declared variable type
+		inferredRhsType := rightSideTypes[i]
+		if inferredRhsType != "error" && existingSym.Type.Name != inferredRhsType {
+			tc.Errors = append(tc.Errors, fmt.Sprintf(
+				"cannot assign %s to variable %s of type %s",
+				inferredRhsType, varName, existingSym.Type.Name,
+			))
 		}
 	}
 }
@@ -662,5 +736,44 @@ func (tc *TypeChecker) checkUnaryExpr(expr *aster.UnaryExpr) string {
 
 	default:
 		return operandType
+	}
+}
+
+func (tc *TypeChecker) checkMultiAssignment(left []aster.Expression, right []aster.Expression, isDefine bool, line int) {
+	var expandedRightTypes []string
+
+	for _, expr := range right {
+		retTypes := tc.inferReturnTypes(expr)
+		expandedRightTypes = append(expandedRightTypes, retTypes...)
+	}
+
+	if len(left) != len(expandedRightTypes) {
+		tc.Errors = append(tc.Errors, fmt.Sprintf("line %d: assignment mismatch: %d variables but %d values",
+			line, len(left), len(expandedRightTypes)))
+		return
+	}
+
+	for i, leftExpr := range left {
+		rightTypeName := expandedRightTypes[i]
+
+		ident, isIdent := leftExpr.(aster.IdentExpr)
+		if isIdent && ident.Name == "_" {
+			continue
+		}
+
+		if isDefine && isIdent {
+			// Create a Symbol pointer as required by your Define method
+			newSymbol := &Symbol{
+				Name: ident.Name,
+				Type: aster.Type{Name: rightTypeName},
+			}
+			tc.GlobalTable.Define(ident.Name, newSymbol)
+		} else {
+			leftTypeName := tc.inferType(leftExpr)
+			if leftTypeName != rightTypeName {
+				tc.Errors = append(tc.Errors, fmt.Sprintf("line %d: cannot assign %s to %s",
+					line, rightTypeName, leftTypeName))
+			}
+		}
 	}
 }

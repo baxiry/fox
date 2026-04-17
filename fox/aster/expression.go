@@ -42,15 +42,25 @@ type CallExpr struct {
 	Args   []Expression
 }
 
-func (CallExpr) isExpr() {}
+type StructLiteral struct {
+	Type   Type
+	Fields []FieldInit
+}
 
-func (TypeExpr) isExpr()    {}
-func (NumberExpr) isExpr()  {}
-func (StringExpr) isExpr()  {}
-func (LiteralExpr) isExpr() {}
-func (IdentExpr) isExpr()   {}
-func (BinaryExpr) isExpr()  {}
-func (UnaryExpr) isExpr()   {}
+type FieldInit struct {
+	Name  string
+	Value Expression
+}
+
+func (CallExpr) isExpr()      {}
+func (StructLiteral) isExpr() {}
+func (TypeExpr) isExpr()      {}
+func (NumberExpr) isExpr()    {}
+func (StringExpr) isExpr()    {}
+func (LiteralExpr) isExpr()   {}
+func (IdentExpr) isExpr()     {}
+func (BinaryExpr) isExpr()    {}
+func (UnaryExpr) isExpr()     {}
 
 func (p *Parser) parseCall(name string) CallExpr {
 	p.expectType(OPN_PAREN)

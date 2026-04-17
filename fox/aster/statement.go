@@ -1,6 +1,8 @@
 package aster
 
-import "fmt"
+import (
+	"fmt"
+)
 
 type Statement interface {
 	isStat()
@@ -33,21 +35,24 @@ type ForStmt struct {
 }
 
 type Assign struct {
-	Target Expression
-	Op     string
-	Value  Expression
+	Targets []Expression
+	Op      string
+	Values  []Expression
+	Line    int
 }
 
 type VarDeclar struct {
 	Name  string
 	Type  *Type
 	Value Expression
+	Line  int
 }
 
 type Declar struct {
 	Names  []Expression
 	Op     string
 	Values []Expression
+	Line   int
 }
 
 type ExprStmt struct {
@@ -138,27 +143,40 @@ func (p *Parser) parseSpawn() Statement {
 	return &SpawnStmt{Call: call}
 }
 
+func (p *Parser) current() string {
+	return p.tokens[p.pos].Lexeme
+}
+
 func (p *Parser) parseIf() Statement {
+
 	p.expectType(IF)
+	p.inCondition = true
 	cond := p.parseExpr()
+	p.inCondition = false
+
+	// Skip newlines/whitespace after the condition to find the '{'
+	p.skip()
+
 	thenBlock := p.parseBlock()
 
-	var elseStmt Statement = nil // Using Statement interface for flexibility
+	var elseStmt Statement = nil
+
+	// Skip potential newlines before checking for ELSE
+	p.skip()
 
 	if p.pos < len(p.tokens) && p.tokens[p.pos].Type == ELSE {
 		p.pos++
 
-		// If another IF follows ELSE, it's an 'else if'
+		// Skip newlines after ELSE to see if an IF or a '{' follows
+		p.skip()
+
 		if p.pos < len(p.tokens) && p.tokens[p.pos].Type == IF {
-			// Recursive call to build the chain
 			elseStmt = p.parseIf()
 		} else {
-			// Normal ELSE block
 			elseStmt = p.parseBlock()
 		}
 	}
 
-	// Always return a pointer to satisfy the Statement interface
 	return &IfStmt{
 		Cond: cond,
 		Then: thenBlock,
@@ -189,20 +207,35 @@ func (p *Parser) parseExprUntil(stop string) Expression {
 func (p *Parser) parseFor() Statement {
 	p.expectType(FOR)
 
+	// Enable condition mode to prevent parsePostfix from misinterpreting
+	// the loop's '{' as a struct literal.
+	p.inCondition = true
+
 	forStmt := ForStmt{}
 
-	// for {}
+	// 1. Infinite loop: for {}
 	if p.tokens[p.pos].Type == OPN_BRACE {
+		p.inCondition = false // Must disable before calling parseBlock
 		forStmt.Body = p.parseBlock()
 		return forStmt
 	}
 
-	// for condition {} (NO semicolons ahead)
-	if p.tokens[p.pos].Type != SEMICOLON && p.tokens[p.pos].Type != OPN_BRACE {
+	// Helper function to scan ahead for assignment operators (= or :=)
+	isAssignOrDef := func() bool {
+		ps := p.pos
+		for ps < len(p.tokens) && p.tokens[ps].Type != SEMICOLON && p.tokens[ps].Type != OPN_BRACE {
+			if p.tokens[ps].Type == ASSIGN || p.tokens[ps].Type == DEFINE {
+				return true
+			}
+			ps++
+		}
+		return false
+	}
 
+	// 2. Case: for condition {} (While-style)
+	if p.tokens[p.pos].Type != SEMICOLON && p.tokens[p.pos].Type != OPN_BRACE {
 		ps := p.pos
 		hasSemicolon := false
-
 		for ps < len(p.tokens) && p.tokens[ps].Type != OPN_BRACE {
 			if p.tokens[ps].Type == SEMICOLON {
 				hasSemicolon = true
@@ -211,19 +244,19 @@ func (p *Parser) parseFor() Statement {
 			ps++
 		}
 
-		if !hasSemicolon {
+		if !hasSemicolon && !isAssignOrDef() {
 			forStmt.Cond = p.parseExpr()
+			p.inCondition = false // Header finished
 			forStmt.Body = p.parseBlock()
 			return forStmt
 		}
 	}
 
-	// INIT
+	// 3. Case: for init; cond; post {} (C-style)
+
+	// --- INIT ---
 	if p.tokens[p.pos].Type != SEMICOLON && p.tokens[p.pos].Type != OPN_BRACE {
-
-		if p.pos+1 < len(p.tokens) &&
-			(p.tokens[p.pos+1].Type == ASSIGN || p.tokens[p.pos+1].Type == DEFINE) {
-
+		if isAssignOrDef() {
 			forStmt.Init = p.parseDefOrAssign()
 		} else {
 			forStmt.Init = p.parseExprStatement()
@@ -232,101 +265,31 @@ func (p *Parser) parseFor() Statement {
 
 	p.expectType(SEMICOLON)
 
-	// CONDITION
+	// --- CONDITION ---
 	if p.tokens[p.pos].Type != SEMICOLON && p.tokens[p.pos].Type != OPN_BRACE {
-		forStmt.Cond = p.parseExpr() // parseExprUntil( ";")
+		forStmt.Cond = p.parseExpr()
 	}
 
 	p.expectType(SEMICOLON)
 
-	// POST
-	if p.tokens[p.pos].Type != OPN_BRACE && p.tokens[p.pos].Type != CLS_BRACE {
-
-		if p.pos+1 < len(p.tokens) &&
-			(p.tokens[p.pos+1].Type == ASSIGN || p.tokens[p.pos+1].Type == DEFINE) {
-
-			forStmt.Post = p.parseDefOrAssign()
-		} else {
-			forStmt.Post = p.parseExprStatement()
-		}
-	}
-
-	// BODY
-	if p.tokens[p.pos].Type == OPN_BRACE {
-		forStmt.Body = p.parseBlock()
-		return forStmt
-	}
-
-	// fallback safety
-	forStmt.Body = p.parseBlock()
-	return forStmt
-}
-
-func (p *Parser) parseFor_Old() Statement {
-	p.expectType(FOR)
-
-	forStmt := ForStmt{}
-
-	// for {}
-	if p.tokens[p.pos].Type == OPN_BRACE {
-		forStmt.Body = p.parseBlock()
-		return forStmt
-	}
-
-	// for condition {}
-	if p.tokens[p.pos].Type == IDENT {
-		ps := p.pos
-		composite := false
-		for p.tokens[ps].Type != OPN_BRACE {
-			if p.tokens[ps].Type == SEMICOLON {
-				composite = true
-				break
-			}
-			ps++
-		}
-		if !composite {
-			forStmt.Cond = p.parseExpr()
-			return forStmt
-		}
-	}
-
-	//  INIT
-	// check ";" "{" befor init
-	if p.tokens[p.pos].Type != SEMICOLON && p.tokens[p.pos].Type != OPN_BRACE {
-		if p.pos+1 < len(p.tokens) && (p.tokens[p.pos+1].Type == ASSIGN || p.tokens[p.pos+1].Type == DEFINE) {
-			forStmt.Init = p.parseDefOrAssign()
-		} else {
-			forStmt.Init = p.parseExprStatement()
-		}
-	}
-	p.expectType(SEMICOLON) // use ;
-
-	// CONDITION
-	if p.tokens[p.pos].Type != SEMICOLON && p.tokens[p.pos].Type != OPN_BRACE {
-		forStmt.Cond = p.parseExprUntil(";")
-	}
-	p.expectType(SEMICOLON) // use ;
-
-	// POST
+	// --- POST ---
 	if p.tokens[p.pos].Type != OPN_BRACE {
-		if p.pos+1 < len(p.tokens) && (p.tokens[p.pos+1].Type == ASSIGN || p.tokens[p.pos+1].Type == DEFINE) {
+		if isAssignOrDef() {
 			forStmt.Post = p.parseDefOrAssign()
-		} else if p.tokens[p.pos].Type != CLS_BRACE {
+		} else {
 			forStmt.Post = p.parseExprStatement()
 		}
 	}
 
-	// for {}
-	if p.tokens[p.pos].Type == OPN_BRACE {
-		forStmt.Body = p.parseBlock()
-		return forStmt
-	}
+	// Disable condition mode before parsing the loop body
+	p.inCondition = false
 
-	//  BODY
-
+	// --- BODY ---
 	forStmt.Body = p.parseBlock()
 	return forStmt
 }
+
+// .
 func isExprStart(tok Token) bool {
 	switch tok.Type {
 
@@ -417,26 +380,43 @@ func (p *Parser) parseExprStatement() Statement {
 }
 
 func (p *Parser) parseAssign() Statement {
-	target := p.parsePostfix()
+	// 1. Parse the first target from the current position
+	// This will read "i" or "data.x"
+	firstTarget := p.parsePostfix()
 
-	switch target.(type) {
-	case IdentExpr, *IdentExpr, FieldAccessExpr, *FieldAccessExpr:
-	default:
-		panic("left-hand side of assignment must be an identifier or field access")
+	// 2. Collect additional targets if there's a comma (for u, o = ...)
+	targets := []Expression{firstTarget}
+	for p.pos < len(p.tokens) && p.tokens[p.pos].Type == COMMA {
+		p.pos++ // consume ','
+		targets = append(targets, p.parsePostfix())
+	}
+
+	// 3. Look for the assignment operator '='
+	if p.pos >= len(p.tokens) || p.tokens[p.pos].Type != ASSIGN {
+		// Here we handle the panic with more context
+		line := 0
+		if p.pos < len(p.tokens) {
+			line = p.tokens[p.pos].Line
+		}
+		panic(fmt.Sprintf("line %d: expected '=' for assignment, but found %s",
+			line, p.tokens[p.pos].Lexeme))
 	}
 
 	opTok := p.tokens[p.pos]
-	if opTok.Type != ASSIGN {
-		panic("expected = for assignment")
-	}
-	p.pos++
+	p.pos++ // consume '='
 
-	value := p.parseExpr()
+	// 4. Parse the right-hand side values
+	values := []Expression{p.parseExpr()}
+	for p.pos < len(p.tokens) && p.tokens[p.pos].Type == COMMA {
+		p.pos++ // consume ','
+		values = append(values, p.parseExpr())
+	}
 
 	return Assign{
-		Target: target,
-		Op:     opTok.Lexeme,
-		Value:  value,
+		Targets: targets,
+		Op:      opTok.Lexeme,
+		Values:  values,
+		Line:    opTok.Line,
 	}
 }
 
@@ -457,10 +437,12 @@ func (p *Parser) parseDefine() Statement {
 
 	value := p.parseExpr()
 
+	line := p.tokens[p.pos].Line
 	return Declar{
 		Names:  []Expression{target},
 		Op:     opTok.Lexeme,
 		Values: []Expression{value},
+		Line:   line,
 	}
 }
 

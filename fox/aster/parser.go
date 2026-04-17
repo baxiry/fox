@@ -5,8 +5,9 @@ import (
 )
 
 type Parser struct {
-	tokens []Token
-	pos    int
+	tokens      []Token
+	pos         int
+	inCondition bool
 }
 
 // New Parser
@@ -52,6 +53,48 @@ func (p *Parser) parsePostfix() Expression {
 			p.skip()
 			field := p.expectIdent().Lexeme
 			expr = FieldAccessExpr{Object: expr, Field: field}
+
+		case OPN_BRACE:
+			// Follow Go's rule: Struct literals must start the brace on the same line.
+			// If the brace is on a new line, it belongs to a new block (if, for, etc.)
+			if p.inCondition {
+				return expr
+			}
+
+			if p.tokens[p.pos].Line > p.tokens[p.pos-1].Line {
+				return expr
+			}
+
+			// Struct literals are only valid if the preceding expression is an identifier (the type name)
+			if ident, ok := expr.(IdentExpr); ok {
+				peekPos := p.pos + 1
+				isStructLiteral := true
+
+				if peekPos < len(p.tokens) {
+					peekTok := p.tokens[peekPos]
+
+					// If we see a keyword inside the brace immediately, it's likely a block, not a struct
+					if peekTok.Type == IF || peekTok.Type == FOR || peekTok.Type == RETURN ||
+						peekTok.Type == BREAK || peekTok.Type == CONTINUE {
+						isStructLiteral = false
+					}
+
+					// Empty braces 'A{}' are valid struct literals
+					if peekTok.Type == CLS_BRACE {
+						isStructLiteral = true
+					}
+				}
+
+				if isStructLiteral {
+					expr = p.parseStructLiteral(ident.Name)
+				} else {
+					// It's a block, let the calling function (like parseIf) handle it
+					return expr
+				}
+			} else {
+				// Expression is not an identifier, so '{' must be a block
+				return expr
+			}
 
 		default:
 			return expr
@@ -128,10 +171,7 @@ func (p *Parser) parsePrimary() Expression {
 		if p.pos < len(p.tokens) && p.tokens[p.pos].Type == OPN_PAREN {
 			return p.parseCall(tok.Lexeme)
 		}
-		// Check for struct literal: User{}
-		if p.pos < len(p.tokens) && p.tokens[p.pos].Type == OPN_BRACE {
-			return p.parseStructLiteral(tok.Lexeme)
-		}
+		// Struct literals will be handled by parsePostfix() now
 		return IdentExpr{Name: tok.Lexeme}
 
 	case BLANK:
@@ -159,7 +199,6 @@ func (p *Parser) parsePrimary() Expression {
 		panic(fmt.Sprintf("expected expression at line %d, got %s (%q)", tok.Line, tok.Type, tok.Lexeme))
 	}
 }
-
 func (p *Parser) parseType() Type {
 
 	if p.pos >= len(p.tokens) {
@@ -468,18 +507,6 @@ func (p *Parser) parseStructLiteral(typeName string) Expression {
 		Type:   Type{Name: typeName},
 		Fields: fields,
 	}
-}
-
-type StructLiteral struct {
-	Type   Type
-	Fields []FieldInit
-}
-
-func (StructLiteral) isExpr() {}
-
-type FieldInit struct {
-	Name  string
-	Value Expression
 }
 
 // AST Builder
