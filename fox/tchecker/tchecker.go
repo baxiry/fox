@@ -250,18 +250,18 @@ func (tc *TypeChecker) checkFieldAccess(expr aster.FieldAccessExpr) string {
 	return "error"
 }
 
-func (tc *TypeChecker) checkFuncDecls(f aster.Func) {
+func (tc *TypeChecker) checkFuncDecl(fn *aster.Func) {
+	tc.CurrentRetTypes = []string{}
+	for _, ret := range fn.Returns {
+		fmt.Println("current ret:", ret, ret.Name, ret.Type.Name)
+		tc.CurrentRetTypes = append(tc.CurrentRetTypes, ret.Type.Name)
+	}
+
 	// Retrieve the function code from the global table
-	sym, _ := tc.GlobalTable.Resolve(f.FuncName)
+	sym, _ := tc.GlobalTable.Resolve(fn.FuncName)
 	// Store the current func.
 	tc.CurrentFunction = sym
 
-	tc.checkBlock(f.Body)
-
-	tc.CurrentFunction = nil // reset
-}
-
-func (tc *TypeChecker) checkFuncDecl(fn *aster.Func) {
 	// 1. Create a new child SymbolTable for the function
 	childScopeID := tc.CurrentTable.generateChildID()
 	childTable := &SymbolTable{
@@ -282,7 +282,7 @@ func (tc *TypeChecker) checkFuncDecl(fn *aster.Func) {
 			Type:    param.Type,
 			ScopeID: childScopeID,
 		}
-		err := tc.CurrentTable.Define(param.Name, sym)
+		err := tc.CurrentTable.Define(param.Type.Name, sym)
 		if err != nil {
 			tc.Errors = append(tc.Errors, err.Error())
 		}
@@ -298,8 +298,40 @@ func (tc *TypeChecker) checkFuncDecl(fn *aster.Func) {
 	tc.CurrentTable = previousTable
 
 	// reset func
-
 	tc.CurrentFunction = nil // reset
+
+}
+
+func (tc *TypeChecker) checkReturnStmt(stmt *aster.ReturnStmt) {
+	if tc.CurrentFunction == nil {
+		tc.Errors = append(tc.Errors, fmt.Sprintf("line %d return statement outside function", stmt.Line))
+		return
+	}
+
+	expected := tc.CurrentFunction.ReturnTypes
+	actualExprs := stmt.Results
+
+	// 1. checke number of values
+	if len(expected) != len(actualExprs) {
+		tc.Errors = append(tc.Errors, fmt.Sprintf(
+			"line %d: function %s expects %d return values, got %d",
+			stmt.Line, tc.CurrentFunction.Name, len(expected), len(actualExprs),
+		))
+		return
+	}
+
+	// 2. checking match types
+	for i, expr := range actualExprs {
+		expectedTypeName := expected[i].Type.Name
+		actualTypeName := tc.inferType(expr)
+
+		if expectedTypeName != actualTypeName {
+			tc.Errors = append(tc.Errors, fmt.Sprintf(
+				"line %d: cannot use %s as type %s in return argument",
+				stmt.Line, actualTypeName, expectedTypeName,
+			))
+		}
+	}
 }
 
 func (st *SymbolTable) generateChildID() string {
@@ -312,27 +344,15 @@ func (st *SymbolTable) generateChildID() string {
 
 func (tc *TypeChecker) checkBlock(block *aster.FrameBlock) {
 	if block == nil {
+
 		return
 	}
 
+	// Iterate through each statement in the block
 	for _, stmt := range block.Stmts {
-		switch s := stmt.(type) {
-		case *aster.VarDeclar:
-			tc.checkVarDeclar(s)
-
-		case aster.Declar: // For := operator
-			tc.checkDeclar(s)
-
-		case aster.Assign: // For = operator
-			tc.checkAssign(s)
-
-		case aster.ExprStmt:
-			tc.inferType(s.Expr)
-
-		// Add other statement types as needed
-		default:
-			// For now, skip unknown statements
-		}
+		// IDIOMATIC: Use the existing checkStmt dispatcher
+		// instead of re-implementing a limited switch here.
+		tc.checkStmt(stmt)
 	}
 }
 
@@ -501,35 +521,11 @@ func (tc *TypeChecker) checkGlobalVars(vars []aster.VarDeclar) {
 	}
 }
 
-// check
 func (tc *TypeChecker) Check(a *aster.AST) {
-	// 1. Register Structs first (so variables can use them as types)
-
 	tc.checkGlobalVarsAndStructs(a)
+
 	tc.registerFunctions(a)
 
-	for _, s := range a.Structs {
-		tc.GlobalTable.Define(s.Name, &Symbol{
-			Name:   s.Name,
-			Fields: s.Fields,
-			// ScopeID for globals is usually "0" or empty
-			ScopeID: "0",
-		})
-	}
-
-	// 2. Register and check Global Variables
-	tc.checkGlobalVars(a.Vars)
-
-	// 3. Register Function signatures
-	for _, f := range a.Funcs {
-		tc.GlobalTable.Define(f.FuncName, &Symbol{
-			Name:    f.FuncName,
-			Type:    aster.Type{Name: "func"},
-			ScopeID: "0",
-		})
-	}
-
-	// 4. Finally, check function bodies
 	for _, f := range a.Funcs {
 		tc.checkFuncDecl(&f)
 	}
@@ -671,7 +667,7 @@ func (tc *TypeChecker) checkStmt(stmt aster.Statement) {
 		tc.checkAssign(s)
 
 	// 4. Expression Statements (Function calls)
-	case aster.ExprStmt:
+	case *aster.ExprStmt:
 		tc.inferType(s.Expr)
 
 	// 5. Control Flow (If / For)
@@ -716,30 +712,6 @@ func (tc *TypeChecker) checkIfStmt(stmt *aster.IfStmt) {
 
 		default:
 			tc.Errors = append(tc.Errors, "invalid statement in else branch")
-		}
-	}
-}
-
-func (tc *TypeChecker) checkReturnStmt(ret *aster.ReturnStmt) {
-	// 1. Match the count of return values
-	// Example: fn() int, bool must return exactly two values
-	if len(ret.Results) != len(tc.CurrentRetTypes) {
-		msg := fmt.Sprintf("return count mismatch: expected %d values, got %d",
-			len(tc.CurrentRetTypes), len(ret.Results)) // results : values
-		tc.Errors = append(tc.Errors, msg)
-		return
-	}
-
-	// 2. Validate each expression type
-	for i, expr := range ret.Results {
-		providedType := tc.inferType(expr)
-		expectedType := tc.CurrentRetTypes[i]
-
-		// Strict Type Checking (No implicit conversion)
-		if providedType != expectedType {
-			msg := fmt.Sprintf("cannot use type %s as %s in return statement",
-				providedType, expectedType)
-			tc.Errors = append(tc.Errors, msg)
 		}
 	}
 }

@@ -18,6 +18,7 @@ type ContinueNode struct {
 
 type ReturnStmt struct {
 	Results []Expression
+	Line    int
 }
 
 type IfStmt struct {
@@ -135,7 +136,7 @@ func (p *Parser) parseSpawn() Statement {
 	expr := p.parseExpr()
 	call, ok := expr.(CallExpr)
 	if !ok {
-		return BadStmt{
+		return &BadStmt{
 			Msg: fmt.Sprintf("spawn expects function call at %d:%d", t.Line, t.Column),
 		}
 	}
@@ -217,7 +218,7 @@ func (p *Parser) parseFor() Statement {
 	if p.tokens[p.pos].Type == OPN_BRACE {
 		p.inCondition = false // Must disable before calling parseBlock
 		forStmt.Body = p.parseBlock()
-		return forStmt
+		return &forStmt
 	}
 
 	// Helper function to scan ahead for assignment operators (= or :=)
@@ -248,13 +249,12 @@ func (p *Parser) parseFor() Statement {
 			forStmt.Cond = p.parseExpr()
 			p.inCondition = false // Header finished
 			forStmt.Body = p.parseBlock()
-			return forStmt
+			return &forStmt
 		}
 	}
 
 	// 3. Case: for init; cond; post {} (C-style)
-
-	// --- INIT ---
+	// INIT
 	if p.tokens[p.pos].Type != SEMICOLON && p.tokens[p.pos].Type != OPN_BRACE {
 		if isAssignOrDef() {
 			forStmt.Init = p.parseDefOrAssign()
@@ -265,14 +265,14 @@ func (p *Parser) parseFor() Statement {
 
 	p.expectType(SEMICOLON)
 
-	// --- CONDITION ---
+	// CONDITION
 	if p.tokens[p.pos].Type != SEMICOLON && p.tokens[p.pos].Type != OPN_BRACE {
 		forStmt.Cond = p.parseExpr()
 	}
 
 	p.expectType(SEMICOLON)
 
-	// --- POST ---
+	// POST
 	if p.tokens[p.pos].Type != OPN_BRACE {
 		if isAssignOrDef() {
 			forStmt.Post = p.parseDefOrAssign()
@@ -284,9 +284,9 @@ func (p *Parser) parseFor() Statement {
 	// Disable condition mode before parsing the loop body
 	p.inCondition = false
 
-	// --- BODY ---
+	// BODY
 	forStmt.Body = p.parseBlock()
-	return forStmt
+	return &forStmt
 }
 
 // .
@@ -310,10 +310,11 @@ func isExprStart(tok Token) bool {
 }
 
 func (p *Parser) parseReturn() Statement {
+	line := p.tokens[p.pos].Line
 	p.expectType(RETURN)
 
 	if !isExprStart(p.tokens[p.pos]) {
-		return ReturnStmt{
+		return &ReturnStmt{
 			Results: nil,
 		}
 	}
@@ -327,7 +328,7 @@ func (p *Parser) parseReturn() Statement {
 		}
 	}
 
-	return ReturnStmt{Results: results}
+	return &ReturnStmt{Results: results, Line: line}
 }
 
 func (p *Parser) parseRetSign() []ReturnSig {
@@ -362,6 +363,7 @@ func (p *Parser) parseRetSign() []ReturnSig {
 		retSigns = append(retSigns, ReturnSig{
 			Name: name,
 			Type: typ,
+			Line: p.tokens[p.pos].Line,
 		})
 	}
 
@@ -376,10 +378,11 @@ func (p *Parser) parseExprStatement() Statement {
 		p.pos++
 	}
 
-	return ExprStmt{Expr: expr}
+	return &ExprStmt{Expr: expr}
 }
 
 func (p *Parser) parseAssign() Statement {
+
 	// 1. Parse the first target from the current position
 	// This will read "i" or "data.x"
 	firstTarget := p.parsePostfix()
@@ -412,7 +415,7 @@ func (p *Parser) parseAssign() Statement {
 		values = append(values, p.parseExpr())
 	}
 
-	return Assign{
+	return &Assign{
 		Targets: targets,
 		Op:      opTok.Lexeme,
 		Values:  values,
@@ -438,7 +441,7 @@ func (p *Parser) parseDefine() Statement {
 	value := p.parseExpr()
 
 	line := p.tokens[p.pos].Line
-	return Declar{
+	return &Declar{
 		Names:  []Expression{target},
 		Op:     opTok.Lexeme,
 		Values: []Expression{value},
@@ -451,6 +454,7 @@ func (p *Parser) parseDefOrAssign() Statement {
 	if p.pos+1 < len(p.tokens) && p.tokens[p.pos+1].Type == DEFINE {
 		return p.parseDefine()
 	}
+
 	return p.parseAssign()
 }
 

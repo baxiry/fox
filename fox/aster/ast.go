@@ -21,6 +21,7 @@ type Struct struct {
 type Field struct {
 	Name string
 	Type string
+	Line int
 }
 
 type FrameBlock struct {
@@ -34,21 +35,25 @@ type Func struct {
 	Params   []Param
 	Returns  []ReturnSig
 	Body     *FrameBlock // BlockStmt
+	Line     int
 }
 
 type Param struct {
 	Name string
 	Type Type
+	Line int
 }
 
 type ReturnSig struct {
 	Name string
 	Type Type
+	Line int
 }
 
 type FieldAccessExpr struct {
 	Object Expression
 	Field  string
+	Line   int
 }
 
 func (FieldAccessExpr) isExpr() {}
