@@ -1,3 +1,4 @@
+
 fn do() {
     var o Obj
     var p *Obj

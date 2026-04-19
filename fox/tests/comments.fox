@@ -1,0 +1,8 @@
+// ignore first comment 
+fn do() {
+    // ignore second comment 
+    a := 10
+} // ignore  this also
+
+var i int
+i = 0
