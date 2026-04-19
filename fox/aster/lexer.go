@@ -189,6 +189,16 @@ func Lexer(input string) []Token {
 			two := input[i : i+2]
 			switch two {
 
+			case "//":
+				//	addToken()
+				//  tokens = append(tokens, Token{Type: COMMENT, Lexeme: "//", Line: line, Column: col})
+				// i += 2
+				// col++
+				for i < len(input) && input[i] != '\n' {
+					i++
+				}
+				continue
+
 			case ":=":
 				addToken()
 				tokens = append(tokens, Token{Type: DEFINE, Lexeme: ":=", Line: line, Column: col})
@@ -219,14 +229,6 @@ func Lexer(input string) []Token {
 				i += 2
 				col++
 				continue
-
-			case "//":
-				addToken()
-				tokens = append(tokens, Token{Type: COMMENT, Lexeme: "//", Line: line, Column: col})
-				i += 2
-				col++
-				continue
-
 			}
 		}
 
