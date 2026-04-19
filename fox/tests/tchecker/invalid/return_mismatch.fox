@@ -7,3 +7,5 @@ fn multi() int, string {
 
     return "hello", 10 
 }
+
+abc := 10

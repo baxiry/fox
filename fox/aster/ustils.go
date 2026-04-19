@@ -2,7 +2,6 @@ package aster
 
 import (
 	"fmt"
-	"reflect"
 	"strings"
 )
 
@@ -13,80 +12,61 @@ type ParseError struct {
 	Msg    string
 }
 
-func Dump(v any) {
-	dumpValue(reflect.ValueOf(v), 0)
+// Utilities
+
+func (p *Parser) expectIdent() Token {
+
+	if p.pos >= len(p.tokens) {
+		p.Errors = append(p.Errors, fmt.Sprintf(
+			"Line: %d unexpected end of input, expected identifier",
+			p.currentToken().Line,
+		))
+		return Token{}
+	}
+
+	tok := p.tokens[p.pos]
+
+	if tok.Type != IDENT {
+
+		p.Errors = append(p.Errors, fmt.Sprintf(
+			"syntax error at line %d: expected IDENT, got %s",
+			tok.Line, tok.Type))
+
+		return Token{}
+	}
+
+	p.pos++
+	return tok
 }
 
-func dumpValue(val reflect.Value, indent int) {
-	ind := strings.Repeat("  ", indent)
+func (p *Parser) skip() {
+	for p.pos < len(p.tokens) &&
+		(p.tokens[p.pos].Type == NEW_LINE || p.tokens[p.pos].Type == COMMENT) {
+		p.pos++
+	}
+}
 
-	if !val.IsValid() {
-		fmt.Print("nil")
-		return
+func (p *Parser) currentToken() Token { return p.tokens[p.pos] }
+
+func (p *Parser) expectType(expected TokenType) Token {
+
+	if p.pos >= len(p.tokens) {
+
+		p.Errors = append(p.Errors, fmt.Sprintf("Line %d unexpected end of file", p.currentToken().Line))
+		return Token{}
 	}
 
-	switch val.Kind() {
-	case reflect.Pointer:
-		if val.IsNil() {
-			fmt.Print("nil")
-			return
-		}
-		dumpValue(val.Elem(), indent)
+	tok := p.currentToken()
 
-	case reflect.Struct:
-		typ := val.Type()
-		if val.NumField() == 0 {
-			fmt.Print(typ.Name(), " {}")
-			return
-		}
-		// Decide inline: small struct with all simple fields
-		inline := val.NumField() <= 2
-		if inline {
-			fmt.Print(typ.Name(), " { ")
-			for i := 0; i < val.NumField(); i++ {
-				field := typ.Field(i)
-				fmt.Print(field.Name, ": ")
-				dumpValue(val.Field(i), indent)
-				if i < val.NumField()-1 {
-					fmt.Print(", ")
-				}
-			}
-			fmt.Print(" }")
-		} else {
-			fmt.Println(typ.Name(), "{")
-			for i := 0; i < val.NumField(); i++ {
-				field := typ.Field(i)
-				fmt.Print(strings.Repeat("  ", indent+1), field.Name, ": ")
-				dumpValue(val.Field(i), indent+1)
-				fmt.Println()
-			}
-			fmt.Print(ind, "}")
-		}
-
-	case reflect.Slice:
-		if val.Len() == 0 {
-			fmt.Print("[]")
-			return
-		}
-		fmt.Println("[") // non-empty slice → new line
-		for i := 0; i < val.Len(); i++ {
-			fmt.Print(strings.Repeat("  ", indent+1))
-			dumpValue(val.Index(i), indent+1)
-			fmt.Println()
-		}
-		fmt.Print(ind, "]")
-
-	case reflect.String:
-		fmt.Print(val.String())
-	case reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64:
-		fmt.Print(val.Int())
-	case reflect.Uint, reflect.Uint8, reflect.Uint16, reflect.Uint32, reflect.Uint64:
-		fmt.Print(val.Uint())
-	case reflect.Bool:
-		fmt.Print(val.Bool())
-	default:
-		fmt.Print(val.Interface())
+	if tok.Type != expected {
+		p.Errors = append(p.Errors, fmt.Sprintf(
+			"syntax error at line %d: expected %s, got %s",
+			tok.Line, expected.String(), tok.Type,
+		))
+		return Token{}
 	}
+	p.pos++
+	return tok
 }
 
 func readNumber(src string, pos *int) Token {
@@ -115,11 +95,11 @@ func readNumber(src string, pos *int) Token {
 	value := src[start:sufStart]
 	suffix := src[sufStart:*pos]
 
-	// ---- new rule ----
+	//  new rule
 	if isFloat && (strings.HasPrefix(suffix, "i") || strings.HasPrefix(suffix, "u")) {
 		panic(fmt.Sprintf("invalid numeric literal: float cannot have integer suffix: %s%s", value, suffix))
 	}
-	// -------------------
+	//
 
 	return Token{
 		Type:   FLOAT,
@@ -139,14 +119,4 @@ func isLetterOrDigit(b byte) bool {
 	return isLetter(b) || isDigit(b)
 }
 
-/*
-func TrackError() {
-	if r := recover(); r != nil {
-		if e, ok := r.(ParseError); ok {
-			fmt.Printf("%s:%d:%d: %s\n", e.File, e.Line, e.Column, e.Msg)
-		} else {
-			panic(r)
-		}
-	}
-}()
-*/
+// end

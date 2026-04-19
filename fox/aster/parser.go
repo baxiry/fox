@@ -8,13 +8,14 @@ type Parser struct {
 	tokens      []Token
 	pos         int
 	inCondition bool
-	errors      []string
+	Errors      []string
 }
 
 // New Parser
 func NewParser() *Parser {
 	return &Parser{
 		tokens: make([]Token, 0),
+		Errors: []string{},
 		pos:    0,
 	}
 }
@@ -25,6 +26,7 @@ func (p *Parser) skipNewlines() {
 	}
 }
 
+// skipe some tockens after invalid tocken
 func (p *Parser) synchronize() {
 	// Skip the token that caused the error
 	p.pos++
@@ -45,6 +47,7 @@ func (p *Parser) synchronize() {
 		p.pos++
 	}
 }
+
 func (p *Parser) parseUnary() Expression {
 
 	if p.pos < len(p.tokens) {
@@ -73,6 +76,7 @@ func (p *Parser) parsePostfix() Expression {
 			p.pos++
 			p.skip()
 			field := p.expectIdent()
+
 			if field.Type == ERROR {
 				p.synchronize() // Jump to the next safe statement
 				return nil
@@ -551,25 +555,40 @@ func (p *Parser) Builder(data []byte) *AST {
 	for p.pos < len(p.tokens) {
 		token := p.tokens[p.pos]
 
-		switch token.Lexeme {
-		case "package":
+		switch token.Type {
+		case PACKAGE:
 			ast.PackageName = p.parsePackage()
 
-		case "import":
+		case IMPORT:
 			ast.Imports = p.parseImport()
 
-		case "type":
+		case TYPE:
 			ast.Structs = append(ast.Structs, p.parseStruct())
 
-		case "fn":
+		case FUNC:
 			ast.Funcs = append(ast.Funcs, p.parseFunc())
 
-		case "var":
+		case VAR:
 			ast.Vars = append(ast.Vars, p.parseVarDecl())
 
+			//case IDENT:
+			//	p.errors = append(p.errors, "cant use identifier at level package")
+			//	println("catch error")
+			//  p.pos++
+
+		
 		default:
-			p.pos++
+			if token.Type == IDENT || token.Type == DEFINE || token.Type == ASSIGN {
+				p.Errors = append(p.Errors, fmt.Sprintf(
+					"line %d: non-declaration statement outside function body", token.Line))
+				p.synchronize()
+			} else {
+				p.pos++
+			}
 		}
 	}
+
 	return ast
 }
+
+// end

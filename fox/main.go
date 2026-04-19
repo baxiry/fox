@@ -28,11 +28,24 @@ func main() {
 
 	tc := tchecker.NewTypeChecker()
 
-	tc.Check(parser.Builder(content))
+	ast := parser.Builder(content) //pretty.Println(ast)
+
+	tc.Check(ast)
 
 	println("\noutput:\n")
 
-	// error exists
+	// ast errors
+	if len(parser.Errors) > 0 {
+		fmt.Printf("Found %d syntax errors:\n", len(parser.Errors))
+		for _, err := range parser.Errors {
+			fmt.Printf("  - %s\n", err)
+		}
+		println()
+		// Exit the program with an error code to prevent execution
+		os.Exit(1)
+	}
+
+	// check errors
 	if len(tc.Errors) > 0 {
 		fmt.Printf("Found %d type errors:\n", len(tc.Errors))
 		for _, err := range tc.Errors {

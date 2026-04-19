@@ -7,8 +7,6 @@ type UnaryExpr struct {
 	// Col int later
 }
 
-func (UnaryExpr) isExpr() {}
-
 type Expression interface {
 	isExpr()
 }
@@ -73,6 +71,8 @@ type CallExpr struct {
 	Callee Expression
 	Args   []Expression
 }
+
+func (UnaryExpr) isExpr() {}
 
 func (CallExpr) isExpr() {}
 

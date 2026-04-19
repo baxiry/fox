@@ -9,10 +9,11 @@ import (
 type TokenType int
 
 const (
-	ERROR TokenType = iota
+	INVALID TokenType = iota
 
 	// Identifiers & literals
 	//START_IDENTIFIERS
+
 	IDENT
 	INT
 	FLOAT
@@ -74,6 +75,7 @@ const (
 	SEMICOLON
 	COLON
 	NEW_LINE
+	COMMENT
 	//END_DELIMITERS
 
 	TRUE
@@ -84,7 +86,7 @@ const (
 	// Special
 	EOF
 	ILLEGAL
-	COMMENT
+	ERROR
 )
 
 type Token struct {
@@ -186,6 +188,7 @@ func Lexer(input string) []Token {
 		if i+1 < len(input) {
 			two := input[i : i+2]
 			switch two {
+
 			case ":=":
 				addToken()
 				tokens = append(tokens, Token{Type: DEFINE, Lexeme: ":=", Line: line, Column: col})
@@ -477,6 +480,8 @@ func (t Token) String() string {
 
 func (tt TokenType) String() string {
 	switch tt {
+	case INVALID:
+		return "INVALID"
 	case IDENT:
 		return "IDENT"
 	case INT:

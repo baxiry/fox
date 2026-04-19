@@ -253,7 +253,6 @@ func (tc *TypeChecker) checkFieldAccess(expr aster.FieldAccessExpr) string {
 func (tc *TypeChecker) checkFuncDecl(fn *aster.Func) {
 	tc.CurrentRetTypes = []string{}
 	for _, ret := range fn.Returns {
-		fmt.Println("current ret:", ret, ret.Name, ret.Type.Name)
 		tc.CurrentRetTypes = append(tc.CurrentRetTypes, ret.Type.Name)
 	}
 
