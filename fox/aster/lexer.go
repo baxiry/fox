@@ -190,10 +190,13 @@ func Lexer(input string) []Token {
 			switch two {
 
 			case "//":
-				//	addToken()
-				//  tokens = append(tokens, Token{Type: COMMENT, Lexeme: "//", Line: line, Column: col})
-				// i += 2
-				// col++
+				// ignore for now
+				/*
+					addToken()
+					tokens = append(tokens, Token{Type: COMMENT, Lexeme: "//", Line: line, Column: col})
+					i += 2
+					col++
+				*/
 				for i < len(input) && input[i] != '\n' {
 					i++
 				}
@@ -388,6 +391,12 @@ func Lexer(input string) []Token {
 	}
 
 	addToken()
+	tokens = append(tokens, Token{
+		Type:   EOF,
+		Lexeme: "EOF",
+		Line:   line,
+		Column: col,
+	})
 	return tokens
 }
 
@@ -482,8 +491,7 @@ func (t Token) String() string {
 
 func (tt TokenType) String() string {
 	switch tt {
-	case INVALID:
-		return "INVALID"
+
 	case IDENT:
 		return "IDENT"
 	case INT:
@@ -496,12 +504,10 @@ func (tt TokenType) String() string {
 		return "TRUE"
 	case FALSE:
 		return "FALSE"
-
 	case FOR:
 		return "FOR"
 	case IF:
 		return "IF"
-
 	case VAR:
 		return "VAR"
 
@@ -562,14 +568,16 @@ func (tt TokenType) String() string {
 		return "DOT"
 	case COLON:
 		return "COLON"
+	case COMMENT:
+		return "COMMENT"
 	case BLANK:
 		return "BLANK"
 	case ERROR:
 		return "ERROR"
-
-	case COMMENT:
-		return "COMMENT"
-
+	case INVALID:
+		return "INVALID"
+	case EOF:
+		return "EOF"
 	default:
 		return "UNKNOWN"
 	}

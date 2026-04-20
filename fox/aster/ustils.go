@@ -12,6 +12,8 @@ type ParseError struct {
 	Msg    string
 }
 
+var strf = fmt.Sprintf
+
 // Utilities
 
 func (p *Parser) expectIdent() Token {
@@ -46,7 +48,12 @@ func (p *Parser) skip() {
 	}
 }
 
-func (p *Parser) currentToken() Token { return p.tokens[p.pos] }
+func (p *Parser) currentToken() Token {
+	if p.pos >= len(p.tokens) {
+		return Token{Type: EOF, Lexeme: "EOF"}
+	}
+	return p.tokens[p.pos]
+}
 
 func (p *Parser) expectType(expected TokenType) Token {
 

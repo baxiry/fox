@@ -8,8 +8,33 @@ type UnaryExpr struct {
 }
 
 type Expression interface {
+	GetLine() int
 	isExpr()
 }
+
+// UnaryExpr
+func (e UnaryExpr) GetLine() int { return e.Line }
+
+// FieldAccessExpr
+func (e FieldAccessExpr) GetLine() int { return e.Line }
+
+// CallExpr
+func (e CallExpr) GetLine() int { return e.Line }
+
+// NumberExpr
+func (e NumberExpr) GetLine() int { return e.Line }
+
+// StringExpr
+func (e StringExpr) GetLine() int { return e.Line }
+
+// StructLiteral
+func (e StructLiteral) GetLine() int { return e.Line }
+
+// IdentExpr (Don't forget this one)
+func (e IdentExpr) GetLine() int { return e.Line }
+
+// BinaryExpr
+func (e BinaryExpr) GetLine() int { return e.Line }
 
 type TypeExpr struct {
 	Name string
@@ -19,12 +44,14 @@ func (TypeExpr) isExpr() {}
 
 type NumberExpr struct {
 	Literal string
+	Line    int
 }
 
 func (NumberExpr) isExpr() {}
 
 type StringExpr struct {
 	Literal string
+	Line    int
 }
 
 func (StringExpr) isExpr() {}
@@ -37,24 +64,31 @@ func (IntExpr) isExpr() {}
 
 type FloatExpr struct {
 	Literal string
+	Line    int
 }
 
-func (FloatExpr) isExpr() {}
+func (e FloatExpr) GetLine() int { return e.Line }
+func (FloatExpr) isExpr()        {}
 
 type BoolExpr struct {
 	Literal string
+	Line    int
 }
+
+func (e BoolExpr) GetLine() int { return e.Line }
 
 func (BoolExpr) isExpr() {}
 
 type LiteralExpr struct {
 	Value string
+	Line  int
 }
 
 func (LiteralExpr) isExpr() {}
 
 type IdentExpr struct {
 	Name string
+	Line int
 }
 
 func (IdentExpr) isExpr() {}
@@ -63,6 +97,7 @@ type BinaryExpr struct {
 	Op    string
 	Left  Expression
 	Right Expression
+	Line  int
 }
 
 func (BinaryExpr) isExpr() {}
@@ -70,6 +105,7 @@ func (BinaryExpr) isExpr() {}
 type CallExpr struct {
 	Callee Expression
 	Args   []Expression
+	Line   int
 }
 
 func (UnaryExpr) isExpr() {}
@@ -79,6 +115,7 @@ func (CallExpr) isExpr() {}
 type StructLiteral struct {
 	Type   Type
 	Fields []FieldInit
+	Line   int
 }
 
 func (StructLiteral) isExpr() {}
@@ -110,28 +147,47 @@ func (p *Parser) parseCall(name string) CallExpr {
 }
 
 func (p *Parser) parseExprOrAssign() Statement {
-	// 1. Try to parse a list of expressions (LHS)
+	// 1. Parse the left-hand side as a list (e.g., u, o or x.y)
 	exprs := p.parseExprList()
 
-	// 2. Check for assignment or definition operators
-	if p.pos < len(p.tokens) {
-		tok := p.tokens[p.pos]
-		if tok.Type == DEFINE || tok.Type == ASSIGN {
-			p.pos++ // consume := or =
+	// 2. Check for assignment or definition operators using currentToken()
+	tok := p.currentToken()
+	if tok.Type == DEFINE || tok.Type == ASSIGN {
+		p.pos++ // consume := or =
 
-			// 3. Parse the RHS as a list
-			values := p.parseExprList()
+		// 3. Parse the RHS as a list
+		values := p.parseExprList()
 
-			return Declar{
+		// 4. Handle Short Declaration (:=)
+		if tok.Type == DEFINE {
+			for _, target := range exprs {
+				if !p.isValidDefineTarget(target) {
+					p.appendErrorf("non-name on left side of := Line:%d", tok.Line)
+				}
+			}
+			return &Declar{ // Return as pointer
 				Names:  exprs,
 				Op:     tok.Lexeme,
 				Values: values,
+				Line:   tok.Line,
 			}
+		}
+
+		// 5. Handle Normal Assignment (=)
+		return &Assign{ // Return as pointer
+			Targets: exprs,
+			Op:      tok.Lexeme,
+			Values:  values,
+			Line:    tok.Line,
 		}
 	}
 
-	// 4. If no operator, return as an Expression Statement
-	return ExprStmt{Expr: exprs[0]}
+	// 6. If no operator, it's just an Expression Statement (like a function call)
+	// Make sure we have at least one expression
+	if len(exprs) == 0 {
+		return nil
+	}
+	return &ExprStmt{Expr: exprs[0], Line: tok.Line}
 }
 
 func lookAheadIsAssign(tokens []Token, pos int) bool {

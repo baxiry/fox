@@ -1,0 +1,7 @@
+func do() {
+  var
+  if ok = not {
+     do()
+  }
+  doNot )
+}

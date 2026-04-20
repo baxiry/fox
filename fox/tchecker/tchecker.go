@@ -99,6 +99,12 @@ func (tc *TypeChecker) checkBinaryExpr(expr *aster.BinaryExpr) string {
 	}
 }
 
+// Correct implementation: enforce line as the first parameter
+func (tc *TypeChecker) appendErrorf(format string, line int, args ...any) {
+	msg := fmt.Sprintf(format, args...)
+	tc.Errors = append(tc.Errors, fmt.Sprintf("line %d: %s", line, msg))
+}
+
 func (tc *TypeChecker) inferType(expr aster.Expression) string {
 	switch e := expr.(type) {
 
@@ -107,7 +113,7 @@ func (tc *TypeChecker) inferType(expr aster.Expression) string {
 		return "string"
 
 	case aster.NumberExpr:
-		return "int" //TODO float
+		return "int" // TODO: Handle float logic later
 
 	case aster.BoolExpr:
 		return "bool"
@@ -117,18 +123,16 @@ func (tc *TypeChecker) inferType(expr aster.Expression) string {
 		if len(types) == 0 {
 			return "void"
 		}
-
 		if len(types) > 1 {
-			tc.Errors = append(tc.Errors, "multiple-value call in single-value context")
+			tc.appendErrorf("multiple-value call in single-value context", e.Line)
 			return "error"
 		}
-
 		return types[0]
 
 	case aster.IdentExpr:
 		sym, exists := tc.CurrentTable.Resolve(e.Name)
 		if !exists {
-			tc.Errors = append(tc.Errors, "undefined variable: "+e.Name)
+			tc.appendErrorf("undefined variable: %s", e.Line, e.Name)
 			return "error"
 		}
 		return sym.Type.Name
@@ -138,6 +142,29 @@ func (tc *TypeChecker) inferType(expr aster.Expression) string {
 
 	case aster.StructLiteral:
 		return tc.checkStructLiteral(e)
+
+	// Binary Operations (a + b, i < 10, etc.)
+	case aster.BinaryExpr:
+		leftType := tc.inferType(e.Left)
+		rightType := tc.inferType(e.Right)
+
+		// 1. Comparison operators always return "bool"
+		switch e.Op {
+		case "==", "!=", "<", ">", "<=", ">=":
+			// Ideally, check if leftType and rightType are compatible here
+			return "bool"
+		case "&&", "||":
+			return "bool"
+		}
+
+		// 2. Arithmetic operators (+, -, *, /) return the type of the operands
+		// For now, we assume simple type consistency (e.g., int + int = int)
+		if leftType == rightType {
+			return leftType
+		}
+
+		// If types are mismatched, it's an error but we return leftType to continue
+		return leftType
 
 	default:
 		return "unknown"

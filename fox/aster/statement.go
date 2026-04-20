@@ -9,11 +9,13 @@ type Statement interface {
 }
 
 type BreakNode struct {
-	Tok Token
+	//Tok Token
+	Line int
 }
 
 type ContinueNode struct {
-	Tok Token
+	//Tok Token
+	Line int
 }
 
 type ReturnStmt struct {
@@ -58,6 +60,7 @@ type Declar struct {
 
 type ExprStmt struct {
 	Expr Expression
+	Line int
 }
 
 type FieldValue struct {
@@ -381,40 +384,52 @@ func (p *Parser) parseExprStatement() Statement {
 	return &ExprStmt{Expr: expr}
 }
 
-func (p *Parser) parseAssign() Statement {
-
-	// 1. Parse the first target from the current position
-	// This will read "i" or "data.x"
+func (p *Parser) parseDefOrAssign() Statement {
+	// 1. Parse the left-hand side targets as a list (e.g., u, o)
 	firstTarget := p.parsePostfix()
-
-	// 2. Collect additional targets if there's a comma (for u, o = ...)
 	targets := []Expression{firstTarget}
-	for p.pos < len(p.tokens) && p.tokens[p.pos].Type == COMMA {
+
+	for p.currentToken().Type == COMMA {
 		p.pos++ // consume ','
 		targets = append(targets, p.parsePostfix())
 	}
 
-	// 3. Look for the assignment operator '='
-	if p.pos >= len(p.tokens) || p.tokens[p.pos].Type != ASSIGN {
-		// Here we handle the panic with more context
-		line := 0
-		if p.pos < len(p.tokens) {
-			line = p.tokens[p.pos].Line
-		}
-		panic(fmt.Sprintf("line %d: expected '=' for assignment, but found %s",
-			line, p.tokens[p.pos].Lexeme))
+	// 2. Identify the operator (must be '=' or ':=')
+	opTok := p.currentToken()
+	if opTok.Type != ASSIGN && opTok.Type != DEFINE {
+		p.Errors = append(p.Errors, fmt.Sprintf(
+			"line %d: expected '=' or ':=' after identifier list, but found %q",
+			opTok.Line, opTok.Lexeme))
+		p.synchronize()
+		return nil
 	}
+	p.pos++ // consume the operator
 
-	opTok := p.tokens[p.pos]
-	p.pos++ // consume '='
-
-	// 4. Parse the right-hand side values
+	// 3. Parse the right-hand side values as a list
 	values := []Expression{p.parseExpr()}
-	for p.pos < len(p.tokens) && p.tokens[p.pos].Type == COMMA {
+	for p.currentToken().Type == COMMA {
 		p.pos++ // consume ','
 		values = append(values, p.parseExpr())
 	}
 
+	// 4. Return the appropriate node based on the operator type
+	if opTok.Type == DEFINE {
+		// Validate that all targets are valid for a short declaration (:=)
+		for _, target := range targets {
+			if !p.isValidDefineTarget(target) {
+				p.Errors = append(p.Errors, fmt.Sprintf(
+					"line %d: non-name %T on left side of :=", opTok.Line, target))
+			}
+		}
+		return &Declar{
+			Names:  targets,
+			Op:     opTok.Lexeme,
+			Values: values,
+			Line:   opTok.Line,
+		}
+	}
+
+	// Default to an Assignment node (=)
 	return &Assign{
 		Targets: targets,
 		Op:      opTok.Lexeme,
@@ -423,39 +438,16 @@ func (p *Parser) parseAssign() Statement {
 	}
 }
 
-func (p *Parser) parseDefine() Statement {
-	target := p.parsePostfix()
-
-	switch target.(type) {
-	case IdentExpr, *IdentExpr, FieldAccessExpr, *FieldAccessExpr:
+// isValidDefineTarget checks if the expression is a valid identifier for ':='
+func (p *Parser) isValidDefineTarget(expr Expression) bool {
+	switch expr.(type) {
+	case IdentExpr, *IdentExpr:
+		// Only plain identifiers (like 'x' or '_') are allowed for definition
+		return true
 	default:
-		panic("left-hand side of define must be an identifier or field access")
+		// Complex expressions like FieldAccess (x.y) are not allowed for ':='
+		return false
 	}
-
-	opTok := p.tokens[p.pos]
-	if opTok.Type != DEFINE {
-		panic("expected := for definition")
-	}
-	p.pos++
-
-	value := p.parseExpr()
-
-	line := p.tokens[p.pos].Line
-	return &Declar{
-		Names:  []Expression{target},
-		Op:     opTok.Lexeme,
-		Values: []Expression{value},
-		Line:   line,
-	}
-}
-
-// For init/post
-func (p *Parser) parseDefOrAssign() Statement {
-	if p.pos+1 < len(p.tokens) && p.tokens[p.pos+1].Type == DEFINE {
-		return p.parseDefine()
-	}
-
-	return p.parseAssign()
 }
 
 func (t Token) IsOperator() bool {
@@ -469,24 +461,29 @@ func (t Token) IsOperator() bool {
 }
 
 func (p *Parser) parseStatement() Statement {
-	tok := p.tokens[p.pos]
+	tok := p.currentToken()
 
 	switch tok.Type {
 	case VAR:
 		return p.parseVarDeclar()
+
 	case RETURN:
 		return p.parseReturn()
+
 	case IF:
 		return p.parseIf()
+
 	case FOR:
 		return p.parseFor()
+
 	case BREAK:
 		p.pos++
-		return BreakNode{Tok: tok}
+		return &BreakNode{Line: tok.Line}
 
 	case CONTINUE:
 		p.pos++
-		return ContinueNode{Tok: tok}
+		return &ContinueNode{Line: tok.Line}
+
 	case SPAWN:
 		return p.parseSpawn()
 

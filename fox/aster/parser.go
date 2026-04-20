@@ -188,19 +188,15 @@ func isUnaryStart(tok Token) bool {
 }
 
 func (p *Parser) parsePrimary() Expression {
-	if p.pos >= len(p.tokens) {
-		panic("unexpected end of input while parsing expression")
-	}
-	tok := p.tokens[p.pos]
+
+	tok := p.currentToken()
 
 	switch tok.Type {
 	case IDENT:
 		p.pos++
-		// Check for function call: name()
-		if p.pos < len(p.tokens) && p.tokens[p.pos].Type == OPN_PAREN {
+		if p.currentToken().Type == OPN_PAREN {
 			return p.parseCall(tok.Lexeme)
 		}
-		// Struct literals will be handled by parsePostfix() now
 		return IdentExpr{Name: tok.Lexeme}
 
 	case BLANK:
@@ -218,16 +214,32 @@ func (p *Parser) parsePrimary() Expression {
 	case OPN_PAREN:
 		p.pos++
 		expr := p.parseExpr()
+
 		p.expectType(CLS_PAREN)
 		return expr
 
+	case EOF:
+
+		p.appendErrorf("unexpected end of input while parsing expression", tok.Line)
+		return nil
+
 	default:
+		//
 		if tok.Type == STAR {
 			return p.parseUnary()
 		}
-		panic(fmt.Sprintf("expected expression at line %d, got %s (%q)", tok.Line, tok.Type, tok.Lexeme))
+		p.appendErrorf("expected expression, but found %s (%q)",
+			tok.Type, tok.Lexeme, tok.Line)
+
+		p.synchronize()
+		return nil
 	}
 }
+
+func (p *Parser) appendErrorf(msg string, args ...any) {
+	p.Errors = append(p.Errors, fmt.Sprintf(msg, args...))
+}
+
 func (p *Parser) parseType() Type {
 
 	if p.pos >= len(p.tokens) {
@@ -576,7 +588,6 @@ func (p *Parser) Builder(data []byte) *AST {
 			//	println("catch error")
 			//  p.pos++
 
-		
 		default:
 			if token.Type == IDENT || token.Type == DEFINE || token.Type == ASSIGN {
 				p.Errors = append(p.Errors, fmt.Sprintf(
