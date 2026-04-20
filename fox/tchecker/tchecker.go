@@ -124,6 +124,7 @@ func (tc *TypeChecker) inferType(expr aster.Expression) string {
 			return "void"
 		}
 		if len(types) > 1 {
+			fmt.Println("line: ", e.Line)
 			tc.appendErrorf("multiple-value call in single-value context", e.Line)
 			return "error"
 		}
@@ -132,6 +133,7 @@ func (tc *TypeChecker) inferType(expr aster.Expression) string {
 	case aster.IdentExpr:
 		sym, exists := tc.CurrentTable.Resolve(e.Name)
 		if !exists {
+			fmt.Println("line: ", e.Line)
 			tc.appendErrorf("undefined variable: %s", e.Line, e.Name)
 			return "error"
 		}
@@ -220,13 +222,14 @@ func (tc *TypeChecker) checkVarDeclar(decl *aster.VarDeclar) {
 		if decl.Value != nil {
 			valueType := tc.inferType(decl.Value)
 			if finalType != valueType {
-				tc.Errors = append(tc.Errors, fmt.Sprintf("cannot use %s as %s in assignment", valueType, finalType))
+				fmt.Println("LINE: ", decl.Line)
+				tc.appendErrorf("cannot use %s as %s in assignment", decl.Line, valueType, finalType)
 			}
 		}
 	} else {
 		// 2. Type inference (var i = 10)
 		if decl.Value == nil {
-			tc.Errors = append(tc.Errors, fmt.Sprintf("variable %s: missing type or expression", decl.Name))
+			tc.appendErrorf("variable %s: missing type or expression", decl.Line, decl.Name)
 			return
 		}
 		finalType = tc.inferType(decl.Value)
@@ -241,7 +244,7 @@ func (tc *TypeChecker) checkVarDeclar(decl *aster.VarDeclar) {
 
 	err := tc.CurrentTable.Define(decl.Name, sym)
 	if err != nil {
-		tc.Errors = append(tc.Errors, err.Error())
+		tc.appendErrorf("", decl.Line, err.Error())
 	}
 }
 
@@ -352,10 +355,10 @@ func (tc *TypeChecker) checkReturnStmt(stmt *aster.ReturnStmt) {
 		actualTypeName := tc.inferType(expr)
 
 		if expectedTypeName != actualTypeName {
-			tc.Errors = append(tc.Errors, fmt.Sprintf(
-				"line %d: cannot use %s as type %s in return argument",
+			tc.appendErrorf(
+				"cannot use %s as type %s in return argument",
 				stmt.Line, actualTypeName, expectedTypeName,
-			))
+			)
 		}
 	}
 }
@@ -469,7 +472,8 @@ func (tc *TypeChecker) checkAssign(asgn aster.Assign) {
 	for i, nameExpr := range asgn.Targets {
 		ident, ok := nameExpr.(aster.IdentExpr)
 		if !ok {
-			tc.Errors = append(tc.Errors, "invalid left-hand side in assignment")
+			fmt.Println(ident.Line)
+			tc.appendErrorf("invalid left-hand side in assignment", ident.Line)
 			continue
 		}
 
@@ -483,7 +487,8 @@ func (tc *TypeChecker) checkAssign(asgn aster.Assign) {
 		// 6. Resolve variable: it must be declared before assignment (=)
 		existingSym, exists := tc.CurrentTable.Resolve(varName)
 		if !exists {
-			tc.Errors = append(tc.Errors, fmt.Sprintf("undefined variable: %s", varName))
+			fmt.Println("Line:", ident.Line)
+			tc.appendErrorf("undefined variable: %s", ident.Line, varName)
 			continue
 		}
 
@@ -553,7 +558,7 @@ func (tc *TypeChecker) Check(a *aster.AST) {
 	tc.registerFunctions(a)
 
 	for _, f := range a.Funcs {
-		tc.checkFuncDecl(&f)
+		tc.checkFuncDecl(f)
 	}
 }
 
@@ -615,9 +620,7 @@ func (tc *TypeChecker) checkCallExpr(call *aster.CallExpr) string {
 		providedType := tc.inferType(arg)
 
 		if expectedType != providedType {
-			msg := fmt.Sprintf("cannot use %s as %s in argument to %s",
-				providedType, expectedType, callee.Name)
-			tc.Errors = append(tc.Errors, msg)
+			tc.appendErrorf("cannot use %s as %s in argument to %s", callee.Line, providedType, expectedType, callee.Name)
 		}
 	}
 

@@ -138,9 +138,9 @@ func (p *Parser) parseBinary(minPrec int) Expression {
 
 	for p.pos < len(p.tokens) {
 
-		op := p.tokens[p.pos]
+		tok := p.currentToken()
 
-		prec, ok := precedence(op.Type)
+		prec, ok := precedence(tok.Type)
 		if !ok || prec < minPrec {
 			break
 		}
@@ -151,8 +151,9 @@ func (p *Parser) parseBinary(minPrec int) Expression {
 
 		left = BinaryExpr{
 			Left:  left,
-			Op:    op.Lexeme,
+			Op:    tok.Lexeme,
 			Right: right,
+			Line:  tok.Line,
 		}
 	}
 
@@ -197,7 +198,7 @@ func (p *Parser) parsePrimary() Expression {
 		if p.currentToken().Type == OPN_PAREN {
 			return p.parseCall(tok.Lexeme)
 		}
-		return IdentExpr{Name: tok.Lexeme}
+		return IdentExpr{Name: tok.Lexeme, Line: tok.Line}
 
 	case BLANK:
 		p.pos++
@@ -205,11 +206,11 @@ func (p *Parser) parsePrimary() Expression {
 
 	case INT, FLOAT:
 		p.pos++
-		return NumberExpr{Literal: tok.Lexeme}
+		return NumberExpr{Literal: tok.Lexeme, Line: tok.Line}
 
 	case STRING:
 		p.pos++
-		return StringExpr{Literal: tok.Lexeme}
+		return StringExpr{Literal: tok.Lexeme, Line: tok.Line}
 
 	case OPN_PAREN:
 		p.pos++
@@ -229,15 +230,16 @@ func (p *Parser) parsePrimary() Expression {
 			return p.parseUnary()
 		}
 		p.appendErrorf("expected expression, but found %s (%q)",
-			tok.Type, tok.Lexeme, tok.Line)
+			tok.Line, tok.Type, tok.Lexeme, tok.Line)
 
 		p.synchronize()
 		return nil
 	}
 }
 
-func (p *Parser) appendErrorf(msg string, args ...any) {
-	p.Errors = append(p.Errors, fmt.Sprintf(msg, args...))
+func (p *Parser) appendErrorf(msg string, line int, args ...any) {
+	msg = fmt.Sprintf(msg, args...)
+	p.Errors = append(p.Errors, fmt.Sprint("Line: %d %s", line, msg))
 }
 
 func (p *Parser) parseType() Type {
@@ -279,11 +281,18 @@ func (p *Parser) parseType() Type {
 // parse * and /
 func (p *Parser) parseMul() Expression {
 	left := p.parseUnary()
-	for p.tokens[p.pos].Type == STAR || p.tokens[p.pos].Type == SLASH {
-		op := p.tokens[p.pos]
+
+	tok := p.currentToken()
+	for tok.Type == STAR || tok.Type == SLASH {
+		op := tok
 		p.pos++
 		right := p.parseUnary()
-		left = &BinaryExpr{Left: left, Op: op.Lexeme, Right: right}
+		left = &BinaryExpr{
+			Left:  left,
+			Op:    op.Lexeme,
+			Right: right,
+			Line:  tok.Line,
+		}
 	}
 	return left
 }
@@ -292,8 +301,9 @@ func (p *Parser) parseMul() Expression {
 func (p *Parser) parseBitwiseAnd() Expression {
 	left := p.parseAdd()
 
-	for p.tokens[p.pos].Lexeme == "&" {
-		op := p.tokens[p.pos]
+	tok := p.currentToken()
+	for tok.Lexeme == "&" {
+		op := tok
 		p.pos++
 		right := p.parseAdd()
 
@@ -301,6 +311,7 @@ func (p *Parser) parseBitwiseAnd() Expression {
 			Left:  left,
 			Op:    op.Lexeme,
 			Right: right,
+			Line:  tok.Line,
 		}
 	}
 
@@ -310,8 +321,8 @@ func (p *Parser) parseBitwiseAnd() Expression {
 // Equality == & !=
 func (p *Parser) parseEquality() Expression {
 	left := p.parseBitwiseAnd()
-
-	for p.tokens[p.pos].Lexeme == "==" || p.tokens[p.pos].Lexeme == "!=" {
+	tok := p.currentToken()
+	for tok.Lexeme == "==" || tok.Lexeme == "!=" {
 		op := p.tokens[p.pos]
 		p.pos++
 		right := p.parseBitwiseAnd()
@@ -320,6 +331,7 @@ func (p *Parser) parseEquality() Expression {
 			Left:  left,
 			Op:    op.Lexeme,
 			Right: right,
+			Line:  tok.Line,
 		}
 	}
 
@@ -331,11 +343,16 @@ func (p *Parser) parseEquality() Expression {
 // parse + and -
 func (p *Parser) parseAdd() Expression {
 	left := p.parseMul()
-	for p.tokens[p.pos].Lexeme == "+" || p.tokens[p.pos].Lexeme == "-" {
-		op := p.tokens[p.pos]
+	tok := p.currentToken()
+	for tok.Lexeme == "+" || tok.Lexeme == "-" {
 		p.pos++
 		right := p.parseMul()
-		left = &BinaryExpr{Left: left, Op: op.Lexeme, Right: right}
+		left = &BinaryExpr{
+			Left:  left,
+			Op:    tok.Lexeme,
+			Right: right,
+			Line:  tok.Line,
+		}
 	}
 	return left
 }
@@ -361,7 +378,7 @@ func (p *Parser) parseExpr() Expression {
 }
 
 // Functions
-func (p *Parser) parseFunc() Func {
+func (p *Parser) parseFunc() *Func {
 	funcNode := Func{}
 
 	// parse func word then name func
@@ -400,7 +417,7 @@ func (p *Parser) parseFunc() Func {
 
 	funcNode.Body = p.parseBlock()
 
-	return funcNode
+	return &funcNode
 }
 
 // Block Parsing
@@ -426,7 +443,8 @@ func (p *Parser) parseBlock() *FrameBlock {
 // parse package
 func (p *Parser) parsePackage() string {
 	p.expectType(PACKAGE)
-	pkg := p.tokens[p.pos].Lexeme
+	tok := p.currentToken()
+	pkg := tok.Lexeme
 	p.pos++
 	return pkg
 }
@@ -441,7 +459,7 @@ func (p *Parser) parseImport() []string {
 	for {
 		p.skipNewlines()
 
-		if p.tokens[p.pos].Type == CLS_PAREN {
+		if p.currentToken().Type == CLS_PAREN {
 			break
 		}
 
@@ -453,7 +471,7 @@ func (p *Parser) parseImport() []string {
 	return libs
 }
 
-func (p *Parser) parseStruct() Struct {
+func (p *Parser) parseStruct() *Struct {
 
 	p.expectType(TYPE)
 	name := p.expectIdent()
@@ -464,33 +482,35 @@ func (p *Parser) parseStruct() Struct {
 	for {
 		p.skip()
 
-		if p.tokens[p.pos].Type == CLS_BRACE {
+		if p.currentToken().Type == CLS_BRACE {
 			break
 		}
 
-		if p.tokens[p.pos].Type != IDENT {
-			panic(fmt.Sprintf("expected field name, got %v", p.tokens[p.pos]))
+		tok := p.currentToken()
+		if tok.Type != IDENT {
+			p.appendErrorf("expected field name, got %v", tok.Line, tok)
 		}
 		fields = append(fields, p.parseField())
 	}
 
 	p.expectType(CLS_BRACE)
-	return Struct{Name: name.Lexeme, Fields: fields}
+	return &Struct{Name: name.Lexeme, Fields: fields, Line: p.currentToken().Line}
 }
 
 func (p *Parser) parseField() Field {
 	nameTok := p.expectIdent()
 	typeTok := p.expectIdent()
-	return Field{Name: nameTok.Lexeme, Type: typeTok.Lexeme}
+	//line := p.currentToken().Line
+	return Field{Name: nameTok.Lexeme, Type: typeTok.Lexeme, Line: typeTok.Line}
 }
 
 func (p *Parser) parseFieldAssign() Field {
 	nameTok := p.expectIdent()
 	typeTok := p.expectIdent()
-	return Field{Name: nameTok.Lexeme, Type: typeTok.Lexeme}
+	return Field{Name: nameTok.Lexeme, Type: typeTok.Lexeme, Line: typeTok.Line}
 }
 
-func (p *Parser) parseVarDecl() VarDeclar {
+func (p *Parser) parseVarDecl() *VarDeclar {
 	// 1. Consume the 'var' keyword
 	if p.tokens[p.pos].Type == VAR {
 		p.pos++
@@ -504,23 +524,25 @@ func (p *Parser) parseVarDecl() VarDeclar {
 
 	// 3. Optional: Check if the next token is a Type (IDENT)
 	// In 'var i int', the second IDENT is the type
-	if p.tokens[p.pos].Type == IDENT {
+	tok := p.currentToken()
+	if tok.Type == IDENT {
 		typeName := p.expectIdent()
-		typeNode = &Type{Name: typeName.Lexeme}
+		typeNode = &Type{Name: typeName.Lexeme, Line: tok.Line}
 	}
 
 	// 4. Optional: Check for assignment operator '='
 	// Note: Use ASSIGN (=) here, not DEFINE (:=)
-	if p.tokens[p.pos].Type == ASSIGN {
+	if tok.Type == ASSIGN {
 		p.pos++
 		// Parse the expression on the right side
 		value = p.parseExpr()
 	}
 
-	return VarDeclar{
+	return &VarDeclar{
 		Name:  name.Lexeme,
 		Type:  typeNode,
 		Value: value,
+		Line:  tok.Line,
 	}
 }
 
@@ -537,6 +559,7 @@ func (p *Parser) parseStructLiteral(typeName string) Expression {
 			fields = append(fields, FieldInit{
 				Name:  nameTok.Lexeme,
 				Value: value,
+				Line:  value.GetLine(),
 			})
 		} else {
 			// Handle positional value or expressions
@@ -555,6 +578,7 @@ func (p *Parser) parseStructLiteral(typeName string) Expression {
 	return StructLiteral{
 		Type:   Type{Name: typeName},
 		Fields: fields,
+		Line:   1223333,
 	}
 }
 

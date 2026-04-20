@@ -203,6 +203,7 @@ func (p *Parser) parseExprUntil(stop string) Expression {
 			Op:    op.Lexeme,
 			Left:  expr,
 			Right: right,
+			Line:  expr.GetLine(),
 		}
 	}
 	return expr

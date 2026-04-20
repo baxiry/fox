@@ -3,19 +3,21 @@ package aster
 type AST struct {
 	PackageName string
 	Imports     []string
-	Structs     []Struct
-	Funcs       []Func
-	Vars        []VarDeclar
+	Structs     []*Struct
+	Funcs       []*Func
+	Vars        []*VarDeclar
 }
 
 type Type struct {
 	Name     string
 	PtrDepth int
+	Line     int
 }
 
 type Struct struct {
 	Name   string
 	Fields []Field
+	Line   int
 }
 
 type Field struct {

@@ -123,6 +123,7 @@ func (StructLiteral) isExpr() {}
 type FieldInit struct {
 	Name  string
 	Value Expression
+	Line  int
 }
 
 func (p *Parser) parseCall(name string) CallExpr {
@@ -130,7 +131,7 @@ func (p *Parser) parseCall(name string) CallExpr {
 
 	args := []Expression{}
 
-	for p.tokens[p.pos].Type != CLS_PAREN {
+	for p.currentToken().Type != CLS_PAREN {
 		if p.tokens[p.pos].Type == COMMA {
 			p.pos++
 			continue
@@ -140,9 +141,11 @@ func (p *Parser) parseCall(name string) CallExpr {
 	}
 
 	p.expectType(CLS_PAREN)
+
 	return CallExpr{
-		Callee: IdentExpr{Name: name},
+		Callee: IdentExpr{Name: name, Line: p.currentToken().Line},
 		Args:   args,
+		Line:   p.currentToken().Line,
 	}
 }
 
