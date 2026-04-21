@@ -106,6 +106,10 @@ func (tc *TypeChecker) appendErrorf(format string, line int, args ...any) {
 }
 
 func (tc *TypeChecker) inferType(expr aster.Expression) string {
+	if expr == nil {
+		return "unknown"
+	}
+
 	switch e := expr.(type) {
 
 	// Literals
@@ -124,7 +128,6 @@ func (tc *TypeChecker) inferType(expr aster.Expression) string {
 			return "void"
 		}
 		if len(types) > 1 {
-			fmt.Println("line: ", e.Line)
 			tc.appendErrorf("multiple-value call in single-value context", e.Line)
 			return "error"
 		}
@@ -133,7 +136,6 @@ func (tc *TypeChecker) inferType(expr aster.Expression) string {
 	case aster.IdentExpr:
 		sym, exists := tc.CurrentTable.Resolve(e.Name)
 		if !exists {
-			fmt.Println("line: ", e.Line)
 			tc.appendErrorf("undefined variable: %s", e.Line, e.Name)
 			return "error"
 		}
@@ -286,12 +288,9 @@ func (tc *TypeChecker) checkFuncDecl(fn *aster.Func) {
 		tc.CurrentRetTypes = append(tc.CurrentRetTypes, ret.Type.Name)
 	}
 
-	// Retrieve the function code from the global table
 	sym, _ := tc.GlobalTable.Resolve(fn.FuncName)
-	// Store the current func.
 	tc.CurrentFunction = sym
 
-	// 1. Create a new child SymbolTable for the function
 	childScopeID := tc.CurrentTable.generateChildID()
 	childTable := &SymbolTable{
 		Symbols: make(map[string]*Symbol),
@@ -299,36 +298,42 @@ func (tc *TypeChecker) checkFuncDecl(fn *aster.Func) {
 		ScopeID: childScopeID,
 	}
 
-	// 2. Switch context to the new function scope
 	previousTable := tc.CurrentTable
 	tc.CurrentTable = childTable
 
 	// 3. Define parameters in the new scope
-	// Parameters are the first inhabitants of the function frame
 	for _, param := range fn.Params {
-		sym := &Symbol{
+		// --- Start of added logic for type validation ---
+		typeName := param.Type.Name
+		isBuiltin := typeName == "int" || typeName == "string" || typeName == "bool"
+
+		// Validate if the type exists (for custom types like X, Y, Z)
+		if !isBuiltin {
+			if _, exists := tc.GlobalTable.Resolve(typeName); !exists {
+				tc.appendErrorf("undefined type: %s", param.Type.Line, typeName)
+			}
+		}
+		// --- End of added logic ---
+
+		paramSym := &Symbol{
 			Name:    param.Name,
 			Type:    param.Type,
 			ScopeID: childScopeID,
 		}
-		err := tc.CurrentTable.Define(param.Type.Name, sym)
+
+		// FIXED: Use param.Name as the key, not param.Type.Name
+		err := tc.CurrentTable.Define(param.Name, paramSym)
 		if err != nil {
 			tc.Errors = append(tc.Errors, err.Error())
 		}
 	}
 
-	// 4. Check function body (The FrameBlock)
-	// We will use checkBlock to process the statements inside
 	if fn.Body != nil {
 		tc.checkBlock(fn.Body)
 	}
 
-	// 5. Restore context back to the parent scope
 	tc.CurrentTable = previousTable
-
-	// reset func
-	tc.CurrentFunction = nil // reset
-
+	tc.CurrentFunction = nil
 }
 
 func (tc *TypeChecker) checkReturnStmt(stmt *aster.ReturnStmt) {
@@ -385,7 +390,7 @@ func (tc *TypeChecker) checkBlock(block *aster.FrameBlock) {
 	}
 }
 
-func (tc *TypeChecker) checkDeclar(decl aster.Declar) {
+func (tc *TypeChecker) checkDeclar(decl *aster.Declar) {
 	// 1. Basic syntax check: Ensure the right side is not empty
 	if len(decl.Values) == 0 {
 		tc.Errors = append(tc.Errors, "syntax error: := must have values on the right")
@@ -424,7 +429,9 @@ func (tc *TypeChecker) checkDeclar(decl aster.Declar) {
 		}
 
 		// 6. Safety check: Don't define variables with "error" type
+
 		inferredType := rightSideTypes[i]
+
 		if inferredType == "error" {
 			continue
 		}
@@ -438,12 +445,12 @@ func (tc *TypeChecker) checkDeclar(decl aster.Declar) {
 
 		// Define handles redeclaration checks internally
 		if err := tc.CurrentTable.Define(varName, sym); err != nil {
-			tc.Errors = append(tc.Errors, err.Error())
+			tc.appendErrorf("", sym.Type.Line, err.Error())
 		}
 	}
 }
 
-func (tc *TypeChecker) checkAssign(asgn aster.Assign) {
+func (tc *TypeChecker) checkAssign(asgn *aster.Assign) {
 
 	// 1. Ensure the right side is not empty
 	if len(asgn.Values) == 0 {
@@ -469,38 +476,22 @@ func (tc *TypeChecker) checkAssign(asgn aster.Assign) {
 	}
 
 	// 4. Validate each variable and its type consistency
+
+	// Replace step 4, 6, and 7 with this robust logic:
 	for i, nameExpr := range asgn.Targets {
-		ident, ok := nameExpr.(aster.IdentExpr)
-		if !ok {
-			fmt.Println(ident.Line)
-			tc.appendErrorf("invalid left-hand side in assignment", ident.Line)
-			continue
-		}
+		// 1. inferType will handle both 'i' and 'data.x'
+		// It will report "undefined variable" if it's not there
+		lhsType := tc.inferType(nameExpr)
+		rhsType := rightSideTypes[i]
 
-		varName := ident.Name
-
-		// 5. Blank identifier "_": skip validation as it can accept any type
-		if varName == "_" {
-			continue
-		}
-
-		// 6. Resolve variable: it must be declared before assignment (=)
-		existingSym, exists := tc.CurrentTable.Resolve(varName)
-		if !exists {
-			fmt.Println("Line:", ident.Line)
-			tc.appendErrorf("undefined variable: %s", ident.Line, varName)
-			continue
-		}
-
-		// 7. Type Consistency: Ensure new value type matches the declared variable type
-		inferredRhsType := rightSideTypes[i]
-		if inferredRhsType != "error" && existingSym.Type.Name != inferredRhsType {
-			tc.Errors = append(tc.Errors, fmt.Sprintf(
-				"Line %d cannot assign %s to variable %s of type %s", asgn.Line,
-				inferredRhsType, varName, existingSym.Type.Name,
-			))
+		// 2. Only compare types if both were successfully inferred
+		if lhsType != "error" && rhsType != "error" {
+			if lhsType != rhsType {
+				tc.appendErrorf("cannot assign %s to %s", nameExpr.GetLine(), rhsType, lhsType)
+			}
 		}
 	}
+
 }
 
 func (tc *TypeChecker) checkStructLiteral(lit aster.StructLiteral) string {
@@ -653,6 +644,7 @@ func (tc *TypeChecker) checkForStmt(stmt *aster.ForStmt) {
 	tc.CurrentTable = childTable
 
 	// 2. Check the Initialization (Init) part (e.g., i := 0)
+
 	if stmt.Init != nil {
 		tc.checkStmt(stmt.Init)
 	}
@@ -661,8 +653,7 @@ func (tc *TypeChecker) checkForStmt(stmt *aster.ForStmt) {
 	if stmt.Cond != nil {
 		condType := tc.inferType(stmt.Cond)
 		if condType != "bool" {
-			msg := fmt.Sprintf("non-bool condition in for statement: got %s", condType)
-			tc.Errors = append(tc.Errors, msg)
+			tc.appendErrorf("non-bool condition in for statement: got %s", stmt.Cond.GetLine(), condType)
 		}
 	}
 
@@ -688,11 +679,11 @@ func (tc *TypeChecker) checkStmt(stmt aster.Statement) {
 		tc.checkVarDeclar(s)
 
 	// 2. Short Declarations (i := 10)
-	case aster.Declar:
+	case *aster.Declar:
 		tc.checkDeclar(s)
 
 	// 3. Assignments (x = 20)
-	case aster.Assign:
+	case *aster.Assign:
 		tc.checkAssign(s)
 
 	// 4. Expression Statements (Function calls)

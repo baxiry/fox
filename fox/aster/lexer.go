@@ -113,6 +113,8 @@ var keywords = map[string]TokenType{
 	"break":       BREAK,
 	"continue":    CONTINUE,
 	"spawn":       SPAWN,
+	"true":        BOOL,
+	"false":       BOOL,
 }
 
 func Lexer(input string) []Token {

@@ -193,6 +193,12 @@ func (p *Parser) parsePrimary() Expression {
 	tok := p.currentToken()
 
 	switch tok.Type {
+	case BOOL:
+		val := p.currentToken().Lexeme
+		line := p.currentToken().Line
+		p.pos++
+		return BoolExpr{Literal: val, Line: line}
+
 	case IDENT:
 		p.pos++
 		if p.currentToken().Type == OPN_PAREN {
@@ -231,7 +237,6 @@ func (p *Parser) parsePrimary() Expression {
 		}
 		p.appendErrorf("expected expression, but found %s (%q)",
 			tok.Line, tok.Type, tok.Lexeme, tok.Line)
-
 		p.synchronize()
 		return nil
 	}
@@ -275,6 +280,7 @@ func (p *Parser) parseType() Type {
 	return Type{
 		Name:     name.Lexeme,
 		PtrDepth: ptrDepth,
+		Line:     name.Line,
 	}
 }
 
@@ -406,6 +412,7 @@ func (p *Parser) parseFunc() *Func {
 		funcNode.Params = append(funcNode.Params, Param{
 			Name: name,
 			Type: typ,
+			Line: typ.Line,
 		})
 	}
 
