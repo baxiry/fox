@@ -56,7 +56,7 @@ func (p *Parser) parseUnary() Expression {
 		case NOT, MINUS, STAR, AMP:
 			op := p.tokens[p.pos]
 			p.pos++
-			return UnaryExpr{Op: op.Lexeme, Expr: p.parseUnary()}
+			return UnaryExpr{Op: op.Lexeme, Expr: p.parseUnary(), Line: op.Line}
 		}
 	}
 
@@ -81,7 +81,7 @@ func (p *Parser) parsePostfix() Expression {
 				p.synchronize() // Jump to the next safe statement
 				return nil
 			}
-			expr = FieldAccessExpr{Object: expr, Field: field.Lexeme}
+			expr = FieldAccessExpr{Object: expr, Field: field.Lexeme, Line: field.Line}
 
 		case OPN_BRACE:
 			// Follow Go's rule: Struct literals must start the brace on the same line.
@@ -273,8 +273,9 @@ func (p *Parser) parseType() Type {
 	name := p.expectIdent()
 
 	if name.Type == ERROR {
+
 		p.synchronize() // Jump to the next safe statement
-		return Type{}
+		return Type{Line: name.Line}
 	}
 
 	return Type{
@@ -574,6 +575,7 @@ func (p *Parser) parseStructLiteral(typeName string) Expression {
 			fields = append(fields, FieldInit{
 				Name:  "",
 				Value: value,
+				Line:  value.GetLine(),
 			})
 		}
 		// Consume optional comma after field
@@ -583,9 +585,9 @@ func (p *Parser) parseStructLiteral(typeName string) Expression {
 	}
 	p.expectType(CLS_BRACE)
 	return StructLiteral{
-		Type:   Type{Name: typeName},
+		Type:   Type{Name: typeName, Line: p.currentToken().Line},
 		Fields: fields,
-		Line:   1223333,
+		Line:   p.currentToken().Line,
 	}
 }
 

@@ -673,7 +673,7 @@ func (tc *TypeChecker) checkForStmt(stmt *aster.ForStmt) {
 	// 3. Check the Condition (Cond) part (e.g., i < 10)
 	if stmt.Cond != nil {
 		condType := tc.inferType(stmt.Cond)
-		if condType != "bool" && condType != "error" {
+		if condType != "bool" && condType != "INVALID" {
 			tc.appendErrorf("non-bool condition in for statement: got %s", stmt.Cond.GetLine(), condType)
 		}
 	}

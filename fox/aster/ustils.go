@@ -23,7 +23,7 @@ func (p *Parser) expectIdent() Token {
 			"Line: %d unexpected end of input, expected identifier",
 			p.currentToken().Line,
 		))
-		return Token{}
+		return Token{Line: p.currentToken().Line}
 	}
 
 	tok := p.tokens[p.pos]
@@ -34,7 +34,7 @@ func (p *Parser) expectIdent() Token {
 			"syntax error at line %d: expected IDENT, got %s",
 			tok.Line, tok.Type))
 
-		return Token{}
+		return Token{Line: p.currentToken().Line}
 	}
 
 	p.pos++
@@ -50,7 +50,7 @@ func (p *Parser) skip() {
 
 func (p *Parser) currentToken() Token {
 	if p.pos >= len(p.tokens) {
-		return Token{Type: EOF, Lexeme: "EOF"}
+		return Token{Type: EOF, Lexeme: "EOF", Line: p.currentToken().Line}
 	}
 	return p.tokens[p.pos]
 }
@@ -60,7 +60,7 @@ func (p *Parser) expectType(expected TokenType) Token {
 	if p.pos >= len(p.tokens) {
 
 		p.Errors = append(p.Errors, fmt.Sprintf("Line %d unexpected end of file", p.currentToken().Line))
-		return Token{}
+		return Token{Line: p.currentToken().Line}
 	}
 
 	tok := p.currentToken()
@@ -70,13 +70,13 @@ func (p *Parser) expectType(expected TokenType) Token {
 			"syntax error at line %d: expected %s, got %s",
 			tok.Line, expected.String(), tok.Type,
 		))
-		return Token{}
+		return Token{Line: p.currentToken().Line}
 	}
 	p.pos++
 	return tok
 }
 
-func readNumber(src string, pos *int) Token {
+func (p *Parser) readNumber(src string, pos *int) Token {
 	start := *pos
 
 	// integer part
@@ -103,14 +103,17 @@ func readNumber(src string, pos *int) Token {
 	suffix := src[sufStart:*pos]
 
 	//  new rule
+
+	line := p.currentToken().Line
 	if isFloat && (strings.HasPrefix(suffix, "i") || strings.HasPrefix(suffix, "u")) {
-		panic(fmt.Sprintf("invalid numeric literal: float cannot have integer suffix: %s%s", value, suffix))
+		p.appendErrorf("invalid numeric literal: float cannot have integer suffix: %s%s", line, value, suffix)
 	}
 	//
 
 	return Token{
 		Type:   FLOAT,
 		Lexeme: value,
+		Line:   line,
 	}
 }
 
