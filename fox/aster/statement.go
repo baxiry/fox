@@ -128,6 +128,7 @@ func (p *Parser) parseVarDeclar() Statement {
 		Name:  nameTok.Lexeme,
 		Type:  typ,
 		Value: value,
+		Line:  nameTok.Line,
 	}
 }
 

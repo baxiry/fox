@@ -1,0 +1,23 @@
+package object
+
+type Obj struct {
+   name string
+   info string
+   age int
+}
+
+fn Vars() {
+
+	var i int
+	var i int = 10
+	var i = 10 + 10
+
+
+    var obj Obj
+    obj.name = "adam"
+    obj.age = 34
+    obj.info  = "someInfo"
+
+
+}
+

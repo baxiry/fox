@@ -237,11 +237,10 @@ func (tc *TypeChecker) checkVarDeclar(decl *aster.VarDeclar) {
 	if decl.Type != nil {
 		finalType = decl.Type.Name
 
-		// If there is an assignment, check type compatibility
 		if decl.Value != nil {
 			valueType := tc.inferType(decl.Value)
-			if finalType != valueType {
-				fmt.Println("LINE: ", decl.Line)
+			// Safety: Skip check if inferred type is already an error/invalid
+			if valueType != "INVALID" && finalType != valueType {
 				tc.appendErrorf("cannot use %s as %s in assignment", decl.Line, valueType, finalType)
 			}
 		}
@@ -257,13 +256,16 @@ func (tc *TypeChecker) checkVarDeclar(decl *aster.VarDeclar) {
 	// 3. Register the symbol in the current table
 	sym := &Symbol{
 		Name:    decl.Name,
-		Type:    aster.Type{Name: finalType}, // Simplified for now
+		Type:    aster.Type{Name: finalType},
 		ScopeID: tc.CurrentTable.ScopeID,
 	}
 
 	err := tc.CurrentTable.Define(decl.Name, sym)
 	if err != nil {
-		tc.appendErrorf("", decl.Line, err.Error())
+		// IMPORTANT: We report the redeclaration error,
+		// but we DON'T stop or overwrite the first definition.
+		// This keeps the TypeChecker stable using the first 'i' found.
+		tc.appendErrorf("var `%s` redeclared in this block", decl.Line, decl.Name)
 	}
 }
 
@@ -291,7 +293,7 @@ func (tc *TypeChecker) checkFieldAccess(expr aster.FieldAccessExpr) string {
 
 	for _, field := range structSym.Fields {
 		if field.Name == expr.Field {
-			return field.Name
+			return field.Type
 		}
 	}
 
