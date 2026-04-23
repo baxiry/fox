@@ -18,6 +18,5 @@ fn Vars() {
     obj.age = 34
     obj.info  = "someInfo"
 
-
 }
 

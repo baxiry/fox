@@ -1,0 +1,16 @@
+fn do() {}
+
+fn doOne() int {
+   a := do()
+   return a 
+}
+
+fn doTwo() int, int {
+   a , b := doOne()
+   return a, b 
+}
+
+fn doThree() int, string {
+    a, b, c := doTwo()
+   return a, b, c
+}

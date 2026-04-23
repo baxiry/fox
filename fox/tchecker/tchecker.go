@@ -378,11 +378,12 @@ func (tc *TypeChecker) checkReturnStmt(stmt *aster.ReturnStmt) {
 		expectedTypeName := expected[i].Type.Name
 		actualTypeName := tc.inferType(expr)
 
-		if actualTypeName == "INVALID" {
+		if actualTypeName == "" || actualTypeName == "INVALID" {
 			continue
 		}
 
 		if expectedTypeName != actualTypeName {
+			fmt.Println("actual type : ", actualTypeName)
 			tc.appendErrorf(
 				"cannot use %s as type %s in return argument",
 				stmt.Line, actualTypeName, expectedTypeName,
@@ -414,61 +415,69 @@ func (tc *TypeChecker) checkBlock(block *aster.FrameBlock) {
 }
 
 func (tc *TypeChecker) checkDeclar(decl *aster.Declar) {
-	// 1. Basic syntax check: Ensure the right side is not empty
+	// 1. Basic syntax check
 	if len(decl.Values) == 0 {
-		tc.Errors = append(tc.Errors, "syntax error: := must have values on the right")
+		tc.appendErrorf("syntax error: := must have values on the right", decl.Line)
 		return
 	}
 
-	// 2. Collect and unpack all types from the right-hand side
+	// 2. Collect and unpack all types
 	var rightSideTypes []string
 	for _, valExpr := range decl.Values {
-		// The "..." operator flattens return types from functions or literals
 		rightSideTypes = append(rightSideTypes, tc.inferReturnTypes(valExpr)...)
 	}
 
-	// 3. Structural check: Count of identifiers must match count of types
-	if len(decl.Names) != len(rightSideTypes) {
-		tc.Errors = append(tc.Errors, fmt.Sprintf(
-			"assignment mismatch: %d names on the left but %d values on the right",
-			len(decl.Names), len(rightSideTypes),
-		))
-		return
+	numNames := len(decl.Names)
+	numValues := len(rightSideTypes)
+
+	// 3. APPLY FOX FLEXIBILITY RULE:
+	// If values > names, we only care if the ignored values contain an 'error'
+	if numValues > numNames {
+		// Rule: Check the ignored part for 'error' type
+		for i := numNames; i < numValues; i++ {
+			if rightSideTypes[i] == "error" {
+				tc.appendErrorf("must handle or explicitly ignore 'error' at return position %d", decl.Line, i+1)
+			}
+		}
+		// Slice the right side to match the names
+		rightSideTypes = rightSideTypes[:numNames]
+	} else if numValues < numNames {
+		// Rule: Under-assignment is still a hard error (The Left is essential)
+
+		tc.appendErrorf("assignment mismatch: %d names on the left but only %d values provided",
+			decl.Line, numNames, numValues)
+
+		// We still proceed by padding with INVALID to silence further errors
+		for len(rightSideTypes) < numNames {
+			rightSideTypes = append(rightSideTypes, aster.INVALID.String())
+		}
 	}
 
-	// 4. Register each name into the current scope
+	// 4. Register each name with its type (Safe now because lengths match)
 	for i, nameExpr := range decl.Names {
 		ident, ok := nameExpr.(aster.IdentExpr)
 		if !ok {
-			tc.Errors = append(tc.Errors, "invalid identifier on the left side of :=")
 			continue
 		}
 
 		varName := ident.Name
-
-		// 5. Blank identifier "_": skip symbol table registration
 		if varName == "_" {
 			continue
 		}
 
-		// 6. Safety check: Don't define variables with "error" type
-
 		inferredType := rightSideTypes[i]
-
 		if inferredType == "error" {
 			continue
 		}
 
-		// Create the symbol and add it to the table
 		sym := &Symbol{
 			Name:    varName,
 			Type:    aster.Type{Name: inferredType},
 			ScopeID: tc.CurrentTable.ScopeID,
 		}
 
-		// Define handles redeclaration checks internally
 		if err := tc.CurrentTable.Define(varName, sym); err != nil {
-			tc.appendErrorf("", sym.Type.Line, err.Error())
+			tc.appendErrorf(err.Error(), ident.Line)
 		}
 	}
 }
