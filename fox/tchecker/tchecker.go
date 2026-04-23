@@ -86,7 +86,7 @@ func (tc *TypeChecker) checkBinaryExpr(expr *aster.BinaryExpr) string {
 	if leftType != rightType {
 		msg := fmt.Sprintf("type error: mismatch between %s and %s", leftType, rightType)
 		tc.Errors = append(tc.Errors, msg)
-		return "INVALID"
+		return aster.INVALID.String()
 	}
 
 	// 3. Determine result type
@@ -131,7 +131,7 @@ func (tc *TypeChecker) inferType(expr aster.Expression) string {
 		}
 		if len(types) > 1 {
 			tc.appendErrorf("multiple-value call in single-value context", e.Line)
-			return "INVALID"
+			return aster.INVALID.String()
 		}
 		return types[0]
 
@@ -147,19 +147,23 @@ func (tc *TypeChecker) inferType(expr aster.Expression) string {
 
 			rootTable.Define(e.Name, &Symbol{
 				Name:    e.Name,
-				Type:    aster.Type{Name: "INVALID"},
+				Type:    aster.Type{Name: aster.INVALID.String()},
 				ScopeID: rootTable.ScopeID,
 			})
 
-			return "INVALID"
+			return aster.INVALID.String()
 		}
 		return sym.Type.Name
 
 	case aster.FieldAccessExpr:
 		// Check the left-hand side first (e.g., 'data' in 'data.x')
 		leftType := tc.inferType(e.Object)
-		if leftType == "INVALID" {
-			return "INVALID" // Silent return if target is already undefined
+		//if leftType == "" || leftType == "INVALID" || leftType == "unknown" {
+		//	fmt.Printf("DEBUG: FieldAccess failed at line %d. Object Type is: '%s'\n", e.Line, leftType)
+		//}
+
+		if leftType == aster.INVALID.String() {
+			return aster.INVALID.String() // Silent return if target is already undefined
 		}
 		return tc.checkFieldAccess(e)
 
@@ -171,8 +175,8 @@ func (tc *TypeChecker) inferType(expr aster.Expression) string {
 		rightType := tc.inferType(e.Right)
 
 		// 3. Propagation: If either side is "error", don't report more errors here
-		if leftType == "INVALID" || rightType == "INVALID" {
-			return "INVALID"
+		if leftType == aster.INVALID.String() || rightType == aster.INVALID.String() {
+			return aster.INVALID.String()
 		}
 
 		switch e.Op {
@@ -194,21 +198,24 @@ func (tc *TypeChecker) inferType(expr aster.Expression) string {
 
 func (tc *TypeChecker) inferReturnTypes(expr aster.Expression) []string {
 	if call, ok := expr.(aster.CallExpr); ok {
-		// Use the already existing checkCallExpr logic
-		// This will populate tc.Errors if types mismatch
 		_ = tc.checkCallExpr(&call)
 
-		// Now fetch the symbol to return the types
 		callee, _ := call.Callee.(aster.IdentExpr)
 		sym, exists := tc.CurrentTable.Resolve(callee.Name)
 		if !exists {
-			return []string{"error"}
+			return []string{aster.INVALID.String()}
 		}
 
 		var names []string
-		for _, t := range sym.ReturnTypes {
-			names = append(names, t.Name)
+		for _, field := range sym.ReturnTypes {
+			// .
+			typeName := field.Type.Name
+			if typeName == "" {
+				typeName = aster.INVALID.String()
+			}
+			names = append(names, typeName)
 		}
+
 		if len(names) == 0 {
 			return []string{"void"}
 		}
@@ -240,7 +247,7 @@ func (tc *TypeChecker) checkVarDeclar(decl *aster.VarDeclar) {
 		if decl.Value != nil {
 			valueType := tc.inferType(decl.Value)
 			// Safety: Skip check if inferred type is already an error/invalid
-			if valueType != "INVALID" && finalType != valueType {
+			if valueType != aster.INVALID.String() && finalType != valueType {
 				tc.appendErrorf("cannot use %s as %s in assignment", decl.Line, valueType, finalType)
 			}
 		}
@@ -272,7 +279,7 @@ func (tc *TypeChecker) checkVarDeclar(decl *aster.VarDeclar) {
 func (tc *TypeChecker) checkFieldAccess(expr aster.FieldAccessExpr) string {
 	objType := tc.inferType(expr.Object)
 	if objType == "error" || objType == "unknown" {
-		return "INVALID"
+		return aster.INVALID.String()
 	}
 
 	actualTypeName := objType
@@ -283,22 +290,23 @@ func (tc *TypeChecker) checkFieldAccess(expr aster.FieldAccessExpr) string {
 	structSym, exists := tc.GlobalTable.Resolve(actualTypeName)
 	if !exists {
 		tc.Errors = append(tc.Errors, fmt.Sprintf("type %s is not defined", actualTypeName))
-		return "INVALID"
+		return aster.INVALID.String()
 	}
 
 	if structSym.Kind != "struct" {
 		tc.Errors = append(tc.Errors, fmt.Sprintf("%s is not a struct", actualTypeName))
-		return "INVALID"
+		return aster.INVALID.String()
 	}
 
 	for _, field := range structSym.Fields {
 		if field.Name == expr.Field {
+
 			return field.Type
 		}
 	}
 
-	tc.Errors = append(tc.Errors, fmt.Sprintf("line %d: type %s has no field %s", 0, actualTypeName, expr.Field))
-	return "INVALID"
+	tc.appendErrorf("type %s has no field %s", structSym.Type.Line, actualTypeName, expr.Field)
+	return aster.INVALID.String()
 }
 
 func (tc *TypeChecker) checkFuncDecl(fn *aster.Func) {
@@ -378,7 +386,7 @@ func (tc *TypeChecker) checkReturnStmt(stmt *aster.ReturnStmt) {
 		expectedTypeName := expected[i].Type.Name
 		actualTypeName := tc.inferType(expr)
 
-		if actualTypeName == "" || actualTypeName == "INVALID" {
+		if actualTypeName == "" || actualTypeName == aster.INVALID.String() {
 			continue
 		}
 
@@ -466,6 +474,11 @@ func (tc *TypeChecker) checkDeclar(decl *aster.Declar) {
 		}
 
 		inferredType := rightSideTypes[i]
+
+		if inferredType == "" || inferredType == "unknown" {
+			inferredType = aster.INVALID.String()
+		}
+
 		if inferredType == "error" {
 			continue
 		}
@@ -511,13 +524,17 @@ func (tc *TypeChecker) checkAssign(asgn *aster.Assign) {
 
 	// Replace step 4, 6, and 7 with this robust logic:
 	for i, nameExpr := range asgn.Targets {
+
+		if ident, ok := nameExpr.(aster.IdentExpr); ok && ident.Name == "_" {
+			continue
+		}
 		// 1. inferType will handle both 'i' and 'data.x'
 		// It will report "undefined variable" if it's not there
 		lhsType := tc.inferType(nameExpr)
 		rhsType := rightSideTypes[i]
 
 		// 2. Only compare types if both were successfully inferred
-		if lhsType != "INVALID" && rhsType != "INVALID" {
+		if lhsType != aster.INVALID.String() && rhsType != aster.INVALID.String() {
 			if lhsType != rhsType {
 				tc.appendErrorf("cannot assign %s to %s", nameExpr.GetLine(), rhsType, lhsType)
 			}
@@ -532,7 +549,7 @@ func (tc *TypeChecker) checkStructLiteral(lit aster.StructLiteral) string {
 	structSym, exists := tc.GlobalTable.Resolve(structName)
 	if !exists {
 		tc.Errors = append(tc.Errors, fmt.Sprintf("undefined type: %s", structName))
-		return "INVALID"
+		return aster.INVALID.String()
 	}
 
 	// 2. Map fields for easy lookup during validation
@@ -546,18 +563,15 @@ func (tc *TypeChecker) checkStructLiteral(lit aster.StructLiteral) string {
 		expectedType, fieldExists := expectedFields[providedField.Name]
 
 		if !fieldExists {
-			tc.Errors = append(tc.Errors, fmt.Sprintf("struct %s has no field %s", structName, providedField.Name))
+			tc.appendErrorf("struct %s has no field %s", providedField.Line, structName, providedField.Name)
 			continue
 		}
 
-		// Infer the type of the value being assigned to the field
 		providedType := tc.inferType(providedField.Value)
 
-		// Strict Check: Ensure types match exactly
-		if providedType != expectedType {
-			msg := fmt.Sprintf("Line ? type mismatch in %s.%s: expected %s, got %s",
-				structName, providedField.Name, expectedType, providedType)
-			tc.Errors = append(tc.Errors, msg)
+		if providedType != aster.INVALID.String() && providedType != expectedType {
+			tc.appendErrorf("type mismatch in %s.%s: expected %s, got %s",
+				providedField.Line, structName, providedField.Name, expectedType, providedType)
 		}
 	}
 
@@ -592,19 +606,41 @@ func (tc *TypeChecker) checkGlobalVarsAndStructs(ast *aster.AST) {
 			Name: s.Name,
 			Kind: "struct",
 		}
-
-		// Map AST fields to Symbol fields
 		for _, f := range s.Fields {
-			// If your Symbol doesn't have a 'Fields' slice yet,
-			// make sure to add it to your Symbol struct definition.
+			if f.Name == "" {
+			}
 			sym.Fields = append(sym.Fields, aster.Field{
 				Name: f.Name,
 				Type: f.Type,
 			})
 		}
-
-		// Add to GlobalTable so functions can resolve this type
 		tc.GlobalTable.Define(s.Name, sym)
+	}
+
+	// 2. NEW: Register and infer types for Global Variables
+	for _, v := range ast.Vars {
+		var finalType string
+
+		// Handle explicit type: var a int
+		if v.Type != nil {
+			finalType = v.Type.Name
+		} else if v.Value != nil {
+			// Handle type inference: var c = 10 + 10
+			finalType = tc.inferType(v.Value)
+		}
+
+		if finalType == "" {
+			finalType = aster.INVALID.String()
+		}
+		// Register the variable in the GlobalTable
+		sym := &Symbol{
+			Name: v.Name,
+			Type: aster.Type{Name: finalType},
+			Kind: "var",
+		}
+
+		// Now functions can resolve these variables through the global scope
+		tc.GlobalTable.Define(v.Name, sym)
 	}
 }
 
@@ -612,28 +648,46 @@ func (tc *TypeChecker) checkCallExpr(call *aster.CallExpr) string {
 	// 1. Assert that Callee is an IdentExpr to get the Name
 	callee, ok := call.Callee.(aster.IdentExpr)
 	if !ok {
-		tc.Errors = append(tc.Errors, "invalid call: expected a function name")
-		return "INVALID"
+		tc.appendErrorf("invalid call: expected a function name", call.Line)
+		return aster.INVALID.String()
 	}
+
 
 	// 2. Resolve the function name in the SymbolTable
 	sym, exists := tc.CurrentTable.Resolve(callee.Name)
 	if !exists {
-		tc.Errors = append(tc.Errors, fmt.Sprintf("undefined function: %s", callee.Name))
-		return "INVALID"
+		// 1. Report only once
+		tc.appendErrorf("undefined function: %s", callee.Line, callee.Name)
+
+		// 2. Silent Injection: Register as a "dummy" function to stop future errors
+		rootTable := tc.CurrentTable
+		for rootTable.Parent != nil {
+			rootTable = rootTable.Parent
+		}
+
+		rootTable.Define(callee.Name, &Symbol{
+			Name: callee.Name,
+			Kind: "func",
+			// We give it a special marker to avoid parameter count errors later
+			Type: aster.Type{Name: aster.INVALID.String()},
+		})
+		return aster.INVALID.String()
 	}
 
+	// 3. Early exit if it's a previously flagged invalid function
+	if sym.Type.Name == aster.INVALID.String() {
+		return aster.INVALID.String()
+	}
 	// 3. Ensure the symbol is actually a function
 	if sym.Kind != "func" {
-		tc.Errors = append(tc.Errors, fmt.Sprintf("Line ? , %s is not a function", callee.Name))
-		return "INVALID"
+		tc.appendErrorf(" %s is not a function", call.Line, callee.Name)
+		return aster.INVALID.String()
 	}
 
 	// 4. Check arguments count
 	if len(call.Args) != len(sym.Params) {
-		msg := fmt.Sprintf("too many or too few arguments in call to %s", callee.Name)
-		tc.Errors = append(tc.Errors, msg)
-		return "INVALID"
+		tc.appendErrorf("too many or too few arguments in call to %s", callee.Line, callee.Name)
+		return aster.INVALID.String()
 	}
 
 	// 5. Validate each argument type against parameter type
@@ -684,7 +738,7 @@ func (tc *TypeChecker) checkForStmt(stmt *aster.ForStmt) {
 	// 3. Check the Condition (Cond) part (e.g., i < 10)
 	if stmt.Cond != nil {
 		condType := tc.inferType(stmt.Cond)
-		if condType != "bool" && condType != "INVALID" {
+		if condType != "bool" && condType != aster.INVALID.String() {
 			tc.appendErrorf("non-bool condition in for statement: got %s", stmt.Cond.GetLine(), condType)
 		}
 	}
@@ -742,9 +796,8 @@ func (tc *TypeChecker) checkIfStmt(stmt *aster.IfStmt) {
 	// 1. Verify the condition is a boolean expression
 	condType := tc.inferType(stmt.Cond)
 
-	if condType != "bool" && condType != "INVALID" {
-		msg := fmt.Sprintf("non-bool condition in if statement: got %s", condType)
-		tc.Errors = append(tc.Errors, msg)
+	if condType != "bool" && condType != aster.INVALID.String() {
+		tc.appendErrorf("non-bool condition in if statement: got %s", stmt.Cond.GetLine(), condType)
 	}
 
 	// 2. Check the "Then" block (The scope where condition is true)
@@ -796,7 +849,7 @@ func (tc *TypeChecker) checkUnaryExpr(expr *aster.UnaryExpr) string {
 	// 1. Identify the operand's type (e.g., "int" or "*int")
 	operandType := tc.inferType(expr.Expr)
 	if operandType == "error" {
-		return "INVALID"
+		return aster.INVALID.String()
 	}
 
 	switch expr.Op {
@@ -809,7 +862,7 @@ func (tc *TypeChecker) checkUnaryExpr(expr *aster.UnaryExpr) string {
 		if len(operandType) == 0 || operandType[0] != '*' {
 			msg := fmt.Sprintf("invalid indirect: %s is not a pointer", operandType)
 			tc.Errors = append(tc.Errors, msg)
-			return "INVALID"
+			return aster.INVALID.String()
 		}
 		return operandType[1:]
 
@@ -818,7 +871,7 @@ func (tc *TypeChecker) checkUnaryExpr(expr *aster.UnaryExpr) string {
 		if operandType != "bool" {
 			msg := fmt.Sprintf("operator '!' not defined for type %s", operandType)
 			tc.Errors = append(tc.Errors, msg)
-			return "INVALID"
+			return aster.INVALID.String()
 		}
 		return "bool"
 

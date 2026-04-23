@@ -236,15 +236,16 @@ func (p *Parser) parsePrimary() Expression {
 			return p.parseUnary()
 		}
 		p.appendErrorf("expected expression, but found %s (%q)",
-			tok.Line, tok.Type, tok.Lexeme, tok.Line)
+			tok.Line, tok.Type, tok.Lexeme)
 		p.synchronize()
 		return nil
 	}
 }
 
-func (p *Parser) appendErrorf(msg string, line int, args ...any) {
-	msg = fmt.Sprintf(msg, args...)
-	p.Errors = append(p.Errors, fmt.Sprint("Line: %d %s", line, msg))
+func (p *Parser) appendErrorf(format string, line int, args ...any) {
+	msg := fmt.Sprintf(format, args...)
+	finalMsg := fmt.Sprintf("line %d: %s", line, msg)
+	p.Errors = append(p.Errors, finalMsg)
 }
 
 func (p *Parser) parseType() Type {
@@ -519,30 +520,25 @@ func (p *Parser) parseFieldAssign() Field {
 }
 
 func (p *Parser) parseVarDecl() *VarDeclar {
-	// 1. Consume the 'var' keyword
-	if p.tokens[p.pos].Type == VAR {
-		p.pos++
-	}
+	p.pos++ // 1. Consume 'var'
 
-	// 2. Expect the variable name (e.g., 'obj' or 'i')
 	name := p.expectIdent()
 
 	var typeNode *Type = nil
 	var value Expression = nil
 
-	// 3. Optional: Check if the next token is a Type (IDENT)
-	// In 'var i int', the second IDENT is the type
-	tok := p.currentToken()
-	if tok.Type == IDENT {
+	// 2. Check for Type (IDENT)
+	// IMPORTANT: Check the CURRENT token here
+	if p.currentToken().Type == IDENT {
+		tok := p.currentToken()
 		typeName := p.expectIdent()
 		typeNode = &Type{Name: typeName.Lexeme, Line: tok.Line}
 	}
 
-	// 4. Optional: Check for assignment operator '='
-	// Note: Use ASSIGN (=) here, not DEFINE (:=)
-	if tok.Type == ASSIGN {
-		p.pos++
-		// Parse the expression on the right side
+	// 3. Check for Assignment (=)
+	// IMPORTANT: Check the CURRENT token again
+	if p.currentToken().Type == ASSIGN {
+		p.pos++ // consume '='
 		value = p.parseExpr()
 	}
 
@@ -550,7 +546,7 @@ func (p *Parser) parseVarDecl() *VarDeclar {
 		Name:  name.Lexeme,
 		Type:  typeNode,
 		Value: value,
-		Line:  tok.Line,
+		Line:  name.Line, // Use name.Line for consistency
 	}
 }
 

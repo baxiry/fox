@@ -56,11 +56,13 @@ func (p *Parser) currentToken() Token {
 }
 
 func (p *Parser) expectType(expected TokenType) Token {
-
 	if p.pos >= len(p.tokens) {
-
-		p.Errors = append(p.Errors, fmt.Sprintf("Line %d unexpected end of file", p.currentToken().Line))
-		return Token{Line: p.currentToken().Line}
+		lastLine := 0
+		if len(p.tokens) > 0 {
+			lastLine = p.tokens[len(p.tokens)-1].Line
+		}
+		p.Errors = append(p.Errors, fmt.Sprintf("line %d: unexpected end of file", lastLine))
+		return Token{Type: EOF, Line: lastLine}
 	}
 
 	tok := p.currentToken()
@@ -68,10 +70,13 @@ func (p *Parser) expectType(expected TokenType) Token {
 	if tok.Type != expected {
 		p.Errors = append(p.Errors, fmt.Sprintf(
 			"syntax error at line %d: expected %s, got %s",
-			tok.Line, expected.String(), tok.Type,
+			tok.Line, expected.String(), tok.Type.String(),
 		))
-		return Token{Line: p.currentToken().Line}
+
+		p.pos++
+		return tok
 	}
+
 	p.pos++
 	return tok
 }

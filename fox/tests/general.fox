@@ -16,6 +16,18 @@ type Obj struct {
     value int
 }
 
+type User struct {
+    name string;
+    age int;
+    info string
+}
+
+var Name string
+var Age int
+type Info struct {}
+
+fn do() int, bool {}
+
 var obj Obj
 var a int
 var b int = 10

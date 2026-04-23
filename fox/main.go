@@ -23,6 +23,7 @@ func main() {
 	tc := tchecker.NewTypeChecker()
 
 	ast := parser.Builder(content)
+	//	pretty.Println(ast)
 
 	tc.Check(ast)
 

@@ -1,3 +1,12 @@
+
+
+type User struct { name string; age int; info string }
+type Name string
+type Age int
+type Info struct {}
+
+fn do() int, bool {} 
+
 fn do() {
   o := Obj{}
   user := User{name: "dada", age: 20}

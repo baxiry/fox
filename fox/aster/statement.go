@@ -97,12 +97,11 @@ func isTypeStart(tok Token) bool {
 	}
 }
 
+// var obj Obj
+// var i int
+// var i int = 10
+// var i = 10 + 10
 func (p *Parser) parseVarDeclar() Statement {
-	// var obj Obj
-	// var i int
-	// var i int = 10
-	// var i = 10 + 10
-
 	// consome var
 	p.expectType(VAR)
 
@@ -213,83 +212,96 @@ func (p *Parser) parseExprUntil(stop string) Expression {
 func (p *Parser) parseFor() Statement {
 	p.expectType(FOR)
 
-	// Enable condition mode to prevent parsePostfix from misinterpreting
-	// the loop's '{' as a struct literal.
+	// Enable condition mode to prevent misinterpreting '{' as a struct literal
 	p.inCondition = true
 
 	forStmt := ForStmt{}
 
-	// 1. Infinite loop: for {}
+	// 1. Case: Infinite loop -> for {}
 	if p.tokens[p.pos].Type == OPN_BRACE {
-		p.inCondition = false // Must disable before calling parseBlock
+		p.inCondition = false
 		forStmt.Body = p.parseBlock()
 		return &forStmt
 	}
 
-	// Helper function to scan ahead for assignment operators (= or :=)
-	isAssignOrDef := func() bool {
-		ps := p.pos
-		for ps < len(p.tokens) && p.tokens[ps].Type != SEMICOLON && p.tokens[ps].Type != OPN_BRACE {
-			if p.tokens[ps].Type == ASSIGN || p.tokens[ps].Type == DEFINE {
+	// Helper to detect if we are in a 3-part loop (C-style)
+	// by scanning for a SEMICOLON before the opening brace
+	hasSemicolon := false
+	ps := p.pos
+	for ps < len(p.tokens) && p.tokens[ps].Type != OPN_BRACE {
+		if p.tokens[ps].Type == SEMICOLON {
+			hasSemicolon = true
+			break
+		}
+		ps++
+	}
+
+	// 2. Case: for condition {} (While-style)
+	if !hasSemicolon {
+		forStmt.Cond = p.parseExpr()
+		p.inCondition = false
+		forStmt.Body = p.parseBlock()
+		return &forStmt
+	}
+
+	// 3. Case: for init; cond; post {} (C-style)
+	// Helper to distinguish between an assignment (i := 0) and an expression (a == 0)
+	isCurrentSegmentAssign := func() bool {
+		curr := p.pos
+		for curr < len(p.tokens) && p.tokens[curr].Type != SEMICOLON {
+			if p.tokens[curr].Type == ASSIGN || p.tokens[curr].Type == DEFINE {
 				return true
 			}
-			ps++
+			curr++
 		}
 		return false
 	}
 
-	// 2. Case: for condition {} (While-style)
-	if p.tokens[p.pos].Type != SEMICOLON && p.tokens[p.pos].Type != OPN_BRACE {
-		ps := p.pos
-		hasSemicolon := false
-		for ps < len(p.tokens) && p.tokens[ps].Type != OPN_BRACE {
-			if p.tokens[ps].Type == SEMICOLON {
-				hasSemicolon = true
-				break
-			}
-			ps++
-		}
-
-		if !hasSemicolon && !isAssignOrDef() {
-			forStmt.Cond = p.parseExpr()
-			p.inCondition = false // Header finished
-			forStmt.Body = p.parseBlock()
-			return &forStmt
-		}
-	}
-
-	// 3. Case: for init; cond; post {} (C-style)
-	// INIT
-	if p.tokens[p.pos].Type != SEMICOLON && p.tokens[p.pos].Type != OPN_BRACE {
-		if isAssignOrDef() {
+	//INIT
+	if p.tokens[p.pos].Type != SEMICOLON {
+		// We use a modified check to see if we should call parseDefOrAssign
+		if isCurrentSegmentAssign() {
 			forStmt.Init = p.parseDefOrAssign()
 		} else {
-			forStmt.Init = p.parseExprStatement()
+			// This is what will catch 'a == 0'
+			// We use parseExprStatement but we DON'T consume the semicolon here
+			expr := p.parseExpr()
+			forStmt.Init = &ExprStmt{Expr: expr}
 		}
 	}
-
 	p.expectType(SEMICOLON)
 
 	// CONDITION
-	if p.tokens[p.pos].Type != SEMICOLON && p.tokens[p.pos].Type != OPN_BRACE {
+	if p.tokens[p.pos].Type != SEMICOLON {
 		forStmt.Cond = p.parseExpr()
 	}
-
 	p.expectType(SEMICOLON)
 
 	// POST
 	if p.tokens[p.pos].Type != OPN_BRACE {
-		if isAssignOrDef() {
+		// Re-check for assignment in the post segment (e.g., i = i + 1)
+		isPostAssign := func() bool {
+			curr := p.pos
+			for curr < len(p.tokens) && p.tokens[curr].Type != OPN_BRACE {
+				if p.tokens[curr].Type == ASSIGN || p.tokens[curr].Type == DEFINE {
+					return true
+				}
+				curr++
+			}
+			return false
+		}
+
+		if isPostAssign() {
 			forStmt.Post = p.parseDefOrAssign()
 		} else {
 			forStmt.Post = p.parseExprStatement()
 		}
 	}
 
-	// Disable condition mode before parsing the loop body
+	// Header is finished, disable condition mode
 	p.inCondition = false
 
-	// BODY
+	// --- BODY PART ---
 	forStmt.Body = p.parseBlock()
 	return &forStmt
 }
@@ -374,14 +386,15 @@ func (p *Parser) parseRetSign() []ReturnSig {
 
 	return retSigns
 }
+
 func (p *Parser) parseExprStatement() Statement {
 
 	p.skip()
 
 	expr := p.parseExpr()
-	if p.pos < len(p.tokens) && p.tokens[p.pos].Type == SEMICOLON {
-		p.pos++
-	}
+	//if p.pos < len(p.tokens) && p.tokens[p.pos].Type == SEMICOLON {
+	//	p.pos++
+	//}
 
 	return &ExprStmt{Expr: expr}
 }
@@ -464,14 +477,14 @@ func (t Token) IsOperator() bool {
 
 func (p *Parser) parseStatement() Statement {
 	tok := p.currentToken()
+	var stmt Statement
 
 	switch tok.Type {
 	case VAR:
-		return p.parseVarDeclar()
+		stmt = p.parseVarDeclar()
 
 	case RETURN:
-		return p.parseReturn()
-
+		stmt = p.parseReturn()
 	case IF:
 		return p.parseIf()
 
@@ -480,18 +493,23 @@ func (p *Parser) parseStatement() Statement {
 
 	case BREAK:
 		p.pos++
-		return &BreakNode{Line: tok.Line}
+		stmt = &BreakNode{Line: tok.Line}
 
 	case CONTINUE:
 		p.pos++
-		return &ContinueNode{Line: tok.Line}
+		stmt = &ContinueNode{Line: tok.Line}
 
 	case SPAWN:
-		return p.parseSpawn()
+		stmt = p.parseSpawn()
 
 	default:
-		return p.parseExprOrAssign()
+		stmt = p.parseExprOrAssign()
 	}
+
+	if p.currentToken().Type == SEMICOLON {
+		p.pos++
+	}
+	return stmt
 }
 
 // end
