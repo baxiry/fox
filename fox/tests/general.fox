@@ -36,6 +36,8 @@ var d = 10 + (8*10)
 
 fn Vars() {
 	var obj Obj
+
+
 	var i int
 	var i int = 10
 	var i = 10 + 10

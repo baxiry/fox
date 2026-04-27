@@ -251,14 +251,13 @@ func (p *Parser) appendErrorf(format string, line int, args ...any) {
 func (p *Parser) parseType() Type {
 
 	if p.pos >= len(p.tokens) {
-		panic("unexpected end of input while parsing type")
+		p.appendErrorf("unexpected end of input while parsing type", p.currentToken().Line)
 	}
 
 	if p.tokens[p.pos].Type == AMP { // &
-		panic(fmt.Sprintf(
+		p.appendErrorf(
 			"syntax error at line %d, column %d: cannot use & in parameter signature",
-			p.tokens[p.pos].Line, p.tokens[p.pos].Column,
-		))
+			p.tokens[p.pos].Line, p.tokens[p.pos].Column)
 	}
 
 	ptrDepth := 0
@@ -268,7 +267,7 @@ func (p *Parser) parseType() Type {
 	}
 
 	if p.pos >= len(p.tokens) {
-		panic("unexpected end of input while parsing type after pointers")
+		p.appendErrorf("unexpected end of input while parsing type after pointers", p.currentToken().Line)
 	}
 
 	name := p.expectIdent()

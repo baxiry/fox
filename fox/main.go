@@ -3,11 +3,14 @@ package main
 import (
 	"fmt"
 	"fox/aster"
+	"fox/codgen"
 	"fox/tchecker"
+	"fox/wrrap"
 	"os"
 )
 
 func main() {
+	_ = wrrap.Context{}
 
 	foxFile := os.Args[1]
 	content, err := os.ReadFile(foxFile)
@@ -15,19 +18,17 @@ func main() {
 		panic(err)
 	}
 
-	println("input src:\n", string(content))
-	//	pretty.Print(parser.Builder(content))
-
 	parser := aster.NewParser()
 
-	tc := tchecker.NewTypeChecker()
+	//println("input src:\n", string(content))
+	//pretty.Print(parser.Builder(content))
 
+	tc := tchecker.NewTypeChecker()
 	ast := parser.Builder(content)
-	//	pretty.Println(ast)
 
 	tc.Check(ast)
 
-	println("\noutput:\n")
+	//println("\noutput:\n")
 
 	// ast errors
 	if len(parser.Errors) > 0 {
@@ -51,6 +52,9 @@ func main() {
 	}
 
 	// ok
-	println("Type check passed. Running program...")
+	println("Type check passed. Running program...\n")
+	println("execution output:...\n")
+
+	codgen.GenerateCode()
 
 }
