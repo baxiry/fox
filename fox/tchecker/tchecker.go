@@ -5,6 +5,13 @@ import (
 	"fox/aster"
 )
 
+var builtInFunctions = map[string]string{
+	"printf": "void",
+	"print":  "void",
+	"len":    "int",
+	"panic":  "void",
+}
+
 // Type Checker
 type TypeChecker struct {
 	GlobalTable     *SymbolTable
@@ -25,6 +32,8 @@ type Symbol struct {
 	ReturnTypes []aster.ReturnSig // Changed: Slice of types for multiple returns
 	Fields      []aster.Field     // For structs
 	IsShared    bool
+	IsBuiltIn   bool
+	IsVariadic  bool
 }
 
 // SymbolTable
@@ -44,12 +53,132 @@ func NewSymbolTable(parent *SymbolTable) *SymbolTable {
 }
 
 // NewTypeChecker
+
 func NewTypeChecker() *TypeChecker {
+
 	global := NewSymbolTable(nil)
-	return &TypeChecker{
+	tc := &TypeChecker{
 		GlobalTable:  global,
 		CurrentTable: global,
 		Errors:       make([]string, 0),
+	}
+
+	tc.injectBuiltIns()
+	return tc
+}
+
+func (tc *TypeChecker) injectBuiltIns() {
+	for name, retTypeName := range builtInFunctions {
+		// Create a Symbol representing the built-in function
+		sym := &Symbol{
+			Name:       name,
+			Kind:       "func",
+			IsVariadic: (name == "printf" || name == "println"),
+
+			// Assuming Type{Name: ...} matches Type struct
+			ReturnTypes: []aster.ReturnSig{
+				{
+					Name: "", // Built-ins usually don't have named returns
+					Type: aster.Type{Name: retTypeName},
+					Line: 0, // Standard for injected symbols
+				},
+			},
+		}
+
+		if name == "printf" {
+			sym.Params = []aster.Param{{Type: aster.Type{Name: "string"}, Name: "format"}}
+			sym.IsVariadic = true
+		}
+		// Define it in the root table so it's accessible from anywhere
+		tc.GlobalTable.Define(name, sym)
+	}
+}
+
+func (tc *TypeChecker) inferType(expr aster.Expression) string {
+	if expr == nil {
+		return "unknown"
+	}
+
+	switch e := expr.(type) {
+
+	// Literals (String, Number, Bool keep your original logic)
+	case aster.StringExpr:
+		return "string"
+	case aster.UnaryExpr:
+		return "bool"
+
+	case *aster.NumberExpr:
+		return "int"
+
+	case aster.BoolExpr:
+		return "bool"
+
+	case aster.CallExpr:
+		types := tc.inferReturnTypes(e)
+		if len(types) == 0 {
+			return "void"
+		}
+		if len(types) > 1 {
+			tc.appendErrorf("multiple-value call in single-value context", e.Line)
+			return aster.INVALID.String()
+		}
+		return types[0]
+
+	case aster.IdentExpr:
+		sym, exists := tc.CurrentTable.Resolve(e.Name)
+		if !exists {
+			tc.appendErrorf("undefined variable: %s", e.Line, e.Name)
+
+			rootTable := tc.CurrentTable
+			for rootTable.Parent != nil {
+				rootTable = rootTable.Parent
+			}
+
+			rootTable.Define(e.Name, &Symbol{
+				Name:    e.Name,
+				Type:    aster.Type{Name: aster.INVALID.String()},
+				ScopeID: rootTable.ScopeID,
+			})
+
+			return aster.INVALID.String()
+		}
+		return sym.Type.Name
+
+	case aster.FieldAccessExpr:
+		// Check the left-hand side first (e.g., 'data' in 'data.x')
+		leftType := tc.inferType(e.Object)
+
+		if leftType == aster.INVALID.String() {
+			return aster.INVALID.String() // Silent return if target is already undefined
+		}
+		return tc.checkFieldAccess(e)
+
+	case aster.StructLiteral:
+		return tc.checkStructLiteral(e)
+
+	case aster.BinaryExpr:
+		leftType := tc.inferType(e.Left)
+		rightType := tc.inferType(e.Right)
+
+		// 3. Propagation: If either side is "error", don't report more errors here
+		if leftType == aster.INVALID.String() || rightType == aster.INVALID.String() {
+			return aster.INVALID.String()
+		}
+
+		switch e.Op {
+		case "==", "!=", "<", ">", "<=", ">=":
+			return "bool"
+		case "&&", "||":
+			return "bool"
+		}
+
+		if leftType == rightType {
+			return leftType
+		}
+		return leftType
+
+	default:
+		return "unknown"
 	}
 }
 
@@ -105,102 +234,13 @@ func (tc *TypeChecker) appendErrorf(format string, line int, args ...any) {
 	tc.Errors = append(tc.Errors, fmt.Sprintf("line %d: %s", line, msg))
 }
 
-func (tc *TypeChecker) inferType(expr aster.Expression) string {
-	if expr == nil {
-		return "unknown"
-	}
-
-	switch e := expr.(type) {
-
-	// Literals (String, Number, Bool keep your original logic)
-	case aster.StringExpr:
-		return "string"
-	case aster.UnaryExpr:
-		return "bool"
-
-	case aster.NumberExpr:
-		return "int"
-
-	case aster.BoolExpr:
-		return "bool"
-
-	case aster.CallExpr:
-		types := tc.inferReturnTypes(e)
-		if len(types) == 0 {
-			return "void"
-		}
-		if len(types) > 1 {
-			tc.appendErrorf("multiple-value call in single-value context", e.Line)
-			return aster.INVALID.String()
-		}
-		return types[0]
-
-	case aster.IdentExpr:
-		sym, exists := tc.CurrentTable.Resolve(e.Name)
-		if !exists {
-			tc.appendErrorf("undefined variable: %s", e.Line, e.Name)
-
-			rootTable := tc.CurrentTable
-			for rootTable.Parent != nil {
-				rootTable = rootTable.Parent
-			}
-
-			rootTable.Define(e.Name, &Symbol{
-				Name:    e.Name,
-				Type:    aster.Type{Name: aster.INVALID.String()},
-				ScopeID: rootTable.ScopeID,
-			})
-
-			return aster.INVALID.String()
-		}
-		return sym.Type.Name
-
-	case aster.FieldAccessExpr:
-		// Check the left-hand side first (e.g., 'data' in 'data.x')
-		leftType := tc.inferType(e.Object)
-		//if leftType == "" || leftType == "INVALID" || leftType == "unknown" {
-		//	fmt.Printf("DEBUG: FieldAccess failed at line %d. Object Type is: '%s'\n", e.Line, leftType)
-		//}
-
-		if leftType == aster.INVALID.String() {
-			return aster.INVALID.String() // Silent return if target is already undefined
-		}
-		return tc.checkFieldAccess(e)
-
-	case aster.StructLiteral:
-		return tc.checkStructLiteral(e)
-
-	case aster.BinaryExpr:
-		leftType := tc.inferType(e.Left)
-		rightType := tc.inferType(e.Right)
-
-		// 3. Propagation: If either side is "error", don't report more errors here
-		if leftType == aster.INVALID.String() || rightType == aster.INVALID.String() {
-			return aster.INVALID.String()
-		}
-
-		switch e.Op {
-		case "==", "!=", "<", ">", "<=", ">=":
-			return "bool"
-		case "&&", "||":
-			return "bool"
-		}
-
-		if leftType == rightType {
-			return leftType
-		}
-		return leftType
-
-	default:
-		return "unknown"
-	}
-}
-
 func (tc *TypeChecker) inferReturnTypes(expr aster.Expression) []string {
+
 	if call, ok := expr.(aster.CallExpr); ok {
 		_ = tc.checkCallExpr(&call)
 
 		callee, _ := call.Callee.(aster.IdentExpr)
+
 		sym, exists := tc.CurrentTable.Resolve(callee.Name)
 		if !exists {
 			return []string{aster.INVALID.String()}
@@ -652,7 +692,6 @@ func (tc *TypeChecker) checkCallExpr(call *aster.CallExpr) string {
 		return aster.INVALID.String()
 	}
 
-
 	// 2. Resolve the function name in the SymbolTable
 	sym, exists := tc.CurrentTable.Resolve(callee.Name)
 	if !exists {
@@ -685,19 +724,44 @@ func (tc *TypeChecker) checkCallExpr(call *aster.CallExpr) string {
 	}
 
 	// 4. Check arguments count
-	if len(call.Args) != len(sym.Params) {
-		tc.appendErrorf("too many or too few arguments in call to %s", callee.Line, callee.Name)
-		return aster.INVALID.String()
+	argCount := len(call.Args)
+	paramCount := len(sym.Params)
+	if sym.IsVariadic {
+
+		// For printf(fmt, ...), we need at least the fixed parameters (like 'fmt')
+		if argCount < paramCount {
+			tc.appendErrorf("too few arguments in call to %s", callee.Line, callee.Name)
+		}
+	} else {
+		// Normal exact matching
+		if argCount != paramCount {
+			tc.appendErrorf("too many or too few arguments in call to %s", callee.Line, callee.Name)
+		}
 	}
+
+	//if len(call.Args) != len(sym.Params) {
+	//	tc.appendErrorf("too many or too few arguments in call to %s", callee.Line, callee.Name)
+	//	return aster.INVALID.String()
+	//}
 
 	// 5. Validate each argument type against parameter type
 
+	// For variadic functions, we only perform strict type checking on the fixed parameters.
 	for i, arg := range call.Args {
-		expectedType := sym.Params[i].Type.Name
 		providedType := tc.inferType(arg)
 
-		if expectedType != providedType {
-			tc.appendErrorf("cannot use %s as %s in argument to %s", callee.Line, providedType, expectedType, callee.Name)
+		// Check if the current argument has a defined parameter (Fixed Parameter).
+		if i < len(sym.Params) {
+			// only retrieve the expected type if the index is within bounds.
+			expectedType := sym.Params[i].Type.Name
+
+			if expectedType != providedType {
+				tc.appendErrorf("cannot use %s as %s in argument to %s",
+					callee.Line, providedType, expectedType, callee.Name)
+			}
+		} else if !sym.IsVariadic {
+			// we break here for safety.
+			break
 		}
 	}
 

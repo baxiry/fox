@@ -16,4 +16,7 @@ fn main() {
     if ok {
         p.x = x + 5
     }
+
+    printf(p.x)
+    printf(p.x)
 }

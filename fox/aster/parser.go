@@ -2,6 +2,7 @@ package aster
 
 import (
 	"fmt"
+	"strconv"
 )
 
 type Parser struct {
@@ -212,7 +213,9 @@ func (p *Parser) parsePrimary() Expression {
 
 	case INT, FLOAT:
 		p.pos++
-		return NumberExpr{Literal: tok.Lexeme, Line: tok.Line}
+		val, _ := strconv.Atoi(tok.Lexeme)
+
+		return &NumberExpr{Value: val, Line: tok.Line}
 
 	case STRING:
 		p.pos++
@@ -597,7 +600,7 @@ func (p *Parser) Builder(data []byte) *AST {
 
 		switch token.Type {
 		case PACKAGE:
-			ast.PackageName = p.parsePackage()
+			ast.Package.Name = p.parsePackage()
 
 		case IMPORT:
 			ast.Imports = p.parseImport()

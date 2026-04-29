@@ -7,11 +7,6 @@ type UnaryExpr struct {
 	// Col int later
 }
 
-type Expression interface {
-	GetLine() int
-	isExpr()
-}
-
 // UnaryExpr
 func (e UnaryExpr) GetLine() int { return e.Line }
 
@@ -20,9 +15,6 @@ func (e FieldAccessExpr) GetLine() int { return e.Line }
 
 // CallExpr
 func (e CallExpr) GetLine() int { return e.Line }
-
-// NumberExpr
-func (e NumberExpr) GetLine() int { return e.Line }
 
 // StringExpr
 func (e StringExpr) GetLine() int { return e.Line }
@@ -42,13 +34,16 @@ type TypeExpr struct {
 
 func (TypeExpr) isExpr() {}
 
+// NumberExpr represents an integer literal.
 type NumberExpr struct {
-	Literal string
-	Line    int
+	Value int
+	Line  int
 }
 
-func (NumberExpr) isExpr() {}
+func (n *NumberExpr) GetLine() int { return n.Line }
+func (NumberExpr) isExpr()         {}
 
+// StringExpr represents a string literal.
 type StringExpr struct {
 	Literal string
 	Line    int
@@ -57,14 +52,16 @@ type StringExpr struct {
 func (StringExpr) isExpr() {}
 
 type IntExpr struct {
-	Literal string
+	Value int
+	Line  int
 }
 
-func (IntExpr) isExpr() {}
+func (n *IntExpr) GetLine() int { return n.Line }
+func (IntExpr) isExpr()         {}
 
 type FloatExpr struct {
-	Literal string
-	Line    int
+	value float64
+	Line  int
 }
 
 func (e FloatExpr) GetLine() int { return e.Line }

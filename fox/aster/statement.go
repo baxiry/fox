@@ -4,10 +4,6 @@ import (
 	"fmt"
 )
 
-type Statement interface {
-	isStat()
-}
-
 type BreakNode struct {
 	//Tok Token
 	Line int
@@ -17,6 +13,8 @@ type ContinueNode struct {
 	//Tok Token
 	Line int
 }
+
+func (ContinueNode) isStmt() {}
 
 type ReturnStmt struct {
 	Results []Expression
@@ -28,6 +26,7 @@ type IfStmt struct {
 	Then    *FrameBlock
 	Else    Statement
 	HasElse bool
+	Line    int
 }
 
 type ForStmt struct {
@@ -35,6 +34,7 @@ type ForStmt struct {
 	Cond Expression
 	Post Statement
 	Body *FrameBlock
+	Line int
 }
 
 type Assign struct {
@@ -42,13 +42,6 @@ type Assign struct {
 	Op      string
 	Values  []Expression
 	Line    int
-}
-
-type VarDeclar struct {
-	Name  string
-	Type  *Type
-	Value Expression
-	Line  int
 }
 
 type Declar struct {
@@ -70,20 +63,58 @@ type FieldValue struct {
 
 type SpawnStmt struct {
 	Call Expression
+	Line int
 }
-type BadStmt struct{ Msg string }
 
-func (BadStmt) isStat()      {}
-func (VarDeclar) isStat()    {}
-func (ReturnStmt) isStat()   {}
-func (ContinueNode) isStat() {}
-func (IfStmt) isStat()       {}
-func (BreakNode) isStat()    {}
-func (ForStmt) isStat()      {}
-func (Assign) isStat()       {}
-func (Declar) isStat()       {}
-func (ExprStmt) isStat()     {}
-func (*SpawnStmt) isStat()   {}
+type BadStmt struct {
+	Msg  string
+	Line int
+}
+
+// For BreakNode
+func (s *BreakNode) GetLine() int { return s.Line }
+func (s *BreakNode) isStmt()      {}
+
+// For VarDeclar
+func (s *VarDeclar) isStmt() {}
+
+// For BadStmt
+func (s *BadStmt) GetLine() int { return s.Line }
+func (s *BadStmt) isStmt()      {}
+
+// For SpawnStmt
+func (s *SpawnStmt) GetLine() int { return s.Line }
+func (s *SpawnStmt) isStmt()      {}
+
+// For FrameBlock (or Block)
+func (s *FrameBlock) GetLine() int { return s.Line }
+func (s *FrameBlock) isStmt()      {}
+
+// For IfStmt
+func (s *IfStmt) GetLine() int { return s.Line }
+func (s *IfStmt) isStmt()      {}
+
+// For ForStmt
+func (s *ForStmt) GetLine() int { return s.Line }
+func (s *ForStmt) isStmt()      {}
+
+// For ReturnStmt
+func (s *ReturnStmt) GetLine() int { return s.Line }
+func (s *ReturnStmt) isStmt()      {}
+func (BadStmt) isStat()            {}
+func (VarDeclar) isStat()          {}
+func (ReturnStmt) isStat()         {}
+func (ContinueNode) isStat()       {}
+func (IfStmt) isStat()             {}
+func (BreakNode) isStat()          {}
+func (ForStmt) isStat()            {}
+func (Assign) isStat()             {}
+func (Declar) isStat()             {}
+func (ExprStmt) isStat()           {}
+func (*SpawnStmt) isStat()         {}
+
+// For ContinueNode
+func (s *ContinueNode) GetLine() int { return s.Line }
 
 // Parsing Helpers
 func isTypeStart(tok Token) bool {

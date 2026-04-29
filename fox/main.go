@@ -24,6 +24,7 @@ func main() {
 	//pretty.Print(parser.Builder(content))
 
 	tc := tchecker.NewTypeChecker()
+
 	ast := parser.Builder(content)
 
 	tc.Check(ast)
@@ -55,6 +56,19 @@ func main() {
 	println("Type check passed. Running program...\n")
 	println("execution output:...\n")
 
-	codgen.GenerateCode()
+	// Wrap your single file AST into a project structure
+	project := &aster.Project{
+		Packages: []*aster.Package{
+			{
+				Name: "main",
+				Files: []*aster.File{
+					{Path: foxFile, Decls: ast.Decls}, // Using Decls from your current ast
+				},
+			},
+		},
+	}
+
+	cg := codgen.NewCodegen(project)
+	cg.Generate()
 
 }
