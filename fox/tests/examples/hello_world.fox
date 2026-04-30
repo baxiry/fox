@@ -1,5 +1,6 @@
 
-
+var msg string
 fn main() {
-   printf("hello world")
+    msg = "hello"
+    printf(msg)
 }

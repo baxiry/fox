@@ -12,6 +12,24 @@ type Parser struct {
 	Errors      []string
 }
 
+// Inside your parser where you handle StringExpr
+func (p *Parser) parseStringExpr() *StringExpr {
+	tok := p.tokens[p.pos]
+	raw := tok.Lexeme
+
+	// Process: remove leading/trailing quotes
+	processed := ""
+	if len(raw) >= 2 {
+		processed = raw[1 : len(raw)-1]
+	}
+
+	return &StringExpr{
+		Literal: raw,       // The raw "hello"
+		Value:   processed, // The actual hello
+		Line:    tok.Line,
+	}
+}
+
 // New Parser
 func NewParser() *Parser {
 	return &Parser{
@@ -57,7 +75,7 @@ func (p *Parser) parseUnary() Expression {
 		case NOT, MINUS, STAR, AMP:
 			op := p.tokens[p.pos]
 			p.pos++
-			return UnaryExpr{Op: op.Lexeme, Expr: p.parseUnary(), Line: op.Line}
+			return &UnaryExpr{Op: op.Lexeme, Expr: p.parseUnary(), Line: op.Line}
 		}
 	}
 
@@ -96,7 +114,7 @@ func (p *Parser) parsePostfix() Expression {
 			}
 
 			// Struct literals are only valid if the preceding expression is an identifier (the type name)
-			if ident, ok := expr.(IdentExpr); ok {
+			if ident, ok := expr.(*IdentExpr); ok {
 				peekPos := p.pos + 1
 				isStructLiteral := true
 
@@ -198,18 +216,18 @@ func (p *Parser) parsePrimary() Expression {
 		val := p.currentToken().Lexeme
 		line := p.currentToken().Line
 		p.pos++
-		return BoolExpr{Literal: val, Line: line}
+		return &BoolExpr{Literal: val, Line: line}
 
 	case IDENT:
 		p.pos++
 		if p.currentToken().Type == OPN_PAREN {
 			return p.parseCall(tok.Lexeme)
 		}
-		return IdentExpr{Name: tok.Lexeme, Line: tok.Line}
+		return &IdentExpr{Name: tok.Lexeme, Line: tok.Line}
 
 	case BLANK:
 		p.pos++
-		return IdentExpr{Name: "_"}
+		return &IdentExpr{Name: "_"}
 
 	case INT, FLOAT:
 		p.pos++
@@ -219,7 +237,7 @@ func (p *Parser) parsePrimary() Expression {
 
 	case STRING:
 		p.pos++
-		return StringExpr{Literal: tok.Lexeme, Line: tok.Line}
+		return &StringExpr{Literal: tok.Lexeme, Line: tok.Line}
 
 	case OPN_PAREN:
 		p.pos++
@@ -582,7 +600,7 @@ func (p *Parser) parseStructLiteral(typeName string) Expression {
 		}
 	}
 	p.expectType(CLS_BRACE)
-	return StructLiteral{
+	return &StructLiteral{
 		Type:   Type{Name: typeName, Line: p.currentToken().Line},
 		Fields: fields,
 		Line:   p.currentToken().Line,
@@ -593,7 +611,9 @@ func (p *Parser) parseStructLiteral(typeName string) Expression {
 func (p *Parser) Builder(data []byte) *AST {
 	p.tokens = Lexer(string(data))
 
-	ast := &AST{}
+	ast := &AST{
+		Decls: make([]Decl, 0),
+	}
 
 	for p.pos < len(p.tokens) {
 		token := p.tokens[p.pos]
@@ -601,18 +621,20 @@ func (p *Parser) Builder(data []byte) *AST {
 		switch token.Type {
 		case PACKAGE:
 			ast.Package.Name = p.parsePackage()
+		case STRUCT:
 
 		case IMPORT:
 			ast.Imports = p.parseImport()
 
 		case TYPE:
-			ast.Structs = append(ast.Structs, p.parseStruct())
+			st := p.parseStruct()
+			ast.Decls = append(ast.Decls, st)
 
 		case FUNC:
-			ast.Funcs = append(ast.Funcs, p.parseFunc())
+			ast.Decls = append(ast.Decls, p.parseFunc())
 
 		case VAR:
-			ast.Vars = append(ast.Vars, p.parseVarDecl())
+			ast.Decls = append(ast.Decls, p.parseVarDecl())
 
 			//case IDENT:
 			//	p.errors = append(p.errors, "cant use identifier at level package")

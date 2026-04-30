@@ -71,6 +71,7 @@ func (tc *TypeChecker) injectBuiltIns() {
 	for name, retTypeName := range builtInFunctions {
 		// Create a Symbol representing the built-in function
 		sym := &Symbol{
+			IsBuiltIn:  true,
 			Name:       name,
 			Kind:       "func",
 			IsVariadic: (name == "printf" || name == "println"),
@@ -102,18 +103,18 @@ func (tc *TypeChecker) inferType(expr aster.Expression) string {
 	switch e := expr.(type) {
 
 	// Literals (String, Number, Bool keep your original logic)
-	case aster.StringExpr:
+	case *aster.StringExpr:
 		return "string"
-	case aster.UnaryExpr:
+	case *aster.UnaryExpr:
 		return "bool"
 
 	case *aster.NumberExpr:
 		return "int"
 
-	case aster.BoolExpr:
+	case *aster.BoolExpr:
 		return "bool"
 
-	case aster.CallExpr:
+	case *aster.CallExpr:
 		types := tc.inferReturnTypes(e)
 		if len(types) == 0 {
 			return "void"
@@ -124,7 +125,7 @@ func (tc *TypeChecker) inferType(expr aster.Expression) string {
 		}
 		return types[0]
 
-	case aster.IdentExpr:
+	case *aster.IdentExpr:
 		sym, exists := tc.CurrentTable.Resolve(e.Name)
 		if !exists {
 			tc.appendErrorf("undefined variable: %s", e.Line, e.Name)
@@ -153,8 +154,8 @@ func (tc *TypeChecker) inferType(expr aster.Expression) string {
 		}
 		return tc.checkFieldAccess(e)
 
-	case aster.StructLiteral:
-		return tc.checkStructLiteral(e)
+	case *aster.StructLiteral:
+		return tc.checkStructLiteral(*e)
 
 	case aster.BinaryExpr:
 		leftType := tc.inferType(e.Left)
@@ -236,10 +237,10 @@ func (tc *TypeChecker) appendErrorf(format string, line int, args ...any) {
 
 func (tc *TypeChecker) inferReturnTypes(expr aster.Expression) []string {
 
-	if call, ok := expr.(aster.CallExpr); ok {
-		_ = tc.checkCallExpr(&call)
+	if call, ok := expr.(*aster.CallExpr); ok {
+		_ = tc.checkCallExpr(call)
 
-		callee, _ := call.Callee.(aster.IdentExpr)
+		callee, _ := call.Callee.(*aster.IdentExpr)
 
 		sym, exists := tc.CurrentTable.Resolve(callee.Name)
 		if !exists {
@@ -265,15 +266,18 @@ func (tc *TypeChecker) inferReturnTypes(expr aster.Expression) []string {
 }
 
 func (tc *TypeChecker) registerFunctions(ast *aster.AST) {
-	for _, f := range ast.Funcs {
-		sym := &Symbol{
-			Name:        f.FuncName,
-			Kind:        "func",
-			ReturnTypes: f.Returns,
-			Params:      f.Params,
-		}
+	for _, decl := range ast.Decls {
+		if f, ok := decl.(*aster.Func); ok {
 
-		tc.GlobalTable.Define(f.FuncName, sym)
+			sym := &Symbol{
+				Name:        f.FuncName,
+				Kind:        "func",
+				ReturnTypes: f.Returns,
+				Params:      f.Params,
+			}
+
+			tc.GlobalTable.Define(f.FuncName, sym)
+		}
 	}
 }
 
@@ -503,7 +507,7 @@ func (tc *TypeChecker) checkDeclar(decl *aster.Declar) {
 
 	// 4. Register each name with its type (Safe now because lengths match)
 	for i, nameExpr := range decl.Names {
-		ident, ok := nameExpr.(aster.IdentExpr)
+		ident, ok := nameExpr.(*aster.IdentExpr)
 		if !ok {
 			continue
 		}
@@ -565,7 +569,7 @@ func (tc *TypeChecker) checkAssign(asgn *aster.Assign) {
 	// Replace step 4, 6, and 7 with this robust logic:
 	for i, nameExpr := range asgn.Targets {
 
-		if ident, ok := nameExpr.(aster.IdentExpr); ok && ident.Name == "_" {
+		if ident, ok := nameExpr.(*aster.IdentExpr); ok && ident.Name == "_" {
 			continue
 		}
 		// 1. inferType will handle both 'i' and 'data.x'
@@ -634,59 +638,66 @@ func (tc *TypeChecker) Check(a *aster.AST) {
 
 	tc.registerFunctions(a)
 
-	for _, f := range a.Funcs {
-		tc.checkFuncDecl(f)
+	for _, decl := range a.Decls {
+		switch d := decl.(type) {
+		case *aster.Func:
+			tc.checkFuncDecl(d)
+		}
+
 	}
 }
 
 func (tc *TypeChecker) checkGlobalVarsAndStructs(ast *aster.AST) {
-	// 1. Register all Structs first
-	for _, s := range ast.Structs {
-		sym := &Symbol{
-			Name: s.Name,
-			Kind: "struct",
-		}
-		for _, f := range s.Fields {
-			if f.Name == "" {
+	// 1. Register all Structs and Global Variables from Decls
+	for _, decl := range ast.Decls {
+		switch d := decl.(type) {
+
+		case *aster.Struct:
+			sym := &Symbol{
+				Name: d.Name,
+				Kind: "struct",
 			}
-			sym.Fields = append(sym.Fields, aster.Field{
-				Name: f.Name,
-				Type: f.Type,
-			})
-		}
-		tc.GlobalTable.Define(s.Name, sym)
-	}
+			for _, f := range d.Fields {
+				if f.Name != "" { // تأكد من وجود اسم للحقل
+					sym.Fields = append(sym.Fields, aster.Field{
+						Name: f.Name,
+						Type: f.Type,
+					})
+				}
+			}
+			tc.GlobalTable.Define(d.Name, sym)
 
-	// 2. NEW: Register and infer types for Global Variables
-	for _, v := range ast.Vars {
-		var finalType string
+		case *aster.VarDeclar:
+			var finalType string
 
-		// Handle explicit type: var a int
-		if v.Type != nil {
-			finalType = v.Type.Name
-		} else if v.Value != nil {
-			// Handle type inference: var c = 10 + 10
-			finalType = tc.inferType(v.Value)
-		}
+			// Handle explicit type: var a int
+			if d.Type != nil {
+				finalType = d.Type.Name
+			} else if d.Value != nil {
+				// Handle type inference: var c = 10 + 10
+				finalType = tc.inferType(d.Value)
+			}
 
-		if finalType == "" {
-			finalType = aster.INVALID.String()
-		}
-		// Register the variable in the GlobalTable
-		sym := &Symbol{
-			Name: v.Name,
-			Type: aster.Type{Name: finalType},
-			Kind: "var",
-		}
+			if finalType == "" {
+				finalType = aster.INVALID.String()
+			}
 
-		// Now functions can resolve these variables through the global scope
-		tc.GlobalTable.Define(v.Name, sym)
+			// Register the variable in the GlobalTable
+			sym := &Symbol{
+				Name: d.Name,
+				Type: aster.Type{Name: finalType},
+				Kind: "var",
+			}
+
+			// Now functions can resolve these variables through the global scope
+			tc.GlobalTable.Define(d.Name, sym)
+		}
 	}
 }
 
 func (tc *TypeChecker) checkCallExpr(call *aster.CallExpr) string {
 	// 1. Assert that Callee is an IdentExpr to get the Name
-	callee, ok := call.Callee.(aster.IdentExpr)
+	callee, ok := call.Callee.(*aster.IdentExpr)
 	if !ok {
 		tc.appendErrorf("invalid call: expected a function name", call.Line)
 		return aster.INVALID.String()
@@ -899,7 +910,7 @@ func (tc *TypeChecker) checkSpawnStmt(spawn *aster.SpawnStmt) {
 
 	// 3. Mark variables in arguments as Shared for safety analysis
 	for _, arg := range call.Args {
-		if ident, ok := arg.(aster.IdentExpr); ok {
+		if ident, ok := arg.(*aster.IdentExpr); ok {
 			sym, exists := tc.CurrentTable.Resolve(ident.Name)
 			if exists {
 				//  Tagging for future lock-detection warnings
@@ -965,7 +976,7 @@ func (tc *TypeChecker) checkMultiAssignment(left []aster.Expression, right []ast
 	for i, leftExpr := range left {
 		rightTypeName := expandedRightTypes[i]
 
-		ident, isIdent := leftExpr.(aster.IdentExpr)
+		ident, isIdent := leftExpr.(*aster.IdentExpr)
 		if isIdent && ident.Name == "_" {
 			continue
 		}

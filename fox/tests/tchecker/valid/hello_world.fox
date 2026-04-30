@@ -1,0 +1,7 @@
+
+var  msg string
+
+fn main() {
+    msg = "hello world"
+    printf("%s\n", msg)
+}

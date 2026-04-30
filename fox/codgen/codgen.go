@@ -1,16 +1,141 @@
 package codgen
 
 import (
+	"fmt"
 	"fox/aster"
 	"fox/tchecker"
 	"fox/wrrap"
+	"strings"
 )
 
 type Codegen struct {
 	ctx        *wrrap.Context
+	unit       *aster.AST
 	tc         *tchecker.TypeChecker
 	project    *aster.Project // Changed from Package to Project
-	printfFunc wrrap.Function // Pre-defined printf function
+	printfFunc wrrap.Function
+	// Stores global variables: key is name, value is the JIT LValue
+	globals map[string]wrrap.LValue
+	funcs   map[string]wrrap.Function
+}
+
+func (cg *Codegen) genFunctionBody(f *aster.Func) {
+	fn, exists := cg.funcs[f.FuncName]
+	if !exists {
+		return
+	}
+
+	intType := cg.ctx.NewIntType()
+
+	block := fn.NewBlock("entry")
+
+	if f.Body == nil {
+		fmt.Println("DEBUG: Function body is nil!")
+		return
+	}
+
+	fmt.Printf("DEBUG: Processing %d statements in %s\n", len(f.Body.Stmts), f.FuncName)
+	for _, stmt := range f.Body.Stmts {
+		cg.genStmt(&block, stmt)
+	}
+
+	block.EndWithReturn(cg.ctx.NewIntConstant(intType, 0))
+}
+
+// genAssign generates code for variable assignments.
+func (cg *Codegen) genAssign(block *wrrap.Block, stmt *aster.Assign) {
+	// For hello_world, we assume a single target like: msg = "value"
+	if len(stmt.Targets) > 0 && len(stmt.Values) > 0 {
+		// Correctly identifying the target (LValue)
+		targetIdent, ok := stmt.Targets[0].(*aster.IdentExpr)
+		if !ok {
+			return
+		}
+
+		target, exists := cg.globals[targetIdent.Name]
+		if !exists {
+
+			fmt.Printf("DEBUG: Codegen Error: Global variable %s not found!\n", targetIdent.Name)
+			return
+		}
+
+		// FIX: Passing 'block' as the first argument to genExpr
+		val := cg.genExpr(block, stmt.Values[0])
+
+		// Perform the JIT assignment
+		block.AddAssignment(target, val)
+	}
+}
+
+// genStmt routes aster.Statement to specific generator functions.
+func (cg *Codegen) genStmt(block *wrrap.Block, stmt aster.Statement) {
+	switch s := stmt.(type) {
+	case *aster.Assign:
+		cg.genAssign(block, s)
+
+	// case *aster.ExprStmt: cg.genExpr(block, s.Expr)
+	case *aster.ExprStmt:
+		val := cg.genExpr(block, s.Expr)
+		block.AddEval(val)
+
+	}
+}
+
+// genExpr now accepts the block and handles IdentExpr for globals.
+func (cg *Codegen) genExpr(block *wrrap.Block, expr aster.Expression) wrrap.RValue {
+	switch e := expr.(type) {
+
+	case *aster.StringExpr:
+		text := e.Literal
+
+		if len(text) >= 2 && text[0] == '"' && text[len(text)-1] == '"' {
+			text = text[1 : len(text)-1]
+		}
+
+		text = strings.ReplaceAll(text, "\\n", "\n")
+		text = strings.ReplaceAll(text, "\\t", "\t")
+		return cg.ctx.NewStringConstant(text + "\x00")
+
+	case *aster.IdentExpr:
+		if lv, exists := cg.globals[e.Name]; exists {
+			return lv.AsRValue()
+		}
+
+	case *aster.CallExpr:
+		return cg.generateCall(block, e)
+	}
+
+	return wrrap.RValue{}
+}
+
+// genFunctionSignature declares the function's name and return type.
+func (cg *Codegen) genFunctionSignature(f *aster.Func) {
+	// For simplicity in hello_world, we assume return type is int for main
+	retType := cg.ctx.NewIntType()
+
+	// Create the function signature without the body
+	fn := cg.ctx.NewFunction(f.FuncName, retType, false)
+	cg.funcs[f.FuncName] = fn
+
+}
+
+// genGlobalVar allocates memory for global variables in the JIT context.
+func (cg *Codegen) genGlobalVar(decl *aster.VarDeclar) {
+	var jitType wrrap.Type
+
+	// Basic type mapping for now
+	switch decl.Type.Name {
+	case "string":
+		jitType = cg.ctx.NewStringType()
+	case "int":
+		jitType = cg.ctx.NewIntType()
+	default:
+		jitType = cg.ctx.NewIntType() // Fallback
+	}
+
+	// Create and store the global variable
+	name := decl.Name
+	cg.globals[name] = cg.ctx.NewGlobal(jitType, name)
 }
 
 // NewCodegen initializes the environment for code generation
@@ -22,11 +147,21 @@ func NewCodegen(proj *aster.Project) *Codegen {
 	ctx.AddDriverOption("-B/opt/homebrew/lib/gcc/current/gcc/aarch64-apple-darwin24/15")
 	//ctx.AddDriverOption("-lemutls_w")
 
+	var firstUnit *aster.AST
+	if len(proj.Packages) > 0 && len(proj.Packages[0].Files) > 0 {
+		firstUnit = &aster.AST{
+			Decls: proj.Packages[0].Files[0].Decls,
+		}
+	}
+
 	cg := &Codegen{
 		ctx:     ctx,
 		project: proj,
+		unit:    firstUnit,
 	}
 
+	cg.globals = make(map[string]wrrap.LValue)
+	cg.funcs = make(map[string]wrrap.Function)
 	cg.setupBuiltIns()
 	return cg
 }
@@ -41,29 +176,23 @@ func (cg *Codegen) setupBuiltIns() {
 	cg.printfFunc = cg.ctx.NewFunction("printf", intType, true, formatParam)
 }
 
-// genExpr evaluates an AST expression and returns its JIT RValue
-func (cg *Codegen) genExpr(expr aster.Expression) wrrap.RValue {
-	switch e := expr.(type) {
-	case *aster.NumberExpr:
-		t := cg.ctx.NewIntType()
-		return cg.ctx.NewIntConstant(t, e.Value)
-
-	case *aster.CallExpr:
-		return cg.generateCall(e)
+// generateCall handles both built-in and user-defined function calls.
+func (cg *Codegen) generateCall(block *wrrap.Block, e *aster.CallExpr) wrrap.RValue {
+	var name string
+	if ident, ok := e.Callee.(*aster.IdentExpr); ok {
+		name = ident.Name
 	}
-	return wrrap.RValue{}
-}
 
-func (cg *Codegen) generateCall(e *aster.CallExpr) wrrap.RValue {
-	// For now, let's assume all calls are to built-ins like printf
-	callee := e.Callee.(aster.IdentExpr).Name
-
-	if callee == "printf" {
-		var args []any
+	if name == "printf" {
+		var args []interface{}
 		for _, arg := range e.Args {
-			args = append(args, cg.genExpr(arg))
+			args = append(args, cg.genExpr(block, arg))
 		}
 		return cg.ctx.NewCall(cg.printfFunc, args...)
+	}
+
+	sym, exists := cg.tc.GlobalTable.Resolve(name)
+	if exists && !sym.IsBuiltIn {
 	}
 
 	return wrrap.RValue{}
@@ -71,7 +200,7 @@ func (cg *Codegen) generateCall(e *aster.CallExpr) wrrap.RValue {
 
 func (cg *Codegen) genCallExpr(expr *aster.CallExpr) wrrap.RValue {
 	// 1. Get the callee name
-	callee, _ := expr.Callee.(aster.IdentExpr)
+	callee, _ := expr.Callee.(*aster.IdentExpr)
 
 	// 2. Lookup the symbol to check if it's a Built-in
 	sym, _ := cg.tc.GlobalTable.Resolve(callee.Name)
@@ -90,7 +219,7 @@ func (cg *Codegen) genBuiltInCall(name string, args []aster.Expression) wrrap.RV
 	// Convert Fox arguments to wrrap.RValues
 	var rValues []any
 	for _, arg := range args {
-		rValues = append(rValues, cg.genExpr(arg))
+		rValues = append(rValues, cg.genExpr(nil, arg))
 	}
 
 	switch name {
@@ -105,8 +234,28 @@ func (cg *Codegen) genBuiltInCall(name string, args []aster.Expression) wrrap.RV
 	return wrrap.RValue{}
 }
 
-// Generate iterates through the AST and produces machine code.
 func (cg *Codegen) Generate() {
+	if cg.unit == nil {
+		fmt.Println("CRITICAL: cg.unit is nil, skipping generation")
+		return
+	}
+
+	for _, decl := range cg.unit.Decls {
+		if f, ok := decl.(*aster.Func); ok {
+			fmt.Printf("DEBUG: Found function decl: %s\n", f.FuncName)
+			cg.genFunctionSignature(f)
+		}
+	}
+
+	for _, decl := range cg.unit.Decls {
+		if f, ok := decl.(*aster.Func); ok {
+			fmt.Printf("DEBUG: Generating body for: %s\n", f.FuncName)
+			cg.genFunctionBody(f)
+		}
+	}
+
+	cg.ctx.CompileToFile(wrrap.Assemble, "output.s")
+	cg.ctx.CompileToFile(wrrap.Executable, "output")
 }
 
 /*

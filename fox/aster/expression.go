@@ -36,59 +36,64 @@ func (TypeExpr) isExpr() {}
 
 // NumberExpr represents an integer literal.
 type NumberExpr struct {
-	Value int
-	Line  int
+	Literal string
+	Value   int
+	Line    int
 }
 
 func (n *NumberExpr) GetLine() int { return n.Line }
-func (NumberExpr) isExpr()         {}
+func (*NumberExpr) isExpr()        {}
 
 // StringExpr represents a string literal.
 type StringExpr struct {
 	Literal string
+	Value   string
 	Line    int
 }
 
-func (StringExpr) isExpr() {}
+func (*StringExpr) isExpr() {}
 
 type IntExpr struct {
-	Value int
-	Line  int
+	Literal string
+	Value   int
+	Line    int
 }
 
 func (n *IntExpr) GetLine() int { return n.Line }
 func (IntExpr) isExpr()         {}
 
 type FloatExpr struct {
-	value float64
-	Line  int
+	Literal string
+	value   float64
+	Line    int
 }
 
-func (e FloatExpr) GetLine() int { return e.Line }
-func (FloatExpr) isExpr()        {}
+func (e *FloatExpr) GetLine() int { return e.Line }
+func (*FloatExpr) isExpr()        {}
 
 type BoolExpr struct {
 	Literal string
+	value   bool
 	Line    int
 }
 
 func (e BoolExpr) GetLine() int { return e.Line }
 
-func (BoolExpr) isExpr() {}
+func (*BoolExpr) isExpr() {}
 
 type LiteralExpr struct {
 	Value string
 	Line  int
 }
 
-func (LiteralExpr) isExpr() {}
+func (*LiteralExpr) isExpr() {}
 
 type IdentExpr struct {
 	Name string
 	Line int
 }
 
-func (IdentExpr) isExpr() {}
+func (*IdentExpr) isExpr() {}
 
 type BinaryExpr struct {
 	Op    string
@@ -105,9 +110,9 @@ type CallExpr struct {
 	Line   int
 }
 
-func (UnaryExpr) isExpr() {}
+func (*UnaryExpr) isExpr() {}
 
-func (CallExpr) isExpr() {}
+func (*CallExpr) isExpr() {}
 
 type StructLiteral struct {
 	Type   Type
@@ -115,7 +120,7 @@ type StructLiteral struct {
 	Line   int
 }
 
-func (StructLiteral) isExpr() {}
+func (*StructLiteral) isExpr() {}
 
 type FieldInit struct {
 	Name  string
@@ -123,7 +128,7 @@ type FieldInit struct {
 	Line  int
 }
 
-func (p *Parser) parseCall(name string) CallExpr {
+func (p *Parser) parseCall(name string) *CallExpr {
 	p.expectType(OPN_PAREN)
 
 	args := []Expression{}
@@ -139,8 +144,8 @@ func (p *Parser) parseCall(name string) CallExpr {
 
 	p.expectType(CLS_PAREN)
 
-	return CallExpr{
-		Callee: IdentExpr{Name: name, Line: p.currentToken().Line},
+	return &CallExpr{
+		Callee: &IdentExpr{Name: name, Line: p.currentToken().Line},
 		Args:   args,
 		Line:   p.currentToken().Line,
 	}

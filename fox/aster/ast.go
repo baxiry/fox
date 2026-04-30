@@ -21,9 +21,9 @@ type AST struct {
 	Package Package
 	Imports []string
 	Structs []*Struct
-	Funcs   []*Func
-	Vars    []*VarDeclar
-	Decls   []Decl
+	//	Funcs   []*Func
+	//	Vars    []*VarDeclar
+	Decls []Decl
 }
 
 func (p *Package) GetLine() int { return 1 }
@@ -34,18 +34,6 @@ type Expression interface {
 	GetLine() int
 	isExpr()
 }
-
-// FuncDecl represents a function definition.
-type FuncDecl struct {
-	Name        string
-	Params      []Param
-	ReturnTypes []string // Or use a dedicated Type struct
-	Body        []Statement
-	Line        int
-}
-
-func (f *FuncDecl) GetLine() int { return f.Line }
-func (f *FuncDecl) isDecl()      {}
 
 // VarDeclar represents a variable declaration.
 type VarDeclar struct {
@@ -82,6 +70,10 @@ type Struct struct {
 	Line   int
 }
 
+func (s *Struct) GetLine() int { return s.Line }
+
+func (s *Struct) isDecl() {}
+
 type Field struct {
 	Name string
 	Type string
@@ -102,6 +94,12 @@ type Func struct {
 	Body     *FrameBlock // BlockStmt
 	Line     int
 }
+
+func (f *Func) GetLine() int {
+	return f.Line
+}
+
+func (f *Func) isDecl() {}
 
 type Param struct {
 	Name string

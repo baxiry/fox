@@ -7,6 +7,8 @@ import (
 	"fox/tchecker"
 	"fox/wrrap"
 	"os"
+
+	"github.com/kr/pretty"
 )
 
 func main() {
@@ -20,7 +22,7 @@ func main() {
 
 	parser := aster.NewParser()
 
-	//println("input src:\n", string(content))
+	println("input src:\n", string(content))
 	//pretty.Print(parser.Builder(content))
 
 	tc := tchecker.NewTypeChecker()
@@ -29,7 +31,8 @@ func main() {
 
 	tc.Check(ast)
 
-	//println("\noutput:\n")
+	println("\noutput:\n")
+	pretty.Println(ast)
 
 	// ast errors
 	if len(parser.Errors) > 0 {

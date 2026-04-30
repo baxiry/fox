@@ -168,7 +168,7 @@ func (p *Parser) parseSpawn() Statement {
 	p.expectType(SPAWN)
 	t := p.tokens[p.pos]
 	expr := p.parseExpr()
-	call, ok := expr.(CallExpr)
+	call, ok := expr.(*CallExpr)
 	if !ok {
 		return &BadStmt{
 			Msg: fmt.Sprintf("spawn expects function call at %d:%d", t.Line, t.Column),
@@ -487,7 +487,7 @@ func (p *Parser) parseDefOrAssign() Statement {
 // isValidDefineTarget checks if the expression is a valid identifier for ':='
 func (p *Parser) isValidDefineTarget(expr Expression) bool {
 	switch expr.(type) {
-	case IdentExpr, *IdentExpr:
+	case *IdentExpr:
 		// Only plain identifiers (like 'x' or '_') are allowed for definition
 		return true
 	default:

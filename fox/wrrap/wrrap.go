@@ -43,6 +43,19 @@ func (ctx *Context) NewIntType() Type {
 	return Type{ptr: C.gcc_jit_context_get_type(ctx.ptr, C.GCC_JIT_TYPE_INT)}
 }
 
+// NewGlobal creates a new global variable in the JIT context.
+func (ctx *Context) NewGlobal(t Type, name string) LValue {
+	cName := C.CString(name)
+	defer C.free(unsafe.Pointer(cName))
+	// Using GCC_JIT_GLOBAL_EXPORTED makes the variable visible to other modules if needed.
+	ptr := C.gcc_jit_context_new_global(ctx.ptr, nil, C.GCC_JIT_GLOBAL_EXPORTED, t.ptr, cName)
+	return LValue{ptr: ptr}
+}
+
+// AsRValue converts a location (LValue) into a value (RValue).
+func (lv LValue) AsRValue() RValue {
+	return RValue{ptr: C.gcc_jit_lvalue_as_rvalue(lv.ptr)}
+}
 func (ctx *Context) NewVoidType() Type {
 	return Type{ptr: C.gcc_jit_context_get_type(ctx.ptr, C.GCC_JIT_TYPE_VOID)}
 }
