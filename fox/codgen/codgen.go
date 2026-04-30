@@ -34,7 +34,6 @@ func (cg *Codegen) genFunctionBody(f *aster.Func) {
 		return
 	}
 
-	fmt.Printf("DEBUG: Processing %d statements in %s\n", len(f.Body.Stmts), f.FuncName)
 	for _, stmt := range f.Body.Stmts {
 		cg.genStmt(&block, stmt)
 	}
@@ -114,7 +113,20 @@ func (cg *Codegen) genFunctionSignature(f *aster.Func) {
 	retType := cg.ctx.NewIntType()
 
 	// Create the function signature without the body
-	fn := cg.ctx.NewFunction(f.FuncName, retType, false)
+
+	var fkind wrrap.FunctionKind = wrrap.FunctionInternal
+
+	name := f.FuncName
+
+	if f.FuncName == "main" {
+		fkind = wrrap.FunctionExported
+
+		cg.ctx.AddTopLevelAsm(".globl _main")
+
+	}
+
+	fn := cg.ctx.NewFunction(name, retType, false, fkind)
+
 	cg.funcs[f.FuncName] = fn
 
 }
@@ -145,6 +157,9 @@ func NewCodegen(proj *aster.Project) *Codegen {
 	// Add the macOS workarounds we discussed earlier
 	ctx.AddDriverOption("-L/opt/homebrew/lib/gcc/current")
 	ctx.AddDriverOption("-B/opt/homebrew/lib/gcc/current/gcc/aarch64-apple-darwin24/15")
+	ctx.AddDriverOption("-Wl,-e,_main")
+	ctx.AddDriverOption("-undefined")
+	ctx.AddDriverOption("dynamic_lookup")
 	//ctx.AddDriverOption("-lemutls_w")
 
 	var firstUnit *aster.AST
@@ -173,7 +188,7 @@ func (cg *Codegen) setupBuiltIns() {
 
 	// Define printf(char* format, ...)
 	formatParam := cg.ctx.NewParam(charPtr, "format")
-	cg.printfFunc = cg.ctx.NewFunction("printf", intType, true, formatParam)
+	cg.printfFunc = cg.ctx.NewFunction("printf", intType, true, wrrap.FunctionImported, formatParam)
 }
 
 // generateCall handles both built-in and user-defined function calls.
@@ -236,26 +251,28 @@ func (cg *Codegen) genBuiltInCall(name string, args []aster.Expression) wrrap.RV
 
 func (cg *Codegen) Generate() {
 	if cg.unit == nil {
-		fmt.Println("CRITICAL: cg.unit is nil, skipping generation")
-		return
+		panic("Codegen unit is nil!")
 	}
 
+	// Pass 1: Signatures
 	for _, decl := range cg.unit.Decls {
 		if f, ok := decl.(*aster.Func); ok {
-			fmt.Printf("DEBUG: Found function decl: %s\n", f.FuncName)
 			cg.genFunctionSignature(f)
+		} else if v, ok := decl.(*aster.VarDeclar); ok {
+			cg.genGlobalVar(v)
 		}
 	}
 
+	// Pass 2: Body (هنا كان الخلل)
 	for _, decl := range cg.unit.Decls {
 		if f, ok := decl.(*aster.Func); ok {
-			fmt.Printf("DEBUG: Generating body for: %s\n", f.FuncName)
+			fmt.Printf("DEBUG: Found main in Pass 2, generating body...\n")
 			cg.genFunctionBody(f)
 		}
 	}
 
 	cg.ctx.CompileToFile(wrrap.Assemble, "output.s")
-	cg.ctx.CompileToFile(wrrap.Executable, "output")
+	cg.ctx.CompileToFile(wrrap.Executable, "hello_fox")
 }
 
 /*

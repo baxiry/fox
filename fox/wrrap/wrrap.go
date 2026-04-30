@@ -21,7 +21,21 @@ type RValue struct{ ptr *C.gcc_jit_rvalue }
 type LValue struct{ ptr *C.gcc_jit_lvalue }
 type Context struct{ ptr *C.gcc_jit_context }
 
-//  Constants & Enums
+type FunctionKind int
+
+const (
+	// 0: GCC_JIT_FUNCTION_INTERNAL
+	FunctionInternal FunctionKind = iota
+
+	// 1: GCC_JIT_FUNCTION_EXPORTED (main)
+	FunctionExported
+
+	// 2: GCC_JIT_FUNCTION_IMPORTED (printf)
+	FunctionImported
+
+	// 3: GCC_JIT_FUNCTION_ALWAYS_INLINE
+	FunctionAlwaysInline
+)
 
 const (
 	Plus       = C.GCC_JIT_BINARY_OP_PLUS
@@ -70,7 +84,7 @@ func (ctx *Context) NewParam(t Type, name string) Param {
 	return Param{ptr: C.gcc_jit_context_new_param(ctx.ptr, nil, t.ptr, cName)}
 }
 
-func (ctx *Context) NewFunction(name string, retType Type, isVariadic bool, params ...Param) Function {
+func (ctx *Context) NewFunction(name string, retType Type, isVariadic bool, fkind FunctionKind, params ...Param) Function {
 	cName := C.CString(name)
 	defer C.free(unsafe.Pointer(cName))
 
@@ -89,19 +103,21 @@ func (ctx *Context) NewFunction(name string, retType Type, isVariadic bool, para
 		v = 1
 	}
 
-	kind := uint32(C.GCC_JIT_FUNCTION_EXPORTED)
-	if name == "printf" {
-		kind = C.GCC_JIT_FUNCTION_IMPORTED
-	}
-
 	f := C.gcc_jit_context_new_function(ctx.ptr, nil,
-		kind,
+		C.enum_gcc_jit_function_kind(fkind),
 		retType.ptr,
 		cName,
 		C.int(len(cParams)),
 		pPtr,
 		C.int(v))
+
 	return Function{ptr: f}
+}
+
+func (ctx *Context) AddTopLevelAsm(asm string) {
+	cAsm := C.CString(asm)
+	defer C.free(unsafe.Pointer(cAsm))
+	C.gcc_jit_context_add_top_level_asm(ctx.ptr, nil, cAsm)
 }
 
 func (ctx *Context) NewIntConstant(t Type, val int) RValue {
