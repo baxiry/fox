@@ -38,10 +38,22 @@ const (
 )
 
 const (
-	Plus       = C.GCC_JIT_BINARY_OP_PLUS
 	Assemble   = C.GCC_JIT_OUTPUT_KIND_ASSEMBLER
 	Executable = C.GCC_JIT_OUTPUT_KIND_EXECUTABLE
 )
+
+const (
+	Plus  BinaryOp = 0 // GCC_JIT_BINARY_OP_PLUS
+	Minus BinaryOp = 1 // GCC_JIT_BINARY_OP_MINUS
+	Mult  BinaryOp = 2 // GCC_JIT_BINARY_OP_MULT
+	Div   BinaryOp = 3 // GCC_JIT_BINARY_OP_DIV
+
+	//Assemble   OutputKind = 0 // GCC_JIT_OUTPUT_KIND_ASSEMBLER
+	//Executable OutputKind = 1 // GCC_JIT_OUTPUT_KIND_EXECUTABLE
+)
+
+type BinaryOp = C.enum_gcc_jit_binary_op
+type OutputKind = C.enum_gcc_jit_output_kind
 
 //  Context Methods
 
@@ -64,6 +76,16 @@ func (ctx *Context) NewGlobal(t Type, name string) LValue {
 	// Using GCC_JIT_GLOBAL_EXPORTED makes the variable visible to other modules if needed.
 	ptr := C.gcc_jit_context_new_global(ctx.ptr, nil, C.GCC_JIT_GLOBAL_EXPORTED, t.ptr, cName)
 	return LValue{ptr: ptr}
+}
+
+// check RValue are nil
+func (rv RValue) IsNil() bool {
+	return rv.ptr == nil
+}
+
+// check LValue are nil
+func (lv LValue) IsNil() bool {
+	return lv.ptr == nil
 }
 
 // AsRValue converts a location (LValue) into a value (RValue).

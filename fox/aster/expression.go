@@ -8,41 +8,28 @@ type UnaryExpr struct {
 }
 
 // UnaryExpr
-func (e UnaryExpr) GetLine() int { return e.Line }
+func (e *UnaryExpr) GetLine() int { return e.Line }
 
 // FieldAccessExpr
-func (e FieldAccessExpr) GetLine() int { return e.Line }
+func (e *FieldAccessExpr) GetLine() int { return e.Line }
 
 // CallExpr
-func (e CallExpr) GetLine() int { return e.Line }
+func (e *CallExpr) GetLine() int { return e.Line }
 
 // StringExpr
-func (e StringExpr) GetLine() int { return e.Line }
+func (e *StringExpr) GetLine() int { return e.Line }
 
 // StructLiteral
-func (e StructLiteral) GetLine() int { return e.Line }
+func (e *StructLiteral) GetLine() int { return e.Line }
 
 // IdentExpr (Don't forget this one)
-func (e IdentExpr) GetLine() int { return e.Line }
-
-// BinaryExpr
-func (e BinaryExpr) GetLine() int { return e.Line }
+func (e *IdentExpr) GetLine() int { return e.Line }
 
 type TypeExpr struct {
 	Name string
 }
 
 func (TypeExpr) isExpr() {}
-
-// NumberExpr represents an integer literal.
-type NumberExpr struct {
-	Literal string
-	Value   int
-	Line    int
-}
-
-func (n *NumberExpr) GetLine() int { return n.Line }
-func (*NumberExpr) isExpr()        {}
 
 // StringExpr represents a string literal.
 type StringExpr struct {
@@ -60,7 +47,8 @@ type IntExpr struct {
 }
 
 func (n *IntExpr) GetLine() int { return n.Line }
-func (IntExpr) isExpr()         {}
+
+func (*IntExpr) isExpr() {}
 
 type FloatExpr struct {
 	Literal string
@@ -69,7 +57,8 @@ type FloatExpr struct {
 }
 
 func (e *FloatExpr) GetLine() int { return e.Line }
-func (*FloatExpr) isExpr()        {}
+
+func (*FloatExpr) isExpr() {}
 
 type BoolExpr struct {
 	Literal string
@@ -77,7 +66,7 @@ type BoolExpr struct {
 	Line    int
 }
 
-func (e BoolExpr) GetLine() int { return e.Line }
+func (e *BoolExpr) GetLine() int { return e.Line }
 
 func (*BoolExpr) isExpr() {}
 
@@ -95,6 +84,7 @@ type IdentExpr struct {
 
 func (*IdentExpr) isExpr() {}
 
+// BinaryExpr
 type BinaryExpr struct {
 	Op    string
 	Left  Expression
@@ -102,8 +92,10 @@ type BinaryExpr struct {
 	Line  int
 }
 
-func (BinaryExpr) isExpr() {}
+func (*BinaryExpr) isExpr()        {}
+func (e *BinaryExpr) GetLine() int { return e.Line }
 
+// Callee Expression
 type CallExpr struct {
 	Callee Expression
 	Args   []Expression

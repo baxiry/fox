@@ -100,7 +100,7 @@ func (p *Parser) parsePostfix() Expression {
 				p.synchronize() // Jump to the next safe statement
 				return nil
 			}
-			expr = FieldAccessExpr{Object: expr, Field: field.Lexeme, Line: field.Line}
+			expr = &FieldAccessExpr{Object: expr, Field: field.Lexeme, Line: field.Line}
 
 		case OPN_BRACE:
 			// Follow Go's rule: Struct literals must start the brace on the same line.
@@ -168,7 +168,7 @@ func (p *Parser) parseBinary(minPrec int) Expression {
 
 		right := p.parseBinary(prec + 1)
 
-		left = BinaryExpr{
+		left = &BinaryExpr{
 			Left:  left,
 			Op:    tok.Lexeme,
 			Right: right,
@@ -233,7 +233,7 @@ func (p *Parser) parsePrimary() Expression {
 		p.pos++
 		val, _ := strconv.Atoi(tok.Lexeme)
 
-		return &NumberExpr{Value: val, Line: tok.Line}
+		return &IntExpr{Value: val, Line: tok.Line}
 
 	case STRING:
 		p.pos++

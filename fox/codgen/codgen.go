@@ -82,7 +82,41 @@ func (cg *Codegen) genStmt(block *wrrap.Block, stmt aster.Statement) {
 
 // genExpr now accepts the block and handles IdentExpr for globals.
 func (cg *Codegen) genExpr(block *wrrap.Block, expr aster.Expression) wrrap.RValue {
+	if expr != nil {
+		//fmt.Printf("DEBUG: genExpr processing type: %T\n", expr)
+	}
 	switch e := expr.(type) {
+
+	case *aster.IntExpr:
+		intType := cg.ctx.NewIntType()
+		return cg.ctx.NewIntConstant(intType, e.Value)
+
+	case *aster.BinaryExpr:
+		left := cg.genExpr(block, e.Left)
+		right := cg.genExpr(block, e.Right)
+
+		if left.IsNil() || right.IsNil() {
+			//fmt.Printf("DEBUG: NULL operand in binary op %s\n", e.Op)
+			return wrrap.RValue{}
+		}
+
+		var op wrrap.BinaryOp
+		switch e.Op {
+		case "+":
+			op = wrrap.Plus
+		case "-":
+			op = wrrap.Minus
+		case "*":
+			op = wrrap.Mult
+		case "/":
+			op = wrrap.Div
+		default:
+			return wrrap.RValue{}
+		}
+
+		// TODO: need more type
+		intType := cg.ctx.NewIntType()
+		return cg.ctx.NewBinaryOp(op, intType, left, right)
 
 	case *aster.StringExpr:
 		text := e.Literal

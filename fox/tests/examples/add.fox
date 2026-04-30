@@ -1,0 +1,7 @@
+
+var result int
+
+fn main() {
+    result = 10 + 5
+    printf("Result is: %d\n", result)
+}

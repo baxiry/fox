@@ -108,7 +108,7 @@ func (tc *TypeChecker) inferType(expr aster.Expression) string {
 	case *aster.UnaryExpr:
 		return "bool"
 
-	case *aster.NumberExpr:
+	case *aster.IntExpr:
 		return "int"
 
 	case *aster.BoolExpr:
@@ -145,19 +145,19 @@ func (tc *TypeChecker) inferType(expr aster.Expression) string {
 		}
 		return sym.Type.Name
 
-	case aster.FieldAccessExpr:
+	case *aster.FieldAccessExpr:
 		// Check the left-hand side first (e.g., 'data' in 'data.x')
 		leftType := tc.inferType(e.Object)
 
 		if leftType == aster.INVALID.String() {
 			return aster.INVALID.String() // Silent return if target is already undefined
 		}
-		return tc.checkFieldAccess(e)
+		return tc.checkFieldAccess(*e)
 
 	case *aster.StructLiteral:
 		return tc.checkStructLiteral(*e)
 
-	case aster.BinaryExpr:
+	case *aster.BinaryExpr:
 		leftType := tc.inferType(e.Left)
 		rightType := tc.inferType(e.Right)
 
