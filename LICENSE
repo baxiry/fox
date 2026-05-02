@@ -1,6 +1,8 @@
 BSD 3-Clause License
 
-Copyright (c) 2026, baxiry
+Copyright (c) 2026, baxiry & Fox Language Authors
+
+All rights reserved.
 
 Redistribution and use in source and binary forms, with or without
 modification, are permitted provided that the following conditions are met:
@@ -26,3 +28,18 @@ SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER
 CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY,
 OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
 OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+
+----------------------------------------------------------------                
+Third-Party Software Information:
+----------------------------------------------------------------
+This software incorporates material from the Tiny C Compiler (TCC), 
+which is licensed under the GNU Lesser General Public License (LGPL) v2.1.
+
+TCC is not owned by the authors of Fox Language. The inclusion of TCC 
+as a backend does not change the BSD license of the Fox Language source 
+code itself. 
+
+For more details on TCC licensing, please refer to the LGPL v2.1 text 
+included in the 'licenses/tcc-license.txt' file or visit:
+https://repo.or.cz
+
