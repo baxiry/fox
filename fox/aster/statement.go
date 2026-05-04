@@ -134,44 +134,25 @@ func isTypeStart(tok Token) bool {
 // var i = 10 + 10
 
 func (p *Parser) parseVarDeclar() Statement {
-	// Debug: Start of function
-	// fmt.Printf("[DEBUG] Entering parseVarDeclar. Current: %s (%q)\n", p.currentToken().Type, p.currentToken().Lexeme)
-
-	// 1. Consume 'var'
 	p.expectType(VAR)
-
-	// 2. Consume variable name
 	nameTok := p.expectIdent()
-	// fmt.Printf("[DEBUG] After Ident: %s (%q)\n", p.currentToken().Type, p.currentToken().Lexeme)
 
 	var typ *Type = nil
 	var value Expression = nil
 
-	// 3. Handle Type (The problematic part)
-	// Check if the current token is a type identifier or starts with '['
 	curr := p.currentToken()
-	if curr.Type == IDENT || curr.Type == OPN_BRACK {
-		// fmt.Printf("[DEBUG] Detected Type Start: %s (%q). Calling parseType...\n", curr.Type, curr.Lexeme)
-
+	//  STAR
+	if curr.Type == IDENT || curr.Type == OPN_BRACK || curr.Type == STAR {
 		t := p.parseType()
 		typ = &t
-
-		//fmt.Printf("[DEBUG] After parseType. Current: %s (%q)\n", p.currentToken().Type, p.currentToken().Lexeme)
-	} else {
-		//	fmt.Printf("[DEBUG] No type detected (Token is %s). Skipping type part.\n", 		curr.Type)
 	}
 
-	// 4. Handle Assignment (=)
 	if p.currentToken().Type == ASSIGN {
-		//fmt.Printf("[DEBUG] Found '='. Calling parseExpr...\n")
 		p.pos++ // consume '='
 		value = p.parseExpr()
 	}
 
-	// 5. Clean up: Skip trailing newlines to prevent errors in the next statement
 	p.skipNewlines()
-
-	//fmt.Printf("[DEBUG] Exiting parseVarDeclar. Next token is: %s (%q)\n", p.currentToken().Type, p.currentToken().Lexeme)
 
 	return &VarDeclar{
 		Name:  nameTok.Lexeme,

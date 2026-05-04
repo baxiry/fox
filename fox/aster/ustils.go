@@ -57,6 +57,8 @@ func (p *Parser) currentToken() Token {
 
 func (p *Parser) expectType(expected TokenType) Token {
 
+	fmt.Printf("[DEBUG] Expecting: %s, Found: %s\n", expected.String(), p.currentToken().Type)
+
 	if p.pos >= len(p.tokens) {
 		lastLine := 0
 		if len(p.tokens) > 0 {

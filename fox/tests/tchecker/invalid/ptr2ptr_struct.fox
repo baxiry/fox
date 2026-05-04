@@ -1,0 +1,12 @@
+
+type Node struct {
+    data *int
+}
+
+fn main() {
+    var val int = 50
+    var n Node
+    n.data = &val
+    
+    var p_to_field = &n.data
+}

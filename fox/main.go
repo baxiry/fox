@@ -7,6 +7,8 @@ import (
 	"fox/runner"
 	"fox/tchecker"
 	"os"
+
+	"github.com/kr/pretty"
 )
 
 func main() {
@@ -29,6 +31,12 @@ func main() {
 	parser := aster.NewParser()
 	ast := parser.Builder(content)
 
+	// Debugging: Print AST if needed
+
+	fmt.Println("\nAST Structure:")
+	pretty.Println(ast)
+	fmt.Println()
+
 	// Check for Syntax Errors immediately after parsing
 	if len(parser.Errors) > 0 {
 		fmt.Printf("Found %d syntax errors:\n", len(parser.Errors))
@@ -50,12 +58,6 @@ func main() {
 		}
 		os.Exit(1)
 	}
-
-	// Debugging: Print AST if needed
-
-	fmt.Println("\nAST Structure:")
-	//	pretty.Println(ast)
-	//	fmt.Println()
 
 	// 4. Prepare the Project structure for Codegen
 	// We wrap the current file into a Package and then into a Project

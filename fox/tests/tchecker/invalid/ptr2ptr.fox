@@ -1,0 +1,9 @@
+
+
+fn main() {
+    var x int = 10
+    var p *int = &x
+    var pp = &p 
+}
+
+

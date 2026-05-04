@@ -70,6 +70,7 @@ func (p *Parser) synchronize() {
 func (p *Parser) parseUnary() Expression {
 
 	if p.pos < len(p.tokens) {
+
 		switch p.tokens[p.pos].Type {
 
 		case NOT, MINUS, STAR, AMP:
@@ -164,6 +165,7 @@ func (p *Parser) parsePostfix() Expression {
 }
 
 func (p *Parser) parseBinary(minPrec int) Expression {
+
 	left := p.parseUnary()
 
 	for p.pos < len(p.tokens) {
@@ -242,6 +244,7 @@ func (p *Parser) parseComparison() Expression {
 	return expr
 }
 func (p *Parser) parsePrimary() Expression {
+
 	tok := p.currentToken()
 
 	switch tok.Type {
@@ -446,6 +449,7 @@ func (p *Parser) parseExprList() []Expression {
 
 // top-level expression
 func (p *Parser) parseExpr() Expression {
+
 	return p.parseBinary(0)
 }
 
@@ -500,6 +504,7 @@ func (p *Parser) parseBlock() *FrameBlock {
 
 	p.skip()
 	for p.pos < len(p.tokens) && p.tokens[p.pos].Type != CLS_BRACE {
+
 		p.skip()
 
 		frameBlock.Stmts = append(frameBlock.Stmts, p.parseStatement())
@@ -572,20 +577,13 @@ func (p *Parser) parseStruct() *Struct {
 
 func (p *Parser) parseField() Field {
 	nameTok := p.expectIdent()
-	typeTok := p.expectIdent()
 
-	// Create a full aster.Type object instead of passing a string
-	fieldType := Type{
-		Name:     typeTok.Lexeme,
-		PtrDepth: 0,     // You might need logic here if your syntax supports pointers like *int
-		IsArray:  false, // You might need logic here if your syntax supports []int
-		Line:     typeTok.Line,
-	}
+	fieldType := p.parseType()
 
 	return Field{
 		Name: nameTok.Lexeme,
 		Type: fieldType,
-		Line: typeTok.Line,
+		Line: nameTok.Line,
 	}
 }
 

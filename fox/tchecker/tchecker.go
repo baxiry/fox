@@ -188,6 +188,9 @@ func (tc *TypeChecker) inferType(expr aster.Expression) *aster.Type {
 		tc.appendErrorf("type mismatch: %s and %s", e.Line, leftType.Name, rightType.Name)
 		return &aster.Type{Name: aster.INVALID.String(), IsArray: false}
 
+	case *aster.UnaryExpr:
+		return tc.checkUnaryExpr(e)
+
 	default:
 		return nil
 	}
@@ -310,18 +313,17 @@ func (tc *TypeChecker) registerFunctions(ast *aster.AST) {
 func (tc *TypeChecker) checkVarDeclar(decl *aster.VarDeclar) {
 	var finalType *aster.Type
 
-	// 1. If type is explicit (var i int = 10 or var arr []int)
+	// 1. If type is explicit (var i int = 10)
 	if decl.Type != nil {
-		// Use the type provided in the declaration (e.g., &aster.Type{Name: "int", IsArray: false})
 		finalType = decl.Type
-
 		if decl.Value != nil {
 			valueType := tc.inferType(decl.Value)
-
 			// Safety: Skip check if inferred type is nil or INVALID
 			if valueType != nil && valueType.Name != aster.INVALID.String() {
-				// Full comparison: check Name and IsArray for accuracy
-				if finalType.Name != valueType.Name || finalType.IsArray != valueType.IsArray {
+				// Added PtrDepth comparison for the new pointer rules
+				if finalType.Name != valueType.Name ||
+					finalType.IsArray != valueType.IsArray ||
+					finalType.PtrDepth != valueType.PtrDepth {
 					tc.appendErrorf("cannot use %s as %s in assignment", decl.Line, valueType.Name, finalType.Name)
 				}
 			}
@@ -329,29 +331,26 @@ func (tc *TypeChecker) checkVarDeclar(decl *aster.VarDeclar) {
 	} else {
 		// 2. Type inference (var i = 10)
 		if decl.Value == nil {
-			tc.appendErrorf("variable %s: missing type or expression", decl.Line, decl.Name)
+			tc.appendErrorf("variable %s: missing expression for type inference", decl.Line, decl.Name)
 			return
 		}
-		finalType = tc.inferType(decl.Value)
-	}
 
-	// Safety: ensure finalType is not nil before defining
-	if finalType == nil {
-		finalType = &aster.Type{Name: aster.INVALID.String()}
+		finalType = tc.inferType(decl.Value)
+
+		if finalType == nil || finalType.Name == aster.INVALID.String() {
+			return
+		}
 	}
 
 	// 3. Register the symbol in the current table
 	sym := &Symbol{
-		Name: decl.Name,
-		// Direct assignment of the Type struct for precision
+		Name:    decl.Name,
 		Type:    *finalType,
 		ScopeID: tc.CurrentTable.ScopeID,
 	}
 
 	err := tc.CurrentTable.Define(decl.Name, sym)
 	if err != nil {
-		// IMPORTANT: We report the redeclaration error,
-		// but we DON'T stop or overwrite the first definition.
 		tc.appendErrorf("var `%s` redeclared in this block", decl.Line, decl.Name)
 	}
 }
@@ -607,26 +606,26 @@ func (tc *TypeChecker) checkAssign(asgn *aster.Assign) {
 	// 4. Validate each variable and its type consistency
 
 	// Replace step 4, 6, and 7 with this robust logic:
-	for i, nameExpr := range asgn.Targets {
+	for i := 0; i < len(asgn.Targets); i++ {
+		lhsType := tc.inferType(asgn.Targets[i])
+		rhsType := tc.inferType(asgn.Values[i])
 
-		if ident, ok := nameExpr.(*aster.IdentExpr); ok && ident.Name == "_" {
+		// 1. Nil Safety
+		if lhsType == nil || rhsType == nil {
 			continue
 		}
-		// 1. inferType will handle both 'i' and 'data.x'
-		// It will report "undefined variable" if it's not there
-		lhsType := tc.inferType(nameExpr)
-		rhsType := rightSideTypes[i]
 
-		// 2. Only compare types if both are valid
-		if lhsType.Name != aster.INVALID.String() && rhsType.Name != aster.INVALID.String() {
+		// 2.  INVALID
+		if lhsType.Name == aster.INVALID.String() || rhsType.Name == aster.INVALID.String() {
+			continue
+		}
 
-			// Check Name, Pointer Depth, and Array status for total precision
-			if lhsType.Name != rhsType.Name ||
-				lhsType.PtrDepth != rhsType.PtrDepth ||
-				lhsType.IsArray != rhsType.IsArray {
+		// 3.
+		if lhsType.Name != rhsType.Name ||
+			lhsType.PtrDepth != rhsType.PtrDepth ||
+			lhsType.IsArray != rhsType.IsArray {
 
-				tc.appendErrorf("cannot assign %s to %s", nameExpr.GetLine(), rhsType.Name, lhsType.Name)
-			}
+			tc.appendErrorf("cannot assign %s to %s", asgn.Line, rhsType.Name, lhsType.Name)
 		}
 	}
 
@@ -983,30 +982,37 @@ func (tc *TypeChecker) checkUnaryExpr(expr *aster.UnaryExpr) *aster.Type {
 
 	switch expr.Op {
 	case "&":
-		// Address-of: Increment the pointer depth
+		// Fox Rule: No multi-level pointers (PtrDepth must be 0 before taking address)
+		if operandType.PtrDepth >= 1 {
+			tc.appendErrorf("multi-level ptr are not allowed", expr.Line)
+			return &aster.Type{Name: aster.INVALID.String()}
+		}
+
+		// Address-of: Increment the pointer depth to 1
 		return &aster.Type{
 			Name:     operandType.Name,
 			IsArray:  operandType.IsArray,
-			PtrDepth: operandType.PtrDepth + 1, // i -> *int (depth 1), *int -> **int (depth 2)
+			PtrDepth: operandType.PtrDepth + 1,
 			Line:     expr.Line,
 		}
 
 	case "*":
-		// Dereference: Ensure we have at least one pointer level to strip
+		// Dereference: Ensure we have exactly depth 1 to strip
 		if operandType.PtrDepth <= 0 {
 			tc.appendErrorf("invalid indirect: %s is not a pointer", expr.Line, operandType.Name)
 			return &aster.Type{Name: aster.INVALID.String()}
 		}
-		// Return a copy with one less pointer level
+
+		// Return a copy with PtrDepth 0
 		return &aster.Type{
 			Name:     operandType.Name,
 			IsArray:  operandType.IsArray,
-			PtrDepth: operandType.PtrDepth - 1,
+			PtrDepth: 0,
 			Line:     expr.Line,
 		}
 
 	case "!":
-		// Logical Negation: Only for boolean types (not pointers or arrays)
+		// Logical Negation: Only for bool and depth 0
 		if operandType.Name != "bool" || operandType.PtrDepth > 0 || operandType.IsArray {
 			tc.appendErrorf("operator '!' not defined for type %s", expr.Line, operandType.Name)
 			return &aster.Type{Name: aster.INVALID.String()}
@@ -1014,7 +1020,7 @@ func (tc *TypeChecker) checkUnaryExpr(expr *aster.UnaryExpr) *aster.Type {
 		return &aster.Type{Name: "bool", IsArray: false, PtrDepth: 0}
 
 	case "-":
-		// Numeric Negation: Should not be applied to pointers or arrays
+		// Numeric Negation: Only for depth 0
 		if operandType.PtrDepth > 0 || operandType.IsArray {
 			tc.appendErrorf("cannot use '-' on pointer or array type", expr.Line)
 			return &aster.Type{Name: aster.INVALID.String()}
