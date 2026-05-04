@@ -91,6 +91,17 @@ func (p *Parser) parsePostfix() Expression {
 	for p.pos < len(p.tokens) {
 		switch p.tokens[p.pos].Type {
 
+		case OPN_BRACK: // [
+			p.pos++ // consume '['
+			index := p.parseExpr()
+			p.expectType(CLS_BRACK) // expect and consume ']'
+
+			expr = &IndexExpr{
+				Target: expr,
+				Index:  index,
+				Line:   p.tokens[p.pos-1].Line,
+			}
+
 		case DOT:
 			p.pos++
 			p.skip()
@@ -207,8 +218,30 @@ func isUnaryStart(tok Token) bool {
 		tok.Type == MINUS
 }
 
-func (p *Parser) parsePrimary() Expression {
+func (p *Parser) parseComparison() Expression {
+	// Start with higher precedence (addition/subtraction)
+	expr := p.parseAdd()
 
+	// Check for comparison operators: >, <, >=, <=
+	for p.currentToken().Type == GT || p.currentToken().Type == LT ||
+		p.currentToken().Type == GTE || p.currentToken().Type == LTE {
+
+		tok := p.currentToken()
+		p.pos++ // Advance to next token
+
+		right := p.parseAdd()
+
+		expr = &BinaryExpr{
+			Left:  expr,
+			Op:    tok.Lexeme,
+			Right: right,
+			Line:  tok.Line,
+		}
+	}
+
+	return expr
+}
+func (p *Parser) parsePrimary() Expression {
 	tok := p.currentToken()
 
 	switch tok.Type {
@@ -275,6 +308,13 @@ func (p *Parser) parseType() Type {
 		p.appendErrorf("unexpected end of input while parsing type", p.currentToken().Line)
 	}
 
+	isArr := false
+	if p.currentToken().Type == OPN_BRACK {
+		p.pos++                 // consume '['
+		p.expectType(CLS_BRACK) // consume ']'
+		isArr = true
+	}
+
 	if p.tokens[p.pos].Type == AMP { // &
 		p.appendErrorf(
 			"syntax error at line %d, column %d: cannot use & in parameter signature",
@@ -296,13 +336,14 @@ func (p *Parser) parseType() Type {
 	if name.Type == ERROR {
 
 		p.synchronize() // Jump to the next safe statement
-		return Type{Line: name.Line}
+		return Type{Line: name.Line, IsArray: isArr}
 	}
 
 	return Type{
 		Name:     name.Lexeme,
 		PtrDepth: ptrDepth,
 		Line:     name.Line,
+		IsArray:  isArr,
 	}
 }
 
@@ -347,23 +388,26 @@ func (p *Parser) parseBitwiseAnd() Expression {
 }
 
 // Equality == & !=
-func (p *Parser) parseEquality() Expression {
-	left := p.parseBitwiseAnd()
-	tok := p.currentToken()
-	for tok.Lexeme == "==" || tok.Lexeme == "!=" {
-		op := p.tokens[p.pos]
-		p.pos++
-		right := p.parseBitwiseAnd()
 
-		left = &BinaryExpr{
-			Left:  left,
-			Op:    op.Lexeme,
+func (p *Parser) parseEquality() Expression {
+	// Call the new comparison level instead of parseAdd
+	expr := p.parseComparison()
+
+	for p.currentToken().Type == EQ || p.currentToken().Type == NEQ {
+		tok := p.currentToken()
+		p.pos++
+
+		right := p.parseComparison()
+
+		expr = &BinaryExpr{
+			Left:  expr,
+			Op:    tok.Lexeme,
 			Right: right,
 			Line:  tok.Line,
 		}
 	}
 
-	return left
+	return expr
 }
 
 /// TODO   parseTerm
@@ -529,44 +573,71 @@ func (p *Parser) parseStruct() *Struct {
 func (p *Parser) parseField() Field {
 	nameTok := p.expectIdent()
 	typeTok := p.expectIdent()
-	//line := p.currentToken().Line
-	return Field{Name: nameTok.Lexeme, Type: typeTok.Lexeme, Line: typeTok.Line}
+
+	// Create a full aster.Type object instead of passing a string
+	fieldType := Type{
+		Name:     typeTok.Lexeme,
+		PtrDepth: 0,     // You might need logic here if your syntax supports pointers like *int
+		IsArray:  false, // You might need logic here if your syntax supports []int
+		Line:     typeTok.Line,
+	}
+
+	return Field{
+		Name: nameTok.Lexeme,
+		Type: fieldType,
+		Line: typeTok.Line,
+	}
 }
 
 func (p *Parser) parseFieldAssign() Field {
 	nameTok := p.expectIdent()
 	typeTok := p.expectIdent()
-	return Field{Name: nameTok.Lexeme, Type: typeTok.Lexeme, Line: typeTok.Line}
+
+	// Same here: Wrap the string Lexeme into the aster.Type struct
+	fieldType := Type{
+		Name:     typeTok.Lexeme,
+		PtrDepth: 0,
+		IsArray:  false,
+		Line:     typeTok.Line,
+	}
+
+	return Field{
+		Name: nameTok.Lexeme,
+		Type: fieldType,
+		Line: typeTok.Line,
+	}
 }
 
 func (p *Parser) parseVarDecl() *VarDeclar {
-	p.pos++ // 1. Consume 'var'
 
+	p.pos++ // 1. Consume 'var'
 	name := p.expectIdent()
 
 	var typeNode *Type = nil
 	var value Expression = nil
 
-	// 2. Check for Type (IDENT)
-	// IMPORTANT: Check the CURRENT token here
-	if p.currentToken().Type == IDENT {
-		tok := p.currentToken()
-		typeName := p.expectIdent()
-		typeNode = &Type{Name: typeName.Lexeme, Line: tok.Line}
+	// 2. Updated Check: Type can start with IDENT or OPN_BRACK
+	curr := p.currentToken().Type
+
+	if curr == IDENT || curr == OPN_BRACK {
+
+		// Use your parseType logic here to keep it contained
+		tmp := p.parseType()
+		typeNode = &tmp
 	}
 
 	// 3. Check for Assignment (=)
-	// IMPORTANT: Check the CURRENT token again
 	if p.currentToken().Type == ASSIGN {
-		p.pos++ // consume '='
+		p.pos++
 		value = p.parseExpr()
 	}
 
+	//	p.skipNewlines()
 	return &VarDeclar{
 		Name:  name.Lexeme,
 		Type:  typeNode,
 		Value: value,
-		Line:  name.Line, // Use name.Line for consistency
+		Line:  name.Line,
 	}
 }
 

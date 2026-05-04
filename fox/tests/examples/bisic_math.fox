@@ -1,0 +1,9 @@
+
+var result int
+
+fn main() {
+
+    result = (5 + 10) * 2
+
+    printf("(5 + 10) * 2 = %d", result)
+}

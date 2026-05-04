@@ -10,9 +10,6 @@ type UnaryExpr struct {
 // UnaryExpr
 func (e *UnaryExpr) GetLine() int { return e.Line }
 
-// FieldAccessExpr
-func (e *FieldAccessExpr) GetLine() int { return e.Line }
-
 // CallExpr
 func (e *CallExpr) GetLine() int { return e.Line }
 

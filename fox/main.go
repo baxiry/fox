@@ -7,8 +7,6 @@ import (
 	"fox/runner"
 	"fox/tchecker"
 	"os"
-
-	"github.com/kr/pretty"
 )
 
 func main() {
@@ -24,6 +22,8 @@ func main() {
 		fmt.Printf("Error reading file: %v\n", err)
 		os.Exit(1)
 	}
+
+	fmt.Println("Fox sorce code:\n", string(content))
 
 	// 2. Parsing phase
 	parser := aster.NewParser()
@@ -52,9 +52,10 @@ func main() {
 	}
 
 	// Debugging: Print AST if needed
-	fmt.Println("Fox sorce code:\n", string(content))
+
 	fmt.Println("\nAST Structure:")
-	pretty.Println(ast)
+	//	pretty.Println(ast)
+	//	fmt.Println()
 
 	// 4. Prepare the Project structure for Codegen
 	// We wrap the current file into a Package and then into a Project
@@ -73,17 +74,16 @@ func main() {
 	}
 
 	// 5. Code Generation phase
-	fmt.Println("Type check passed. Generating code...")
 	cg := codgen.NewCodegen(project)
 	cCode := cg.Generate()
 
-	fmt.Println("--- DEBUG: Generated C Code ---")
+	fmt.Println("C Output Code:")
 	fmt.Println(cCode)
-	fmt.Println("-------------------------------")
+	fmt.Println()
 
 	// 6. Execution phase (using TCC)
 
-	fmt.Println("--- Fox Program Running ---")
+	fmt.Println(" Fox Program Running ")
 	runErr := runner.Run(cCode)
 	if runErr != nil {
 		fmt.Printf("\nRuntime Error: %v\n", runErr)

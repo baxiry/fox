@@ -132,27 +132,46 @@ func isTypeStart(tok Token) bool {
 // var i int
 // var i int = 10
 // var i = 10 + 10
+
 func (p *Parser) parseVarDeclar() Statement {
-	// consome var
+	// Debug: Start of function
+	// fmt.Printf("[DEBUG] Entering parseVarDeclar. Current: %s (%q)\n", p.currentToken().Type, p.currentToken().Lexeme)
+
+	// 1. Consume 'var'
 	p.expectType(VAR)
 
-	// consume variable name
-	nameTok := p.expectType(IDENT)
+	// 2. Consume variable name
+	nameTok := p.expectIdent()
+	// fmt.Printf("[DEBUG] After Ident: %s (%q)\n", p.currentToken().Type, p.currentToken().Lexeme)
 
 	var typ *Type = nil
 	var value Expression = nil
 
-	// case one & three, type
-	if isTypeStart(p.tokens[p.pos]) {
-		tmp := p.parseType()
-		typ = &tmp
+	// 3. Handle Type (The problematic part)
+	// Check if the current token is a type identifier or starts with '['
+	curr := p.currentToken()
+	if curr.Type == IDENT || curr.Type == OPN_BRACK {
+		// fmt.Printf("[DEBUG] Detected Type Start: %s (%q). Calling parseType...\n", curr.Type, curr.Lexeme)
+
+		t := p.parseType()
+		typ = &t
+
+		//fmt.Printf("[DEBUG] After parseType. Current: %s (%q)\n", p.currentToken().Type, p.currentToken().Lexeme)
+	} else {
+		//	fmt.Printf("[DEBUG] No type detected (Token is %s). Skipping type part.\n", 		curr.Type)
 	}
 
-	// case 3 & 4 =
-	if p.tokens[p.pos].Type == ASSIGN {
-		p.pos++
+	// 4. Handle Assignment (=)
+	if p.currentToken().Type == ASSIGN {
+		//fmt.Printf("[DEBUG] Found '='. Calling parseExpr...\n")
+		p.pos++ // consume '='
 		value = p.parseExpr()
 	}
+
+	// 5. Clean up: Skip trailing newlines to prevent errors in the next statement
+	p.skipNewlines()
+
+	//fmt.Printf("[DEBUG] Exiting parseVarDeclar. Next token is: %s (%q)\n", p.currentToken().Type, p.currentToken().Lexeme)
 
 	return &VarDeclar{
 		Name:  nameTok.Lexeme,
@@ -507,11 +526,16 @@ func (t Token) IsOperator() bool {
 }
 
 func (p *Parser) parseStatement() Statement {
+	for p.currentToken().Type == NEW_LINE {
+		p.pos++
+	}
+
 	tok := p.currentToken()
 	var stmt Statement
 
 	switch tok.Type {
 	case VAR:
+
 		stmt = p.parseVarDeclar()
 
 	case RETURN:

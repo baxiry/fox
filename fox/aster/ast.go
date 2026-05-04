@@ -11,6 +11,8 @@ type Package struct {
 	Files []*File // New: Supporting multiple files per package
 }
 
+func (p *Package) GetLine() int { return 1 }
+
 // File represents a single .fox source file
 type File struct {
 	Path  string // To help with debugging as you requested
@@ -26,14 +28,21 @@ type AST struct {
 	Decls []Decl
 }
 
-func (p *Package) GetLine() int { return 1 }
-
 // Expr represents expressions that return a value (e.g., numbers, calls, binary ops).
 type Expression interface {
 	Node
 	GetLine() int
 	isExpr()
 }
+
+type IndexExpr struct {
+	Target Expression // The array variable (e.g., list)
+	Index  Expression // The index expression (e.g., i + 1)
+	Line   int
+}
+
+func (*IndexExpr) isExpr()        {}
+func (e *IndexExpr) GetLine() int { return e.Line }
 
 // VarDeclar represents a variable declaration.
 type VarDeclar struct {
@@ -62,7 +71,10 @@ type Type struct {
 	Name     string
 	PtrDepth int
 	Line     int
+	IsArray  bool
 }
+
+func (t *Type) getLine() int { return t.Line }
 
 type Struct struct {
 	Name   string
@@ -70,13 +82,12 @@ type Struct struct {
 	Line   int
 }
 
+func (s *Struct) isDecl()      {}
 func (s *Struct) GetLine() int { return s.Line }
-
-func (s *Struct) isDecl() {}
 
 type Field struct {
 	Name string
-	Type string
+	Type Type
 	Line int
 }
 
@@ -85,7 +96,7 @@ type FrameBlock struct {
 	Line  int
 }
 
-func (FrameBlock) isStat() {}
+func (*FrameBlock) isStat() {}
 
 type Func struct {
 	FuncName string
@@ -95,11 +106,8 @@ type Func struct {
 	Line     int
 }
 
-func (f *Func) GetLine() int {
-	return f.Line
-}
-
-func (f *Func) isDecl() {}
+func (f *Func) GetLine() int { return f.Line }
+func (f *Func) isDecl()      {}
 
 type Param struct {
 	Name string
@@ -119,7 +127,8 @@ type FieldAccessExpr struct {
 	Line   int
 }
 
-func (FieldAccessExpr) isExpr() {}
+func (f *FieldAccessExpr) GetLine() int { return f.Line }
+func (*FieldAccessExpr) isExpr()        {}
 
 type TypeNode interface {
 	isType()
@@ -134,8 +143,6 @@ type Decl interface {
 	Node
 	isDecl() // Marker method to ensure type safety
 }
-
-func (t *Type) getLine() int { return t.Line }
 
 // For Declar struct
 func (s *Declar) GetLine() int { return s.Line }

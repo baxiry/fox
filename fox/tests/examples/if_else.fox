@@ -1,0 +1,14 @@
+
+
+var score int
+
+fn main() {
+
+    score = 85
+
+    if score >= 50 {
+        printf("Pass\n")
+    } else {
+        printf("Fail\n")
+    }
+}

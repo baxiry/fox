@@ -186,53 +186,55 @@ func Lexer(input string) []Token {
 			continue
 		}
 
-		// Two-char operators
+		// Multi-char operators logic
+		r = rune(input[i])
 		if i+1 < len(input) {
-			two := input[i : i+2]
-			switch two {
+			next := input[i+1]
+			matched := true
 
-			case "//":
-				// ignore for now
-				/*
-					addToken()
-					tokens = append(tokens, Token{Type: COMMENT, Lexeme: "//", Line: line, Column: col})
-					i += 2
-					col++
-				*/
+			switch {
+			case r == '/' && next == '/':
+				// Handle comments: skip until end of line
 				for i < len(input) && input[i] != '\n' {
 					i++
 				}
 				continue
 
-			case ":=":
+			case r == '>' && next == '=':
+				addToken()
+				tokens = append(tokens, Token{Type: GTE, Lexeme: ">=", Line: line, Column: col})
+
+			case r == '<' && next == '=':
+				addToken()
+				tokens = append(tokens, Token{Type: LTE, Lexeme: "<=", Line: line, Column: col})
+
+			case r == ':' && next == '=':
 				addToken()
 				tokens = append(tokens, Token{Type: DEFINE, Lexeme: ":=", Line: line, Column: col})
-				i += 2
-				col++
-				continue
-			case "==":
+
+			case r == '=' && next == '=':
 				addToken()
 				tokens = append(tokens, Token{Type: EQ, Lexeme: "==", Line: line, Column: col})
-				i += 2
-				col++
-				continue
-			case "!=":
+
+			case r == '!' && next == '=':
 				addToken()
 				tokens = append(tokens, Token{Type: NEQ, Lexeme: "!=", Line: line, Column: col})
-				i += 2
-				col++
-				continue
-			case "&&":
+
+			case r == '&' && next == '&':
 				addToken()
 				tokens = append(tokens, Token{Type: AND, Lexeme: "&&", Line: line, Column: col})
-				i += 2
-				col++
-				continue
-			case "||":
+
+			case r == '|' && next == '|':
 				addToken()
 				tokens = append(tokens, Token{Type: OR, Lexeme: "||", Line: line, Column: col})
+
+			default:
+				matched = false
+			}
+
+			if matched {
 				i += 2
-				col++
+				col += 2
 				continue
 			}
 		}
@@ -399,6 +401,10 @@ func Lexer(input string) []Token {
 		Line:   line,
 		Column: col,
 	})
+
+	//	for k, v := range tokens {
+	//fmt.Print(k, ": ", v.Lexeme, ", ")
+	//	}
 	return tokens
 }
 

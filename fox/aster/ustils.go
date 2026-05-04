@@ -56,6 +56,7 @@ func (p *Parser) currentToken() Token {
 }
 
 func (p *Parser) expectType(expected TokenType) Token {
+
 	if p.pos >= len(p.tokens) {
 		lastLine := 0
 		if len(p.tokens) > 0 {
@@ -68,6 +69,7 @@ func (p *Parser) expectType(expected TokenType) Token {
 	tok := p.currentToken()
 
 	if tok.Type != expected {
+
 		p.Errors = append(p.Errors, fmt.Sprintf(
 			"syntax error at line %d: expected %s, got %s",
 			tok.Line, expected.String(), tok.Type.String(),

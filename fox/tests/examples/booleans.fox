@@ -1,0 +1,19 @@
+
+var isValid bool 
+
+fn main() {
+    // 1. Comparison with Arithmetic
+    // Expected: (5 + 5) == 10  => 1 (True)
+    isValid = (5 + 5) == 10
+    printf("(5 + 5) == 10 is %d\n", isValid)
+
+    // 2. Logical AND with Precedence
+    // Expected: (10 > 5) && (3 < 1) => 1 && 0 => 0 (False)
+    isValid = (10 > 5) && (3 < 1)
+    printf("(10 > 5) && (3 < 1) is %d\n", isValid)
+
+    // 3. Precedence: Comparison before Logical AND
+    // Expected: 10 > 5 && 3 < 1 => (10 > 5) && (3 < 1)
+    isValid = 10 > 5 && 3 < 1
+    printf("10 > 5 && 3 < 1 is %d\n", isValid)
+}

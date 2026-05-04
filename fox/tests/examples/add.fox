@@ -2,6 +2,12 @@
 var result int
 
 fn main() {
-    result = 10 + 5
-    printf("Result is: %d\n", result)
+    result = 2 * (3 + (5 - 1))
+    printf("2 * (3 + (5 - 1)) = %d\n", result)
+
+    result = 6 * (3 + (5 - 1))
+    printf("6 * (3 + (5 - 1)) = %d\n", result)
+
+    result = (20 / (3 + (5 - 1)))
+    printf("(20 / (3 + (5 - 1))) = %d\n", result)
 }

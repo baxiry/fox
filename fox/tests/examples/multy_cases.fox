@@ -1,0 +1,19 @@
+
+var result int
+
+fn main() {
+    // 1. Test Operator Precedence (Multiplication before Addition)
+    // Expected: 2 + (3 * 4) = 14
+    result = 2 + 3 * 4
+    printf("2 + 3 * 4 = %d\n", result)
+
+    // 2. Test Left Associativity (Subtraction)
+    // Expected: (10 - 5) - 2 = 3
+    result = 10 - 5 - 2
+    printf("10 - 5 - 2 = %d\n", result)
+
+    // 3. Complex Mix of Operators and Nesting
+    // Expected: 100 / (2 * (3 + 2)) = 10
+    result = 100 / (2 * (3 + 2))
+    printf("100 / (2 * (3 + 2)) = %d\n", result)
+}
