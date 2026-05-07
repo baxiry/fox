@@ -14,12 +14,25 @@ type ParseError struct {
 
 var strf = fmt.Sprintf
 
+// peekToken peek next token
+func (p *Parser) peekToken() Token {
+	if p.pos+1 >= len(p.tokens) {
+		return p.tokens[len(p.tokens)-1]
+	}
+	return p.tokens[p.pos+1]
+}
+
 // Utilities
+func (p *Parser) appendErrorf(format string, line int, args ...any) {
+	msg := fmt.Sprintf(format, args...)
+	finalMsg := fmt.Sprintf("line %d: %s", line, msg)
+	p.Errors = append(p.Errors, finalMsg)
+}
 
 func (p *Parser) expectIdent() Token {
 
 	if p.pos >= len(p.tokens) {
-		p.Errors = append(p.Errors, fmt.Sprintf(
+		p.Errors = append(p.Errors, strf(
 			"Line: %d unexpected end of input, expected identifier",
 			p.currentToken().Line,
 		))
@@ -56,8 +69,6 @@ func (p *Parser) currentToken() Token {
 }
 
 func (p *Parser) expectType(expected TokenType) Token {
-
-	fmt.Printf("[DEBUG] Expecting: %s, Found: %s\n", expected.String(), p.currentToken().Type)
 
 	if p.pos >= len(p.tokens) {
 		lastLine := 0

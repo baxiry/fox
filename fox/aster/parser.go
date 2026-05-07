@@ -110,11 +110,13 @@ func (p *Parser) parsePostfix() Expression {
 
 			if field.Type == ERROR {
 				p.synchronize() // Jump to the next safe statement
-				return nil
+
+				return &BadStmt{Line: p.currentToken().Line}
 			}
 			expr = &FieldAccessExpr{Object: expr, Field: field.Lexeme, Line: field.Line}
 
 		case OPN_BRACE:
+
 			// Follow Go's rule: Struct literals must start the brace on the same line.
 			// If the brace is on a new line, it belongs to a new block (if, for, etc.)
 			if p.inCondition {
@@ -129,22 +131,18 @@ func (p *Parser) parsePostfix() Expression {
 			if ident, ok := expr.(*IdentExpr); ok {
 				peekPos := p.pos + 1
 				isStructLiteral := true
-
 				if peekPos < len(p.tokens) {
 					peekTok := p.tokens[peekPos]
-
 					// If we see a keyword inside the brace immediately, it's likely a block, not a struct
 					if peekTok.Type == IF || peekTok.Type == FOR || peekTok.Type == RETURN ||
 						peekTok.Type == BREAK || peekTok.Type == CONTINUE {
 						isStructLiteral = false
 					}
-
 					// Empty braces 'A{}' are valid struct literals
 					if peekTok.Type == CLS_BRACE {
 						isStructLiteral = true
 					}
 				}
-
 				if isStructLiteral {
 					expr = p.parseStructLiteral(ident.Name)
 				} else {
@@ -155,7 +153,6 @@ func (p *Parser) parsePostfix() Expression {
 				// Expression is not an identifier, so '{' must be a block
 				return expr
 			}
-
 		default:
 			return expr
 		}
@@ -283,9 +280,8 @@ func (p *Parser) parsePrimary() Expression {
 		return expr
 
 	case EOF:
-
 		p.appendErrorf("unexpected end of input while parsing expression", tok.Line)
-		return nil
+		return &BadStmt{Line: p.currentToken().Line}
 
 	default:
 		//
@@ -295,14 +291,8 @@ func (p *Parser) parsePrimary() Expression {
 		p.appendErrorf("expected expression, but found %s (%q)",
 			tok.Line, tok.Type, tok.Lexeme)
 		p.synchronize()
-		return nil
+		return &BadStmt{Line: p.currentToken().Line}
 	}
-}
-
-func (p *Parser) appendErrorf(format string, line int, args ...any) {
-	msg := fmt.Sprintf(format, args...)
-	finalMsg := fmt.Sprintf("line %d: %s", line, msg)
-	p.Errors = append(p.Errors, finalMsg)
 }
 
 func (p *Parser) parseType() Type {
@@ -432,21 +422,6 @@ func (p *Parser) parseAdd() Expression {
 	return left
 }
 
-func (p *Parser) parseExprList() []Expression {
-	exprs := []Expression{}
-
-	// Parse the first expression
-	exprs = append(exprs, p.parseExpr())
-
-	// Keep parsing as long as there are commas
-	for p.pos < len(p.tokens) && p.tokens[p.pos].Type == COMMA {
-		p.pos++ // consume COMMA
-		exprs = append(exprs, p.parseExpr())
-	}
-
-	return exprs
-}
-
 // top-level expression
 func (p *Parser) parseExpr() Expression {
 
@@ -490,7 +465,7 @@ func (p *Parser) parseFunc() *Func {
 	p.expectType(CLS_PAREN)
 
 	// return signature
-	funcNode.Returns = p.parseRetSign()
+	funcNode.Return = p.parseRetSign()
 
 	funcNode.Body = p.parseBlock()
 
@@ -616,9 +591,7 @@ func (p *Parser) parseVarDecl() *VarDeclar {
 
 	// 2. Updated Check: Type can start with IDENT or OPN_BRACK
 	curr := p.currentToken().Type
-
-	if curr == IDENT || curr == OPN_BRACK {
-
+	if curr == IDENT || curr == OPN_BRACK || curr == STAR {
 		// Use your parseType logic here to keep it contained
 		tmp := p.parseType()
 		typeNode = &tmp
@@ -645,6 +618,14 @@ func (p *Parser) parseStructLiteral(typeName string) Expression {
 	// Loop until we find the closing brace or reach end of tokens
 	for p.pos < len(p.tokens) && p.tokens[p.pos].Type != CLS_BRACE {
 		// Check for named field: Key: value
+
+		value := p.parseExpr()
+		if value == nil {
+
+			p.appendErrorf("expected expression", p.currentToken().Line)
+			return &BadStmt{Line: p.currentToken().Line}
+		}
+		line := value.GetLine()
 		if p.pos+1 < len(p.tokens) && p.tokens[p.pos].Type == IDENT && p.tokens[p.pos+1].Type == COLON {
 			nameTok := p.expectIdent()
 			p.expectType(COLON)
@@ -652,16 +633,14 @@ func (p *Parser) parseStructLiteral(typeName string) Expression {
 			fields = append(fields, FieldInit{
 				Name:  nameTok.Lexeme,
 				Value: value,
-				Line:  value.GetLine(),
+				Line:  line,
 			})
 		} else {
 			// Handle positional value or expressions
 			value := p.parseExpr()
-			fields = append(fields, FieldInit{
-				Name:  "",
-				Value: value,
-				Line:  value.GetLine(),
-			})
+			fmt.Println("value is : ", value)
+			fields = append(fields, FieldInit{Name: "", Value: value,
+				Line: value.GetLine()})
 		}
 		// Consume optional comma after field
 		if p.pos < len(p.tokens) && p.tokens[p.pos].Type == COMMA {
@@ -724,4 +703,10 @@ func (p *Parser) Builder(data []byte) *AST {
 	return ast
 }
 
+// TODO: Implement explicit memory casting for system programming.
+// Goal: Support direct memory addressing safely (e.g., var reg *int = (*int)(0x40021000))
+// 1. Parser: Add support for Type Casting expressions (Type)(Expr).
+// 2. TypeChecker: Ensure casting to pointers is only allowed from integer types.
+// 3. TypeChecker: Enforce PtrDepth <= 1 during the cast to maintain Fox's shallow pointer rule.
+// 4. Codegen: Emit standard C-style casts for the generated code.
 // end

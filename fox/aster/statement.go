@@ -17,8 +17,8 @@ type ContinueNode struct {
 func (ContinueNode) isStmt() {}
 
 type ReturnStmt struct {
-	Results []Expression
-	Line    int
+	Result Expression
+	Line   int
 }
 
 type IfStmt struct {
@@ -38,17 +38,17 @@ type ForStmt struct {
 }
 
 type Assign struct {
-	Targets []Expression
-	Op      string
-	Values  []Expression
-	Line    int
+	Target Expression
+	Op     string
+	Value  Expression
+	Line   int
 }
 
 type Declar struct {
-	Names  []Expression
-	Op     string
-	Values []Expression
-	Line   int
+	Name  Expression
+	Op    string
+	Value Expression
+	Line  int
 }
 
 type ExprStmt struct {
@@ -66,10 +66,15 @@ type SpawnStmt struct {
 	Line int
 }
 
+// BadStmt
 type BadStmt struct {
 	Msg  string
 	Line int
 }
+
+func (s *BadStmt) GetLine() int { return s.Line }
+func (s *BadStmt) isStmt()      {}
+func (s *BadStmt) isExpr()      {}
 
 // For BreakNode
 func (s *BreakNode) GetLine() int { return s.Line }
@@ -77,10 +82,6 @@ func (s *BreakNode) isStmt()      {}
 
 // For VarDeclar
 func (s *VarDeclar) isStmt() {}
-
-// For BadStmt
-func (s *BadStmt) GetLine() int { return s.Line }
-func (s *BadStmt) isStmt()      {}
 
 // For SpawnStmt
 func (s *SpawnStmt) GetLine() int { return s.Line }
@@ -358,64 +359,72 @@ func isExprStart(tok Token) bool {
 }
 
 func (p *Parser) parseReturn() Statement {
-	line := p.tokens[p.pos].Line
+	line := p.currentToken().Line
 	p.expectType(RETURN)
 
-	if !isExprStart(p.tokens[p.pos]) {
+	// 1. If it's an empty return (void function)
+	if p.currentToken().Type == SEMICOLON ||
+		p.currentToken().Type == NEW_LINE ||
+		p.currentToken().Type == CLS_BRACE {
 		return &ReturnStmt{
-			Results: nil,
-		}
-	}
-	results := []Expression{}
-
-	if p.tokens[p.pos].Type != SEMICOLON && p.tokens[p.pos].Type != CLS_BRACE {
-		results = append(results, p.parseExpr())
-		for p.pos < len(p.tokens) && p.tokens[p.pos].Type == COMMA {
-			p.pos++
-			results = append(results, p.parseExpr())
+			Result: nil,
+			Line:   line,
 		}
 	}
 
-	return &ReturnStmt{Results: results, Line: line}
+	// 2. Parse exactly one expression
+	result := p.parseExpr()
+	if result == nil {
+		p.appendErrorf("expected expression after return", line)
+		return nil
+	}
+
+	// 3. Strict Check: If a comma follows, it's an error in Fox
+	if p.currentToken().Type == COMMA {
+		p.appendErrorf("multi-value return is not supported in Fox", p.currentToken().Line)
+		// Error recovery: skip until we find a statement end
+		p.synchronize()
+	}
+
+	return &ReturnStmt{
+		Result: result,
+		Line:   line,
+	}
 }
 
-func (p *Parser) parseRetSign() []ReturnSig {
-
-	var retSigns []ReturnSig
-
-	for p.pos < len(p.tokens) && p.tokens[p.pos].Type != OPN_BRACE {
-
-		// skip commas
-		if p.tokens[p.pos].Type == COMMA {
-			(p.pos)++
-			continue
-		}
-
-		if p.pos >= len(p.tokens) || p.tokens[p.pos].Type == OPN_BRACE {
-			break
-		}
-
-		var name string
-
-		// case: named return value  (name type)
-		if p.pos+1 < len(p.tokens) &&
-			p.tokens[p.pos].Type == IDENT &&
-			p.tokens[p.pos+1].Type == IDENT {
-
-			name = p.expectIdent().Lexeme
-		}
-
-		// parse type (this handles Obj, *Obj, etc)
-		typ := p.parseType()
-
-		retSigns = append(retSigns, ReturnSig{
-			Name: name,
-			Type: typ,
-			Line: p.tokens[p.pos].Line,
-		})
+func (p *Parser) parseRetSign() *ReturnSig {
+	// If it's a void function starting with {
+	if p.currentToken().Type == OPN_BRACE {
+		return nil
 	}
 
-	return retSigns
+	// Parse the first (and only) return type
+	line := p.currentToken().Line
+	typ := p.parseType()
+
+	// If the user tries to add another type with a comma
+	if p.currentToken().Type == COMMA {
+		p.appendErrorf("multi-value return types are not supported", p.currentToken().Line)
+		// Skip tokens until we find the start of the function body
+		for p.pos < len(p.tokens) && p.currentToken().Type != OPN_BRACE {
+			p.pos++
+		}
+	}
+
+	return &ReturnSig{
+		Type: typ,
+		Line: line,
+	}
+}
+
+// Helper function to check if the return is named (e.g., 'res int')
+func (p *Parser) isNamedReturn() bool {
+	// A named return must have an identifier followed by a type start (IDENT, STAR, or OPN_BRACK)
+	if p.currentToken().Type == IDENT {
+		next := p.peekToken()
+		return next.Type == IDENT || next.Type == STAR || next.Type == OPN_BRACK
+	}
+	return false
 }
 
 func (p *Parser) parseExprStatement() Statement {
@@ -431,56 +440,57 @@ func (p *Parser) parseExprStatement() Statement {
 }
 
 func (p *Parser) parseDefOrAssign() Statement {
-	// 1. Parse the left-hand side targets as a list (e.g., u, o)
-	firstTarget := p.parsePostfix()
-	targets := []Expression{firstTarget}
+	// 1. Parse exactly one target on the left-hand side
+	target := p.parsePostfix()
 
-	for p.currentToken().Type == COMMA {
-		p.pos++ // consume ','
-		targets = append(targets, p.parsePostfix())
+	// Strict Check: Ensure no multiple targets are attempted
+	if p.currentToken().Type == COMMA {
+		p.appendErrorf("multiple assignment is not supported in Fox", p.currentToken().Line)
+		p.synchronize()
+		return nil
 	}
 
 	// 2. Identify the operator (must be '=' or ':=')
 	opTok := p.currentToken()
 	if opTok.Type != ASSIGN && opTok.Type != DEFINE {
-		p.Errors = append(p.Errors, fmt.Sprintf(
-			"line %d: expected '=' or ':=' after identifier list, but found %q",
-			opTok.Line, opTok.Lexeme))
+		p.appendErrorf("expected '=' or ':=' after expression, but found %q", opTok.Line, opTok.Lexeme)
 		p.synchronize()
 		return nil
 	}
 	p.pos++ // consume the operator
 
-	// 3. Parse the right-hand side values as a list
-	values := []Expression{p.parseExpr()}
-	for p.currentToken().Type == COMMA {
-		p.pos++ // consume ','
-		values = append(values, p.parseExpr())
+	// 3. Parse exactly one expression on the right-hand side
+	value := p.parseExpr()
+	if value == nil {
+		p.appendErrorf("expected expression on the right side of %s", opTok.Line, opTok.Lexeme)
+		return nil
+	}
+
+	// Double Check: Ensure no multiple values follow
+	if p.currentToken().Type == COMMA {
+		p.appendErrorf("multiple values in assignment are not supported in Fox", p.currentToken().Line)
+		p.synchronize()
 	}
 
 	// 4. Return the appropriate node based on the operator type
 	if opTok.Type == DEFINE {
-		// Validate that all targets are valid for a short declaration (:=)
-		for _, target := range targets {
-			if !p.isValidDefineTarget(target) {
-				p.Errors = append(p.Errors, fmt.Sprintf(
-					"line %d: non-name %T on left side of :=", opTok.Line, target))
-			}
+		if !p.isValidDefineTarget(target) {
+			p.appendErrorf("non-name on left side of :=", opTok.Line)
 		}
 		return &Declar{
-			Names:  targets,
-			Op:     opTok.Lexeme,
-			Values: values,
-			Line:   opTok.Line,
+			Name:  target, // Now a single Expression/Ident
+			Op:    opTok.Lexeme,
+			Value: value, // Now a single Expression
+			Line:  opTok.Line,
 		}
 	}
 
 	// Default to an Assignment node (=)
 	return &Assign{
-		Targets: targets,
-		Op:      opTok.Lexeme,
-		Values:  values,
-		Line:    opTok.Line,
+		Target: target, // Now a single Expression
+		Op:     opTok.Lexeme,
+		Value:  value, // Now a single Expression
+		Line:   opTok.Line,
 	}
 }
 

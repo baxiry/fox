@@ -35,6 +35,7 @@ func (cg *Codegen) Generate() string {
 
 	// 1. Add Standard C Headers
 	cg.builder.WriteString("#include <stdio.h>\n")
+	cg.builder.WriteString("#include <stdbool.h>\n")
 	cg.builder.WriteString("#include <stdint.h>\n\n")
 
 	// 2. Generate Declarations and Bodies
@@ -56,20 +57,44 @@ func (cg *Codegen) genGlobalVar(decl *aster.VarDeclar) {
 }
 
 func (cg *Codegen) genFunction(f *aster.Func) {
-	// For simplicity, we assume int return for now
-	fmt.Fprintf(&cg.builder, "int %s() {\n", f.FuncName)
-	cg.indent++
+	// 1. Determine Return Type
+	retType := "void"
+	// Special case: C's main function MUST return int
+	if f.FuncName == "main" {
+		retType = "int"
+	} else if f.Return != nil {
+		retType = cg.mapType(&f.Return.Type)
+	}
 
+	// 2. Generate function signature
+	fmt.Fprintf(&cg.builder, "%s %s(", retType, f.FuncName)
+	for i, p := range f.Params {
+		pType := cg.mapType(&p.Type)
+		fmt.Fprintf(&cg.builder, "%s %s", pType, p.Name)
+		if i < len(f.Params)-1 {
+			cg.builder.WriteString(", ")
+		}
+	}
+	cg.builder.WriteString(") {\n")
+
+	cg.indent++
 	if f.Body != nil {
 		for _, stmt := range f.Body.Stmts {
-			cg.writeIndent()
 			cg.genStmt(stmt)
-			//cg.builder.WriteString(";/*ok2*/ \n")
 		}
 	}
 
-	cg.writeIndent()
-	cg.builder.WriteString("return 0;\n")
+	// 3. Smart return handling
+	// Only add "return 0" if it's the main function OR a void function
+	// (To prevent duplicate return in functions like 'add')
+	if f.FuncName == "main" {
+		cg.writeIndent()
+		cg.builder.WriteString("return 0;\n")
+	} else if f.Return == nil {
+		// Implicit return for void functions in C (optional but safe)
+		// cg.builder.WriteString("return;\n")
+	}
+
 	cg.indent--
 	cg.builder.WriteString("}\n\n")
 }
@@ -126,6 +151,11 @@ func (cg *Codegen) genCall(e *aster.CallExpr) {
 
 // mapType converts Fox types to C standard types
 func (cg *Codegen) mapType(foxType *aster.Type) string {
+	// Safety check to prevent Panic
+	if foxType == nil {
+		return "int32_t"
+	}
+
 	var cType string
 	switch foxType.Name {
 	case "int":
@@ -137,7 +167,7 @@ func (cg *Codegen) mapType(foxType *aster.Type) string {
 	default:
 		cType = foxType.Name
 	}
-	// add '*' depend of depth deref
+
 	for i := 0; i < foxType.PtrDepth; i++ {
 		cType += "*"
 	}
@@ -154,64 +184,96 @@ func (cg *Codegen) writeIndent() {
 func (cg *Codegen) genStmt(stmt aster.Statement) {
 	switch s := stmt.(type) {
 
+	case *aster.Declar:
+		// Now 's.Name' is a single IdentExpr and 's.Value' is a single Expression
+		if ident, ok := s.Name.(*aster.IdentExpr); ok && ident.Name != "_" {
+			cg.writeIndent()
+			// Assuming int32_t for now, or use mapType if type info is available
+			fmt.Fprintf(&cg.builder, "int32_t %s = ", ident.Name)
+			cg.genExpr(s.Value)
+			cg.builder.WriteString(";\n")
+		}
+
 	case *aster.VarDeclar:
-		cType := cg.mapType(s.Type) // Use the centralized type mapper
+		cg.writeIndent()
+
+		// Get C type from the decorated AST node
+		cType := cg.mapType(s.Type)
 
 		if s.Type != nil && s.Type.IsArray {
-			// Simple C array implementation
-			fmt.Fprintf(&cg.builder, "%s %s[100];\n", cType, s.Name)
-		} else {
 			fmt.Fprintf(&cg.builder, "%s %s;\n", cType, s.Name)
+		} else {
+			if s.Value != nil {
+				// Handle initialization: int32_t x = add(4, 3);
+				fmt.Fprintf(&cg.builder, "%s %s = ", cType, s.Name)
+				cg.genExpr(s.Value)
+				cg.builder.WriteString(";\n")
+			} else {
+				// Default declaration
+				fmt.Fprintf(&cg.builder, "%s %s;\n", cType, s.Name)
+			}
 		}
 
 	case *aster.Assign:
-		if len(s.Targets) > 0 && len(s.Values) > 0 {
-			cg.genExpr(s.Targets[0])
-
+		// Handling single target and single value
+		if ident, ok := s.Target.(*aster.IdentExpr); ok && ident.Name == "_" {
+			// If it's a call, just execute it: swap(x, y);
+			cg.genExpr(s.Value)
+			cg.builder.WriteString(";\n")
+		} else {
+			cg.writeIndent()
+			cg.genExpr(s.Target)
 			cg.builder.WriteString(" = ")
-
-			cg.genExpr(s.Values[0])
+			cg.genExpr(s.Value)
 			cg.builder.WriteString(";\n")
 		}
 
 	case *aster.ExprStmt:
+		cg.writeIndent()
 		cg.genExpr(s.Expr)
-		// Ensure no extra newline was added inside genExpr
 		cg.builder.WriteString(";\n")
 
 	case *aster.IfStmt:
-		cg.builder.WriteString("if ")
+		cg.writeIndent()
+		cg.builder.WriteString("if (")
 		cg.genExpr(s.Cond)
-		cg.genBlock(s.Then) // Block ends with its own newline
+		cg.builder.WriteString(")")
+
+		// Generate the 'then' block
+		cg.genBlock(s.Then) // Assuming genBlock handles '{' and '}' with indentation
 
 		if s.Else != nil {
-			// Remove any potential newline before 'else'
-			cg.builder.WriteString(" else ")
+			// Fix: Remove the newline before else or ensure it aligns with 'if'
+			cg.writeIndent()
+			cg.builder.WriteString("else")
+
 			if elseBlock, ok := s.Else.(*aster.FrameBlock); ok {
 				cg.genBlock(elseBlock)
 			}
 		}
-		//cg.builder.WriteString("/* ok */\n")
+
+	case *aster.ReturnStmt:
+		cg.writeIndent()
+		cg.builder.WriteString("return ")
+		if s.Result != nil {
+			cg.genExpr(s.Result)
+		} else {
+			cg.builder.WriteString("0")
+		}
+		cg.builder.WriteString(";\n")
 
 	case *aster.ForStmt:
+		cg.writeIndent()
 		cg.builder.WriteString("for (")
 
-		// 1. Initializer
+		// 1. Initializer (Simplified for single assignment)
 		if s.Init != nil {
 			if assign, ok := s.Init.(*aster.Assign); ok {
-				// Guard clause: if something is wrong, we skip this part
-				if len(assign.Targets) == 0 || len(assign.Values) == 0 {
-					goto skipInit
-				}
-
-				target, okT := assign.Targets[0].(*aster.IdentExpr)
-				if okT {
-					cg.builder.WriteString(target.Name + " = ")
-					cg.genExpr(assign.Values[0])
-				}
+				cg.genExpr(assign.Target)
+				cg.builder.WriteString(" = ")
+				cg.genExpr(assign.Value)
 			}
 		}
-	skipInit:
 		cg.builder.WriteString("; ")
 
 		// 2. Condition
@@ -223,24 +285,13 @@ func (cg *Codegen) genStmt(stmt aster.Statement) {
 		// 3. Post-iteration
 		if s.Post != nil {
 			if assign, ok := s.Post.(*aster.Assign); ok {
-				if len(assign.Targets) == 0 || len(assign.Values) == 0 {
-					goto skipPost
-				}
-
-				target, okT := assign.Targets[0].(*aster.IdentExpr)
-				if okT {
-					cg.builder.WriteString(target.Name + " = ")
-					cg.genExpr(assign.Values[0])
-				}
+				cg.genExpr(assign.Target)
+				cg.builder.WriteString(" = ")
+				cg.genExpr(assign.Value)
 			}
 		}
-	skipPost:
 		cg.builder.WriteString(") ")
-
-		// 4. Loop Body
 		cg.genBlock(s.Body)
-		cg.builder.WriteString("\n")
-
 	}
 }
 

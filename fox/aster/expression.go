@@ -43,9 +43,8 @@ type IntExpr struct {
 	Line    int
 }
 
+func (*IntExpr) isExpr()        {}
 func (n *IntExpr) GetLine() int { return n.Line }
-
-func (*IntExpr) isExpr() {}
 
 type FloatExpr struct {
 	Literal string
@@ -141,47 +140,53 @@ func (p *Parser) parseCall(name string) *CallExpr {
 }
 
 func (p *Parser) parseExprOrAssign() Statement {
-	// 1. Parse the left-hand side as a list (e.g., u, o or x.y)
-	exprs := p.parseExprList()
+	// 1. Parse exactly one expression for the left-hand side
+	expr := p.parseExpr()
+	if expr == nil {
+		return nil
+	}
 
-	// 2. Check for assignment or definition operators using currentToken()
+	// 2. Check for assignment or definition operators
 	tok := p.currentToken()
 	if tok.Type == DEFINE || tok.Type == ASSIGN {
 		p.pos++ // consume := or =
 
-		// 3. Parse the RHS as a list
-		values := p.parseExprList()
+		// 3. Parse exactly one expression for the RHS
+		value := p.parseExpr()
+		if value == nil {
+			p.appendErrorf("expected expression after %s", tok.Line, tok.Lexeme)
+			return nil
+		}
 
 		// 4. Handle Short Declaration (:=)
 		if tok.Type == DEFINE {
-			for _, target := range exprs {
-				if !p.isValidDefineTarget(target) {
-					p.appendErrorf("non-name on left side of := Line:%d", tok.Line)
-				}
+			// Validate that the target is a valid name (IdentExpr)
+			if !p.isValidDefineTarget(expr) {
+				p.appendErrorf("non-name on left side of := Line:%d", tok.Line, tok.Line)
 			}
-			return &Declar{ // Return as pointer
-				Names:  exprs,
-				Op:     tok.Lexeme,
-				Values: values,
-				Line:   tok.Line,
+
+			return &Declar{
+				Name:  expr, // Now a single expression
+				Op:    tok.Lexeme,
+				Value: value, // Now a single expression
+				Line:  tok.Line,
 			}
 		}
 
 		// 5. Handle Normal Assignment (=)
-		return &Assign{ // Return as pointer
-			Targets: exprs,
-			Op:      tok.Lexeme,
-			Values:  values,
-			Line:    tok.Line,
+		return &Assign{
+			Target: expr, // Now a single expression
+			Op:     tok.Lexeme,
+			Value:  value, // Now a single expression
+			Line:   tok.Line,
 		}
 	}
 
-	// 6. If no operator, it's just an Expression Statement (like a function call)
-	// Make sure we have at least one expression
-	if len(exprs) == 0 {
-		return nil
+	// 6. If no operator, it's an Expression Statement (e.g., function call)
+	return &ExprStmt{
+		Expr: expr,
+		Line: tok.Line,
 	}
-	return &ExprStmt{Expr: exprs[0], Line: tok.Line}
 }
 
 func lookAheadIsAssign(tokens []Token, pos int) bool {

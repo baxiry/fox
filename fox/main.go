@@ -12,7 +12,6 @@ import (
 )
 
 func main() {
-	// 1. Basic validation for command line arguments
 	if len(os.Args) < 2 {
 		fmt.Println("Usage: fox <file.fox>")
 		return
@@ -25,19 +24,13 @@ func main() {
 		os.Exit(1)
 	}
 
-	fmt.Println("Fox sorce code:\n", string(content))
+	fmt.Println("fFox source code:\n", string(content))
 
-	// 2. Parsing phase
+	// 1. Parsing phase
 	parser := aster.NewParser()
 	ast := parser.Builder(content)
 
-	// Debugging: Print AST if needed
-
-	fmt.Println("\nAST Structure:")
-	pretty.Println(ast)
-	fmt.Println()
-
-	// Check for Syntax Errors immediately after parsing
+	// Check for Syntax Errors immediately
 	if len(parser.Errors) > 0 {
 		fmt.Printf("Found %d syntax errors:\n", len(parser.Errors))
 		for _, err := range parser.Errors {
@@ -46,9 +39,14 @@ func main() {
 		os.Exit(1)
 	}
 
-	// 3. Type Checking phase
+	// 2. Type Checking phase (CRITICAL: Must happen before Codegen)
 	tc := tchecker.NewTypeChecker()
 	tc.Check(ast)
+
+	// 3. Debugging: Print AST AFTER Type Checking to see the inferred types
+	fmt.Println("\nAST Structure (Decorated):")
+	pretty.Println(ast)
+	fmt.Println()
 
 	// Check for Type Errors
 	if len(tc.Errors) > 0 {
@@ -60,7 +58,7 @@ func main() {
 	}
 
 	// 4. Prepare the Project structure for Codegen
-	// We wrap the current file into a Package and then into a Project
+	// Now ast.Decls contains the inferred types (decl.Type = finalType)
 	project := &aster.Project{
 		Packages: []*aster.Package{
 			{
@@ -83,8 +81,7 @@ func main() {
 	fmt.Println(cCode)
 	fmt.Println()
 
-	// 6. Execution phase (using TCC)
-
+	// 6. Execution phase
 	fmt.Println(" Fox Program Running ")
 	runErr := runner.Run(cCode)
 	if runErr != nil {

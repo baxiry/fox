@@ -17,23 +17,23 @@ type TypeChecker struct {
 	GlobalTable     *SymbolTable
 	CurrentTable    *SymbolTable
 	CurrentFunction *Symbol
-	CurrentRetTypes []*aster.Type
+	CurrentRetTypes *aster.ReturnSig
 	CurrentLine     int
 	Errors          []string
 }
 
 // Sympol
 type Symbol struct {
-	Name        string
-	Type        aster.Type
-	ScopeID     string
-	Kind        string            // "var", "func", "struct"
-	Params      []aster.Param     // For functions
-	ReturnTypes []aster.ReturnSig // Changed: Slice of types for multiple returns
-	Fields      []aster.Field     // For structs
-	IsShared    bool
-	IsBuiltIn   bool
-	IsVariadic  bool
+	Name       string
+	Type       aster.Type
+	ScopeID    string
+	Kind       string           // "var", "func", "struct"
+	Params     []aster.Param    // For functions
+	ReturnType *aster.ReturnSig // Changed: Slice of types for multiple returns
+	Fields     []aster.Field    // For structs
+	IsShared   bool
+	IsBuiltIn  bool
+	IsVariadic bool
 }
 
 // SymbolTable
@@ -74,8 +74,8 @@ func (tc *TypeChecker) injectBuiltIns() {
 		IsBuiltIn:  true,
 		IsVariadic: true,
 
-		ReturnTypes: []aster.ReturnSig{
-			{Type: aster.Type{Name: "void"}},
+		ReturnType: &aster.ReturnSig{
+			Type: aster.Type{Name: "void"},
 		},
 	})
 }
@@ -90,12 +90,10 @@ func (tc *TypeChecker) injectBuiltIns_old() {
 			IsVariadic: (name == "printf" || name == "println"),
 
 			// Assuming Type{Name: ...} matches Type struct
-			ReturnTypes: []aster.ReturnSig{
-				{
-					Name: "", // Built-ins usually don't have named returns
-					Type: retTypeName,
-					Line: 0, // Standard for injected symbols
-				},
+			ReturnType: &aster.ReturnSig{
+				Name: "", // Built-ins usually don't have named returns
+				Type: retTypeName,
+				Line: 0, // Standard for injected symbols
 			},
 		}
 
@@ -126,7 +124,7 @@ func (tc *TypeChecker) inferType(expr aster.Expression) *aster.Type {
 	case *aster.IdentExpr:
 		sym, exists := tc.CurrentTable.Resolve(e.Name)
 		if !exists {
-			tc.appendErrorf("undefined variable: %s", e.Line, e.Name)
+			tc.appendErrorf("undefined variable: %v", e.GetLine(), e.Name)
 			return &aster.Type{Name: aster.INVALID.String(), IsArray: false}
 		}
 		// Return a pointer to the stored type directly
@@ -142,20 +140,30 @@ func (tc *TypeChecker) inferType(expr aster.Expression) *aster.Type {
 		return &aster.Type{Name: targetType.Name, IsArray: false}
 
 	case *aster.CallExpr:
-		types := tc.inferReturnTypes(e)
-		if len(types) == 0 {
-			return &aster.Type{Name: "void", IsArray: false}
+		// 1. Identify the function name
+		callee, ok := e.Callee.(*aster.IdentExpr)
+		if !ok {
+			return &aster.Type{Name: aster.INVALID.String()}
 		}
-		if len(types) > 1 {
-			tc.appendErrorf("multiple-value call in single-value context", e.Line)
-			return &aster.Type{Name: aster.INVALID.String(), IsArray: false}
+
+		// 2. Look up the function in the Global Table
+		sym, exists := tc.GlobalTable.Resolve(callee.Name)
+		if !exists {
+			// Error already reported during standard check
+			return &aster.Type{Name: aster.INVALID.String()}
 		}
-		// Assuming types[0] is still a string for now, wrap it
-		return &aster.Type{Name: types[0].Name, IsArray: false}
+
+		// 3. Return the function's return type accurately
+		// We create a new Type object and copy the fields from the symbol's type
+		return &aster.Type{
+			Name:     sym.Type.Name,
+			PtrDepth: sym.Type.PtrDepth,
+			IsArray:  sym.Type.IsArray,
+		}
 
 	case *aster.StructLiteral:
 		// Now this returns *aster.Type correctly
-		return tc.checkStructLiteral(*e)
+		return tc.checkStructLiteral(e)
 
 	case *aster.FieldAccessExpr:
 		// You should update checkFieldAccess to also return *aster.Type
@@ -187,9 +195,6 @@ func (tc *TypeChecker) inferType(expr aster.Expression) *aster.Type {
 
 		tc.appendErrorf("type mismatch: %s and %s", e.Line, leftType.Name, rightType.Name)
 		return &aster.Type{Name: aster.INVALID.String(), IsArray: false}
-
-	case *aster.UnaryExpr:
-		return tc.checkUnaryExpr(e)
 
 	default:
 		return nil
@@ -254,7 +259,8 @@ func (tc *TypeChecker) appendErrorf(format string, line int, args ...any) {
 	tc.Errors = append(tc.Errors, fmt.Sprintf("line %d: %s", line, msg))
 }
 
-func (tc *TypeChecker) inferReturnTypes(expr aster.Expression) []*aster.Type {
+/*
+func (tc *TypeChecker) inferReturnTypes(expr aster.Expression) *aster.Type {
 	// 1. If it's a function call, we look up its return types in the symbol table
 	if call, ok := expr.(*aster.CallExpr); ok {
 		// Run checkCallExpr to validate arguments and report errors
@@ -265,44 +271,45 @@ func (tc *TypeChecker) inferReturnTypes(expr aster.Expression) []*aster.Type {
 			sym, exists := tc.CurrentTable.Resolve(callee.Name)
 			if !exists {
 				// Return a pointer to an INVALID type if function not found
-				return []*aster.Type{{Name: aster.INVALID.String(), IsArray: false}}
+				return &aster.Type{Name: aster.INVALID.String(), IsArray: false}
 			}
 
 			// If the function has no return types defined
-			if len(sym.ReturnTypes) == 0 {
-				return []*aster.Type{{Name: "void", IsArray: false}}
-			}
+			//if len(sym.ReturnTypes) == 0 {
+			//	return []*aster.Type{{Name: "void", IsArray: false}}
+			//}
 
 			// Precision: Extract pointers to the types from ReturnTypes
-			var result []*aster.Type
-			for i := range sym.ReturnTypes {
-				// We take the address of the type stored in the symbol table
-				// to maintain consistency across the checker
-				result = append(result, &sym.ReturnTypes[i].Type)
-			}
-			return result
+			//var result []*aster.Type
+			//for i := range sym.ReturnTypes {
+			// We take the address of the type stored in the symbol table
+			// to maintain consistency across the checker
+			//result = append(result, &sym.ReturnTypes[i].Type)
+			//}
+			return &sym.ReturnType.Type
 		}
 	}
 
 	// 2. For non-call expressions (e.g., variables, literals),
 	// we infer the single type and return it as a slice of one pointer.
-	singleType := tc.inferType(expr)
+	singleType := tc.inferType(&expr)
 	if singleType == nil {
-		return []*aster.Type{{Name: "unknown", IsArray: false}}
+		return &aster.Type{Name: "unknown", IsArray: false}
 	}
 
-	return []*aster.Type{singleType}
+	return singleType
 }
+*/
 
 func (tc *TypeChecker) registerFunctions(ast *aster.AST) {
 	for _, decl := range ast.Decls {
 		if f, ok := decl.(*aster.Func); ok {
 
 			sym := &Symbol{
-				Name:        f.FuncName,
-				Kind:        "func",
-				ReturnTypes: f.Returns,
-				Params:      f.Params,
+				Name:       f.FuncName,
+				Kind:       "func",
+				ReturnType: f.Return,
+				Params:     f.Params,
 			}
 
 			tc.GlobalTable.Define(f.FuncName, sym)
@@ -313,36 +320,32 @@ func (tc *TypeChecker) registerFunctions(ast *aster.AST) {
 func (tc *TypeChecker) checkVarDeclar(decl *aster.VarDeclar) {
 	var finalType *aster.Type
 
-	// 1. If type is explicit (var i int = 10)
+	// 1. If type is explicit
 	if decl.Type != nil {
 		finalType = decl.Type
 		if decl.Value != nil {
-			valueType := tc.inferType(decl.Value)
-			// Safety: Skip check if inferred type is nil or INVALID
+			valueType := tc.inferType(decl.Value) // إزالة & تمت بنجاح
 			if valueType != nil && valueType.Name != aster.INVALID.String() {
-				// Added PtrDepth comparison for the new pointer rules
-				if finalType.Name != valueType.Name ||
-					finalType.IsArray != valueType.IsArray ||
-					finalType.PtrDepth != valueType.PtrDepth {
+				if finalType.Name != valueType.Name || finalType.IsArray != valueType.IsArray {
 					tc.appendErrorf("cannot use %s as %s in assignment", decl.Line, valueType.Name, finalType.Name)
 				}
 			}
 		}
+
 	} else {
 		// 2. Type inference (var i = 10)
 		if decl.Value == nil {
-			tc.appendErrorf("variable %s: missing expression for type inference", decl.Line, decl.Name)
+			tc.appendErrorf("variable %s: missing type or expression", decl.Line, decl.Name)
 			return
 		}
-
 		finalType = tc.inferType(decl.Value)
-
-		if finalType == nil || finalType.Name == aster.INVALID.String() {
-			return
-		}
 	}
 
-	// 3. Register the symbol in the current table
+	if decl.Type == nil {
+		decl.Type = finalType
+	}
+
+	// 3. Register the symbol
 	sym := &Symbol{
 		Name:    decl.Name,
 		Type:    *finalType,
@@ -393,12 +396,22 @@ func (tc *TypeChecker) checkFieldAccess(expr aster.FieldAccessExpr) *aster.Type 
 }
 
 func (tc *TypeChecker) checkFuncDecl(fn *aster.Func) {
-	tc.CurrentRetTypes = []*aster.Type{}
-	for _, ret := range fn.Returns {
-		tc.CurrentRetTypes = append(tc.CurrentRetTypes, &ret.Type)
+	sym, exists := tc.GlobalTable.Resolve(fn.FuncName)
+	if !exists {
+		tc.appendErrorf("undefined function: %s", fn.Line, fn.FuncName)
+		return
 	}
 
-	sym, _ := tc.GlobalTable.Resolve(fn.FuncName)
+	// Fix: Directly assign the ReturnSig pointer instead of just the Type pointer
+	if fn.Return != nil {
+		sym.Type = fn.Return.Type
+		// CurrentRetTypes should match the field type in your TypeChecker struct
+		tc.CurrentRetTypes = fn.Return
+		fmt.Printf("[DEBUG 1] Function Defined: %s, ReturnType: %s\n", fn.FuncName, sym.Type.Name)
+	} else {
+		tc.CurrentRetTypes = nil
+	}
+
 	tc.CurrentFunction = sym
 
 	childScopeID := tc.CurrentTable.generateChildID()
@@ -411,19 +424,15 @@ func (tc *TypeChecker) checkFuncDecl(fn *aster.Func) {
 	previousTable := tc.CurrentTable
 	tc.CurrentTable = childTable
 
-	// 3. Define parameters in the new scope
 	for _, param := range fn.Params {
-		// --- Start of added logic for type validation ---
 		typeName := param.Type.Name
-		isBuiltin := typeName == "int" || typeName == "string" || typeName == "bool"
+		isBuiltin := typeName == "int" || typeName == "string" || typeName == "bool" || typeName == "void"
 
-		// Validate if the type exists (for custom types like X, Y, Z)
 		if !isBuiltin {
 			if _, exists := tc.GlobalTable.Resolve(typeName); !exists {
 				tc.appendErrorf("undefined type: %s", param.Type.Line, typeName)
 			}
 		}
-		// --- End of added logic ---
 
 		paramSym := &Symbol{
 			Name:    param.Name,
@@ -431,10 +440,8 @@ func (tc *TypeChecker) checkFuncDecl(fn *aster.Func) {
 			ScopeID: childScopeID,
 		}
 
-		// FIXED: Use param.Name as the key, not param.Type.Name
-		err := tc.CurrentTable.Define(param.Name, paramSym)
-		if err != nil {
-			tc.Errors = append(tc.Errors, err.Error())
+		if err := tc.CurrentTable.Define(param.Name, paramSym); err != nil {
+			tc.appendErrorf(err.Error(), param.Type.Line)
 		}
 	}
 
@@ -452,35 +459,29 @@ func (tc *TypeChecker) checkReturnStmt(stmt *aster.ReturnStmt) {
 		return
 	}
 
-	expected := tc.CurrentFunction.ReturnTypes
-	actualExprs := stmt.Results
+	expected := tc.CurrentFunction.ReturnType
+	actualExpr := stmt.Result
 
 	// 1. checke number of values
-	if len(expected) != len(actualExprs) {
-		tc.Errors = append(tc.Errors, fmt.Sprintf(
-			"line %d: function %s expects %d return values, got %d",
-			stmt.Line, tc.CurrentFunction.Name, len(expected), len(actualExprs),
-		))
-		return
-	}
 
 	// 2. checking match types
-	for i, expr := range actualExprs {
-		expectedTypeName := expected[i].Type.Name
-		actualTypeName := tc.inferType(expr)
+	//for i, expr := range actualExprs {
+	expectedTypeName := expected.Type.Name
+	actualTypeName := tc.inferType(actualExpr)
 
-		if actualTypeName.Name == "" || actualTypeName.Name == aster.INVALID.String() {
-			continue
-		}
-
-		if expectedTypeName != actualTypeName.Name {
-			fmt.Println("actual type : ", actualTypeName)
-			tc.appendErrorf(
-				"cannot use %s as type %s in return argument",
-				stmt.Line, actualTypeName, expectedTypeName,
-			)
-		}
+	if actualTypeName.Name == "" || actualTypeName.Name == aster.INVALID.String() {
+		fmt.Println(actualTypeName.Name, "is void or invalid")
+		//continue
 	}
+
+	if expectedTypeName != actualTypeName.Name {
+		fmt.Println("actual type : ", actualTypeName)
+		tc.appendErrorf(
+			"cannot use %s as type %s in return argument",
+			stmt.Line, actualTypeName, expectedTypeName,
+		)
+	}
+	//}
 }
 
 func (st *SymbolTable) generateChildID() string {
@@ -506,132 +507,70 @@ func (tc *TypeChecker) checkBlock(block *aster.FrameBlock) {
 }
 
 func (tc *TypeChecker) checkDeclar(decl *aster.Declar) {
-	// 1. Basic syntax check
-	if len(decl.Values) == 0 {
-		tc.appendErrorf("syntax error: := must have values on the right", decl.Line)
+	// 1. Safety check for missing value
+	if decl.Value == nil {
+		tc.appendErrorf("syntax error: := must have a value on the right", decl.Line)
 		return
 	}
 
-	// 2. Collect and unpack all types
-	var rightSideTypes []*aster.Type
-	for _, valExpr := range decl.Values {
-		rightSideTypes = append(rightSideTypes, tc.inferReturnTypes(valExpr)...)
+	// 2. Infer the type of the single value on the right
+	inferredType := tc.inferType(decl.Value)
+	if inferredType == nil || inferredType.Name == aster.INVALID.String() {
+		// Error already reported by inferType
+		return
 	}
 
-	numNames := len(decl.Names)
-	numValues := len(rightSideTypes)
-
-	// 3. APPLY FOX FLEXIBILITY RULE:
-	// If values > names, we only care if the ignored values contain an 'error'
-	if numValues > numNames {
-		// Rule: Check the ignored part for 'error' type
-		for i := numNames; i < numValues; i++ {
-			if rightSideTypes[i].Name == "error" {
-				tc.appendErrorf("must handle or explicitly ignore 'error' at return position %d", decl.Line, i+1)
-			}
-		}
-		// Slice the right side to match the names
-		rightSideTypes = rightSideTypes[:numNames]
-	} else if numValues < numNames {
-		// Rule: Under-assignment is still a hard error (The Left is essential)
-
-		tc.appendErrorf("assignment mismatch: %d names on the left but only %d values provided",
-			decl.Line, numNames, numValues)
-
-		// We still proceed by padding with INVALID to silence further errors
-		for len(rightSideTypes) < numNames {
-			rightSideTypes = append(rightSideTypes, &aster.Type{Name: aster.INVALID.String()})
-		}
+	// 3. Handle the single name on the left
+	ident, ok := decl.Name.(*aster.IdentExpr)
+	if !ok {
+		tc.appendErrorf("non-name on the left side of :=", decl.Line)
+		return
 	}
 
-	// 4. Register each name with its type (Safe now because lengths match)
-	for i, nameExpr := range decl.Names {
-		ident, ok := nameExpr.(*aster.IdentExpr)
-		if !ok {
-			continue
-		}
+	varName := ident.Name
+	// Skip registration if it's the blank identifier "_"
+	if varName == "_" {
+		return
+	}
 
-		varName := ident.Name
-		if varName == "_" {
-			continue
-		}
+	// 4. Ensure we don't declare a variable with 'void' or 'invalid'
+	if inferredType.Name == "void" {
+		tc.appendErrorf("cannot assign void value to variable %s", decl.Line, varName)
+		return
+	}
 
-		inferredType := rightSideTypes[i]
+	// 5. Register the symbol in the current table
+	sym := &Symbol{
+		Name:    varName,
+		Type:    *inferredType,
+		ScopeID: tc.CurrentTable.ScopeID,
+	}
 
-		if inferredType.Name == "" || inferredType.Name == "unknown" {
-			inferredType.Name = aster.INVALID.String()
-		}
-
-		if inferredType.Name == "error" {
-			continue
-		}
-
-		sym := &Symbol{
-			Name:    varName,
-			Type:    *inferredType,
-			ScopeID: tc.CurrentTable.ScopeID,
-		}
-
-		if err := tc.CurrentTable.Define(varName, sym); err != nil {
-			tc.appendErrorf(err.Error(), ident.Line)
-		}
+	if err := tc.CurrentTable.Define(varName, sym); err != nil {
+		// Handle redeclaration error
+		tc.appendErrorf("variable `%s` redeclared in this block", ident.Line, varName)
 	}
 }
 
-func (tc *TypeChecker) checkAssign(asgn *aster.Assign) {
+func (tc *TypeChecker) checkAssign(stmt *aster.Assign) {
+	lhsType := tc.inferType(stmt.Target)
+	rhsType := tc.inferType(stmt.Value)
 
-	// 1. Ensure the right side is not empty
-	if len(asgn.Values) == 0 {
-
-		tc.Errors = append(tc.Errors, "syntax error: assignment must have values on the right")
+	if lhsType == nil || rhsType == nil {
 		return
 	}
 
-	// 2. Collect and flatten all types from the right-hand side
-	var rightSideTypes []*aster.Type
-	for _, valExpr := range asgn.Values {
-		// This handles both single values and multiple returns from functions
-		rightSideTypes = append(rightSideTypes, tc.inferReturnTypes(valExpr)...)
-	}
-
-	// 3. Structural check: Count of variables on the left must match types on the right
-	if len(asgn.Targets) != len(rightSideTypes) {
-
-		msg := fmt.Sprintf("line %d: assignment mismatch: %d variables but %d values provided",
-			asgn.Line, len(asgn.Targets), len(rightSideTypes))
-		tc.Errors = append(tc.Errors, msg)
+	// Skip check for blank identifier "_"
+	if ident, ok := stmt.Target.(*aster.IdentExpr); ok && ident.Name == "_" {
 		return
 	}
 
-	// 4. Validate each variable and its type consistency
-
-	// Replace step 4, 6, and 7 with this robust logic:
-	for i := 0; i < len(asgn.Targets); i++ {
-		lhsType := tc.inferType(asgn.Targets[i])
-		rhsType := tc.inferType(asgn.Values[i])
-
-		// 1. Nil Safety
-		if lhsType == nil || rhsType == nil {
-			continue
-		}
-
-		// 2.  INVALID
-		if lhsType.Name == aster.INVALID.String() || rhsType.Name == aster.INVALID.String() {
-			continue
-		}
-
-		// 3.
-		if lhsType.Name != rhsType.Name ||
-			lhsType.PtrDepth != rhsType.PtrDepth ||
-			lhsType.IsArray != rhsType.IsArray {
-
-			tc.appendErrorf("cannot assign %s to %s", asgn.Line, rhsType.Name, lhsType.Name)
-		}
+	if !lhsType.IsSameAs(rhsType) {
+		tc.appendErrorf("cannot assign %s to %s", stmt.Line, rhsType.Name, lhsType.Name)
 	}
-
 }
 
-func (tc *TypeChecker) checkStructLiteral(lit aster.StructLiteral) *aster.Type {
+func (tc *TypeChecker) checkStructLiteral(lit *aster.StructLiteral) *aster.Type {
 	// 1. Lookup the Struct definition in the Global Table
 	structName := lit.Type.Name
 	structSym, exists := tc.GlobalTable.Resolve(structName)
@@ -711,7 +650,7 @@ func (tc *TypeChecker) checkGlobalVarsAndStructs(ast *aster.AST) {
 				Kind: "struct",
 			}
 			for _, f := range d.Fields {
-				if f.Name != "" { // تأكد من وجود اسم للحقل
+				if f.Name != "" {
 					sym.Fields = append(sym.Fields, aster.Field{
 						Name: f.Name,
 						Type: f.Type,
@@ -829,19 +768,8 @@ func (tc *TypeChecker) checkCallExpr(call *aster.CallExpr) string {
 		}
 	}
 
-	// 6. Handle the new ReturnTypes slice
-	if len(sym.ReturnTypes) == 0 {
-		return "void"
-	}
-
-	if len(sym.ReturnTypes) > 1 {
-		// In a single-value context, returning multiple values is an error
-		// This string will be caught by the caller (like in assignments or binary exprs)
-		return "multi_value_error"
-	}
-
 	// Return the single available type name
-	return sym.ReturnTypes[0].Name
+	return sym.ReturnType.Name
 }
 
 func (tc *TypeChecker) checkForStmt(stmt *aster.ForStmt) {
@@ -1033,11 +961,11 @@ func (tc *TypeChecker) checkUnaryExpr(expr *aster.UnaryExpr) *aster.Type {
 }
 
 func (tc *TypeChecker) checkMultiAssignment(left []aster.Expression, right []aster.Expression, isDefine bool, line int) {
-	var expandedRightTypes []*aster.Type
 
+	var expandedRightTypes []*aster.Type
 	for _, expr := range right {
-		retTypes := tc.inferReturnTypes(expr)
-		expandedRightTypes = append(expandedRightTypes, retTypes...)
+		retType := tc.inferType(expr)                            // inferReturnTypes(expr)
+		expandedRightTypes = append(expandedRightTypes, retType) //retTypes...)
 	}
 
 	if len(left) != len(expandedRightTypes) {

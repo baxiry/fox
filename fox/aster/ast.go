@@ -101,7 +101,7 @@ func (*FrameBlock) isStat() {}
 type Func struct {
 	FuncName string
 	Params   []Param
-	Returns  []ReturnSig
+	Return   *ReturnSig
 	Body     *FrameBlock // BlockStmt
 	Line     int
 }
@@ -155,3 +155,12 @@ func (s *Assign) isStmt()      {}
 // For ExprStmt struct
 func (s *ExprStmt) GetLine() int { return s.Line }
 func (s *ExprStmt) isStmt()      {}
+
+func (t *Type) IsSameAs(other *Type) bool {
+	if t == nil || other == nil {
+		return false
+	}
+	return t.Name == other.Name &&
+		t.PtrDepth == other.PtrDepth &&
+		t.IsArray == other.IsArray
+}
