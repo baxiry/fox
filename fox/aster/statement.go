@@ -83,6 +83,9 @@ func (s *BreakNode) isStmt()      {}
 // For VarDeclar
 func (s *VarDeclar) isStmt() {}
 
+// expression too
+func (*Declar) isExpr() {}
+
 // For SpawnStmt
 func (s *SpawnStmt) GetLine() int { return s.Line }
 func (s *SpawnStmt) isStmt()      {}
@@ -177,10 +180,6 @@ func (p *Parser) parseSpawn() Statement {
 	}
 
 	return &SpawnStmt{Call: call}
-}
-
-func (p *Parser) current() string {
-	return p.tokens[p.pos].Lexeme
 }
 
 func (p *Parser) parseIf() Statement {

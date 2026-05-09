@@ -1,6 +1,6 @@
 
 fn main() {
-    var list []int
+    var list [30]int
     list[0] = 100
     printf("Value: %d\n", list[0])
 }

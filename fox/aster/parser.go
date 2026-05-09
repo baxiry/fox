@@ -8,8 +8,9 @@ import (
 type Parser struct {
 	tokens      []Token
 	pos         int
-	inCondition bool
 	Errors      []string
+	inCondition bool
+	debug       bool
 }
 
 // Inside your parser where you handle StringExpr
@@ -302,8 +303,13 @@ func (p *Parser) parseType() Type {
 	}
 
 	isArr := false
+	size := 0
 	if p.currentToken().Type == OPN_BRACK {
-		p.pos++                 // consume '['
+		p.pos++ // consume '['
+		if IsNumericLiteral(p.currentToken()) {
+			size, _ = strconv.Atoi(p.currentToken().Lexeme)
+			p.pos++
+		}
 		p.expectType(CLS_BRACK) // consume ']'
 		isArr = true
 	}
@@ -337,6 +343,7 @@ func (p *Parser) parseType() Type {
 		PtrDepth: ptrDepth,
 		Line:     name.Line,
 		IsArray:  isArr,
+		Size:     size,
 	}
 }
 
@@ -613,41 +620,52 @@ func (p *Parser) parseVarDecl() *VarDeclar {
 }
 
 func (p *Parser) parseStructLiteral(typeName string) Expression {
-	p.expectType(OPN_BRACE)
+	p.expectType(OPN_BRACE) // Consumes '{'
 	fields := []FieldInit{}
-	// Loop until we find the closing brace or reach end of tokens
+
 	for p.pos < len(p.tokens) && p.tokens[p.pos].Type != CLS_BRACE {
-		// Check for named field: Key: value
+		var value Expression
+		line := p.currentToken().Line
 
-		value := p.parseExpr()
-		if value == nil {
+		// Check for named field (e.g., name: "adam")
+		// Peek to see if current is IDENT and next is COLON
+		if p.currentToken().Type == IDENT && p.peekToken().Type == COLON {
+			nameTok := p.expectIdent() // Consume field name
+			p.expectType(COLON)        // Consume ':'
+			value = p.parseExpr()      // Consume the value
 
-			p.appendErrorf("expected expression", p.currentToken().Line)
-			return &BadStmt{Line: p.currentToken().Line}
-		}
-		line := value.GetLine()
-		if p.pos+1 < len(p.tokens) && p.tokens[p.pos].Type == IDENT && p.tokens[p.pos+1].Type == COLON {
-			nameTok := p.expectIdent()
-			p.expectType(COLON)
-			value := p.parseExpr()
 			fields = append(fields, FieldInit{
 				Name:  nameTok.Lexeme,
 				Value: value,
 				Line:  line,
 			})
 		} else {
-			// Handle positional value or expressions
-			value := p.parseExpr()
-			fmt.Println("value is : ", value)
-			fields = append(fields, FieldInit{Name: "", Value: value,
-				Line: value.GetLine()})
+			// Handle positional value or unknown expression
+			value = p.parseExpr()
+			if value == nil {
+				// Prevent infinite loop: if we can't parse, skip this token
+				p.advanceToken()
+				continue
+			}
+			fields = append(fields, FieldInit{
+				Name:  "", // No name for positional
+				Value: value,
+				Line:  line,
+			})
 		}
+
 		// Consume optional comma after field
-		if p.pos < len(p.tokens) && p.tokens[p.pos].Type == COMMA {
-			p.expectType(COMMA)
+		if p.currentToken().Type == COMMA {
+			p.advanceToken()
+		}
+
+		// Safety break if we hit EOF
+		if p.currentToken().Type == EOF {
+			break
 		}
 	}
-	p.expectType(CLS_BRACE)
+
+	p.expectType(CLS_BRACE) // Consumes '}'
 	return &StructLiteral{
 		Type:   Type{Name: typeName, Line: p.currentToken().Line},
 		Fields: fields,

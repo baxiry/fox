@@ -14,14 +14,6 @@ type ParseError struct {
 
 var strf = fmt.Sprintf
 
-// peekToken peek next token
-func (p *Parser) peekToken() Token {
-	if p.pos+1 >= len(p.tokens) {
-		return p.tokens[len(p.tokens)-1]
-	}
-	return p.tokens[p.pos+1]
-}
-
 // Utilities
 func (p *Parser) appendErrorf(format string, line int, args ...any) {
 	msg := fmt.Sprintf(format, args...)
@@ -59,13 +51,6 @@ func (p *Parser) skip() {
 		(p.tokens[p.pos].Type == NEW_LINE || p.tokens[p.pos].Type == COMMENT) {
 		p.pos++
 	}
-}
-
-func (p *Parser) currentToken() Token {
-	if p.pos >= len(p.tokens) {
-		return Token{Type: EOF, Lexeme: "EOF", Line: p.currentToken().Line}
-	}
-	return p.tokens[p.pos]
 }
 
 func (p *Parser) expectType(expected TokenType) Token {
@@ -147,6 +132,35 @@ func isLetter(b byte) bool {
 
 func isLetterOrDigit(b byte) bool {
 	return isLetter(b) || isDigit(b)
+}
+
+// current get the current token
+func (p *Parser) currentToken() Token {
+	if p.pos >= len(p.tokens) {
+		return Token{Type: EOF, Lexeme: "EOF", Line: p.currentToken().Line}
+	}
+	return p.tokens[p.pos]
+}
+
+// peekToken peek next token
+func (p *Parser) peekToken() Token {
+	if p.pos+1 >= len(p.tokens) {
+		return p.tokens[len(p.tokens)-1]
+	}
+	return p.tokens[p.pos+1]
+}
+
+// advance pushes the course forward by one step
+func (p *Parser) advanceToken() {
+	if p.pos < len(p.tokens) {
+		p.pos++
+	}
+
+	if p.debug {
+		curr := p.currentToken()
+		fmt.Printf("[DEBUG] Moving to Pos: %d | Token: %s | Lexeme: '%s'\n",
+			p.pos, curr.Type, curr.Lexeme)
+	}
 }
 
 // end

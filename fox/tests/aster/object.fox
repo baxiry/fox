@@ -1,0 +1,10 @@
+
+type User struct {
+    name string
+    age int
+}
+
+fn main() {
+    user := User{name: "adam", age: 30}
+    printf("Name: %s, Age: %d\n", user.name, user.age)
+}

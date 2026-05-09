@@ -71,6 +71,7 @@ type Type struct {
 	Name     string
 	PtrDepth int
 	Line     int
+	Size     int
 	IsArray  bool
 }
 
