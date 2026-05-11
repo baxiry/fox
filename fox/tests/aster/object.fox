@@ -7,4 +7,10 @@ type User struct {
 fn main() {
     user := User{name: "adam", age: 30}
     printf("Name: %s, Age: %d\n", user.name, user.age)
+
+    user.name = "Jawad"
+    user.age = 40
+
+    printf("Name: %s, Age: %d\n", user.name, user.age)
+
 }

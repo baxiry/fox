@@ -74,6 +74,7 @@ type LiteralExpr struct {
 func (*LiteralExpr) isExpr() {}
 
 type IdentExpr struct {
+	Type *Type
 	Name string
 	Line int
 }
@@ -103,7 +104,7 @@ func (*UnaryExpr) isExpr() {}
 func (*CallExpr) isExpr() {}
 
 type StructLiteral struct {
-	Type   Type
+	Type   *Type
 	Fields []FieldInit
 	Line   int
 }

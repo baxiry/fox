@@ -411,7 +411,7 @@ func (p *Parser) parseRetSign() *ReturnSig {
 	}
 
 	return &ReturnSig{
-		Type: typ,
+		Type: &typ,
 		Line: line,
 	}
 }

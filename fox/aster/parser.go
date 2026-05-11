@@ -241,6 +241,7 @@ func (p *Parser) parseComparison() Expression {
 
 	return expr
 }
+
 func (p *Parser) parsePrimary() Expression {
 
 	tok := p.currentToken()
@@ -257,7 +258,12 @@ func (p *Parser) parsePrimary() Expression {
 		if p.currentToken().Type == OPN_PAREN {
 			return p.parseCall(tok.Lexeme)
 		}
-		return &IdentExpr{Name: tok.Lexeme, Line: tok.Line}
+		// Set Type to nil: Let the TypeChecker resolve the real type later
+		return &IdentExpr{
+			Name: tok.Lexeme,
+			Line: tok.Line,
+			Type: nil,
+		}
 
 	case BLANK:
 		p.pos++
@@ -335,13 +341,12 @@ func (p *Parser) parseType() Type {
 	if name.Type == ERROR {
 
 		p.synchronize() // Jump to the next safe statement
-		return Type{Line: name.Line, IsArray: isArr}
+		return Type{IsArray: isArr}
 	}
 
 	return Type{
 		Name:     name.Lexeme,
 		PtrDepth: ptrDepth,
-		Line:     name.Line,
 		IsArray:  isArr,
 		Size:     size,
 	}
@@ -463,8 +468,8 @@ func (p *Parser) parseFunc() *Func {
 
 		funcNode.Params = append(funcNode.Params, Param{
 			Name: name,
-			Type: typ,
-			Line: typ.Line,
+			Type: &typ,
+			Line: p.currentToken().Line,
 		})
 	}
 
@@ -564,7 +569,7 @@ func (p *Parser) parseField() Field {
 
 	return Field{
 		Name: nameTok.Lexeme,
-		Type: fieldType,
+		Type: &fieldType,
 		Line: nameTok.Line,
 	}
 }
@@ -578,12 +583,11 @@ func (p *Parser) parseFieldAssign() Field {
 		Name:     typeTok.Lexeme,
 		PtrDepth: 0,
 		IsArray:  false,
-		Line:     typeTok.Line,
 	}
 
 	return Field{
 		Name: nameTok.Lexeme,
-		Type: fieldType,
+		Type: &fieldType,
 		Line: typeTok.Line,
 	}
 }
@@ -667,7 +671,7 @@ func (p *Parser) parseStructLiteral(typeName string) Expression {
 
 	p.expectType(CLS_BRACE) // Consumes '}'
 	return &StructLiteral{
-		Type:   Type{Name: typeName, Line: p.currentToken().Line},
+		Type:   &Type{Name: typeName},
 		Fields: fields,
 		Line:   p.currentToken().Line,
 	}

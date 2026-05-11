@@ -163,4 +163,11 @@ func (p *Parser) advanceToken() {
 	}
 }
 
+func (p *Parser) makeType(name string, ptrDepth int) *Type {
+	return &Type{
+		Name:     name,
+		PtrDepth: ptrDepth,
+	}
+}
+
 // end

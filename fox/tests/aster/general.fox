@@ -36,8 +36,6 @@ var d = 10 + (8*10)
 
 fn Vars() {
 	var obj Obj
-
-
 	var i int
 	var i int = 10
 	var i = 10 + 10
@@ -75,18 +73,8 @@ fn parent() {
     p := &x   
 }
 
-fn multiDefAss() {
-   u, o := User{name:"adam",age: 23}, Obj{class: "A", size:90}
-   u, o = do() 
-   x, y := do()
-   _ , y = do()
-   x , _ = do()
-   _,_ = do()
-   g, _ := do()
-   _, h := do()
-}
 
-fn worker(p *Obj) {}
+fn worker(o *Obj) {}
 
 fn parallel() {
     x := Obj
@@ -114,11 +102,11 @@ fn compar() {
    c := t == f
    d := c != t
 
-    a + b * c
-    a * b + c
-    a == b && c
-    a & b == c
-    &a + b
+   d = a + b * c
+   a = a * b + c
+   b = a == b && c
+   c = a & b == c
+   d = &a + b
 
    a == b && c || d
 }
@@ -175,16 +163,5 @@ fn Loops(x X, y Y, z *Z) Data, int  {
     for {}
 
     return data, 30 
-}
-
-fn multiDefAss() {
-   u, o := User{name:"adam",age: 23}, Obj{class: "A", size:90}
-   u, o = do() 
-   x, y := do()
-   _ , y = do()
-   x , _ = do()
-   _,_ = do()
-   g, _ := do()
-   _, h := do()
 }
 

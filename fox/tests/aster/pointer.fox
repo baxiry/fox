@@ -1,0 +1,11 @@
+
+type User struct {
+    name string
+}
+
+
+fn main() {
+    var user = User{name: "Adam"} 
+    var ptr *User = &user     
+    printf("name: %s\n", ptr.name)
+}

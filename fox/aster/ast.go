@@ -70,12 +70,9 @@ type Statement interface {
 type Type struct {
 	Name     string
 	PtrDepth int
-	Line     int
 	Size     int
 	IsArray  bool
 }
-
-func (t *Type) getLine() int { return t.Line }
 
 type Struct struct {
 	Name   string
@@ -88,7 +85,7 @@ func (s *Struct) GetLine() int { return s.Line }
 
 type Field struct {
 	Name string
-	Type Type
+	Type *Type
 	Line int
 }
 
@@ -112,13 +109,13 @@ func (f *Func) isDecl()      {}
 
 type Param struct {
 	Name string
-	Type Type
+	Type *Type
 	Line int
 }
 
 type ReturnSig struct {
 	Name string
-	Type Type
+	Type *Type
 	Line int
 }
 

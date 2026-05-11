@@ -1,0 +1,33 @@
+
+type User struct {
+    name string
+    age  int
+}
+
+// اختبار مطابقة نوع الإرجاع (المؤشر) مع التوقيع
+fn getPtr(u *User) *User {
+    return u
+}
+
+// اختبار مطابقة نوع الإرجاع (القيمة) مع التوقيع
+fn getUser(u *User) User {
+    // Dereferencing via field access should match User type
+    return User{name: u.name, age: u.age}
+}
+
+fn main() {
+    var adam = User{name: "Adam", age: 30}
+    var ptr *User = &adam
+
+    // 1. اختبار تمرير مؤشر واستلام مؤشر (يختبر ReturnSig المؤشر)
+    var p2 *User = getPtr(ptr)
+    printf("Pointer Name: %s\n", p2.name)
+
+    // 2. اختبار استلام قيمة من دالة
+    var u2 User = getUser(ptr)
+    printf("Value Name: %s, Age: %d\n", u2.name, u2.age)
+
+    // 3. اختبار المقارنة النوعية في الإسناد
+    var p3 *User = p2
+    printf("Success: %s\n", p3.name)
+}

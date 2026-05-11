@@ -3,6 +3,7 @@ package codgen
 import (
 	"fmt"
 	"fox/aster"
+	"fox/tchecker"
 	"strings"
 )
 
@@ -10,7 +11,9 @@ type Codegen struct {
 	builder strings.Builder
 	unit    *aster.AST
 	project *aster.Project
-	indent  int // To keep the generated C code clean
+	indent  int // To keep the generated C code clean:we
+
+	symbolTable *tchecker.SymbolTable
 }
 
 func NewCodegen(proj *aster.Project) *Codegen {
@@ -22,8 +25,9 @@ func NewCodegen(proj *aster.Project) *Codegen {
 	}
 
 	return &Codegen{
-		unit:    firstUnit,
-		project: proj,
+		unit:        firstUnit,
+		project:     proj,
+		symbolTable: &tchecker.SymbolTable{},
 	}
 }
 
@@ -65,13 +69,13 @@ func (cg *Codegen) genFunction(f *aster.Func) {
 	if f.FuncName == "main" {
 		retType = "int"
 	} else if f.Return != nil {
-		retType = cg.mapType(&f.Return.Type)
+		retType = cg.mapType(f.Return.Type)
 	}
 
 	// 2. Generate function signature
 	fmt.Fprintf(&cg.builder, "%s %s(", retType, f.FuncName)
 	for i, p := range f.Params {
-		pType := cg.mapType(&p.Type)
+		pType := cg.mapType(p.Type)
 		fmt.Fprintf(&cg.builder, "%s %s", pType, p.Name)
 		if i < len(f.Params)-1 {
 			cg.builder.WriteString(", ")
@@ -104,6 +108,12 @@ func (cg *Codegen) genFunction(f *aster.Func) {
 func (cg *Codegen) genExpr(expr aster.Expression) {
 	switch e := expr.(type) {
 
+	case *aster.UnaryExpr:
+		// Handle unary operators like address-of (&)
+		// Note: C uses the same symbols as Fox for these operators
+		fmt.Fprintf(&cg.builder, "%s", e.Op) // Prints '&'
+		cg.genExpr(e.Expr)                   // Prints the target (e.g., 'user')
+
 	case *aster.Declar:
 		if ident, ok := e.Name.(*aster.IdentExpr); ok {
 			// Determine the type: Struct name or default int32_t
@@ -130,9 +140,19 @@ func (cg *Codegen) genExpr(expr aster.Expression) {
 		cg.builder.WriteString("}")
 
 	case *aster.FieldAccessExpr:
-		// Direct member access: object.field
+		// 1. Generate the object (e.g., ptr)
 		cg.genExpr(e.Object)
-		fmt.Fprintf(&cg.builder, ".%s", e.Field)
+
+		// 2. Decide between '.' and '->' using the verified PtrDepth
+		separator := "."
+		if ident, ok := e.Object.(*aster.IdentExpr); ok && ident.Type != nil {
+			if ident.Type.PtrDepth > 0 {
+				separator = "->"
+			}
+		}
+
+		// 3. Print the separator and the field name
+		fmt.Fprintf(&cg.builder, "%s%s", separator, e.Field)
 
 	case *aster.IntExpr:
 		fmt.Fprintf(&cg.builder, "%d", e.Value)
@@ -299,8 +319,32 @@ func (cg *Codegen) genStruct(s *aster.Struct) {
 	fmt.Fprintf(&cg.builder, "typedef struct {\n")
 	for _, field := range s.Fields {
 		// Make sure to use mapType to convert string to char* or similar
-		cType := cg.mapType(&field.Type)
+		cType := cg.mapType(field.Type)
 		fmt.Fprintf(&cg.builder, "    %s %s;\n", cType, field.Name)
 	}
 	fmt.Fprintf(&cg.builder, "} %s;\n\n", s.Name)
+}
+
+// isPointerType checks if the object being accessed is a pointer
+func (cg *Codegen) isPointerType(expr aster.Expression) bool {
+	switch e := expr.(type) {
+	case *aster.IdentExpr:
+		// Search in local or global declarations for this identifier's type
+		// For now, we can look into the current function scope if available
+		// Or assume the parser has already marked the PtrDepth
+		return e.Type != nil && e.Type.PtrDepth > 0
+
+	case *aster.UnaryExpr:
+		// Address-of (&) always results in a pointer
+		return e.Op == "&"
+	}
+	return false
+}
+
+func (cg *Codegen) decorateFieldAccess(e *aster.FieldAccessExpr) {
+	if ident, ok := e.Object.(*aster.IdentExpr); ok {
+		if sym, exists := cg.symbolTable.Resolve(ident.Name); exists {
+			ident.Type = sym.Type // الآن IdentExpr أصبح يعرف نوعه!
+		}
+	}
 }
