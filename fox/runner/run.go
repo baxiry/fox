@@ -21,7 +21,7 @@ func Run(cCode string) error {
 	//cmd := exec.Command(tccPath, "-B"+libPath, "-run", "-")
 	outputName := "output"
 
-	cmd := exec.Command(tccPath, "-B"+libPath, "-o", outputName, "-")
+	cmd := exec.Command(tccPath, "-B"+libPath, "-o", outputName, "-", "foxgc/fgc.c")
 
 	// 3. Set environment variables for TCC
 	cmd.Env = append(os.Environ(), "TCC_LIB_PATH="+libPath)

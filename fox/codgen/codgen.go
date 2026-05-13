@@ -31,20 +31,29 @@ func NewCodegen(proj *aster.Project) *Codegen {
 	}
 }
 
+
+
 func (cg *Codegen) Generate() string {
 	if cg.unit == nil {
 		panic("Codegen unit is nil!")
 	}
 
+	// 1. Emit the absolute foundational headers at the top of the C translation unit
 	cg.builder.WriteString("#include <stdio.h>\n#include <stdbool.h>\n#include <stdint.h>\n\n")
 
-	//  Structs
+	// 2. Emit the forward declaration of your garbage collector to prevent compilation warnings
+	// cg.builder.WriteString("void fgc_init(void);\n\n")
+
+	cg.builder.WriteString("#include \"foxgc/fgc.h\"\n\n")
+
+	// 3. Generate all Structural definitions first (File Scope Layouts)
 	for _, decl := range cg.unit.Decls {
 		if d, ok := decl.(*aster.Struct); ok {
 			cg.genStruct(d)
 		}
 	}
 
+	// 4. Generate Global Variables and Functions sequentially
 	for _, decl := range cg.unit.Decls {
 		switch d := decl.(type) {
 		case *aster.VarDeclar:
@@ -84,6 +93,13 @@ func (cg *Codegen) genFunction(f *aster.Func) {
 	cg.builder.WriteString(") {\n")
 
 	cg.indent++
+
+	// Fix: If this is the main application entry point, inject foxGC initialization safely
+	if f.FuncName == "main" {
+		cg.writeIndent()
+		fmt.Fprintf(&cg.builder, "fgc_init();\n")
+	}
+
 	if f.Body != nil {
 		for _, stmt := range f.Body.Stmts {
 			cg.genStmt(stmt)
@@ -92,13 +108,9 @@ func (cg *Codegen) genFunction(f *aster.Func) {
 
 	// 3. Smart return handling
 	// Only add "return 0" if it's the main function OR a void function
-	// (To prevent duplicate return in functions like 'add')
 	if f.FuncName == "main" {
 		cg.writeIndent()
 		cg.builder.WriteString("return 0;\n")
-	} else if f.Return == nil {
-		// Implicit return for void functions in C (optional but safe)
-		// cg.builder.WriteString("return;\n")
 	}
 
 	cg.indent--

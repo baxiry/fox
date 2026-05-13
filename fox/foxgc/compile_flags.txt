@@ -1,0 +1,7 @@
+
+-I.
+-Wall
+-std=c11
+-xc
+--sysroot=/Library/Developer/CommandLineTools/SDKs/MacOSX.sdk
+-I/usr/local/include

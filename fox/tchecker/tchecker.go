@@ -104,7 +104,6 @@ func (tc *TypeChecker) inferType(expr aster.Expression) *aster.Type {
 
 	switch e := expr.(type) {
 	case *aster.IntExpr:
-		// Removed Line field as it no longer exists in aster.Type
 		return &aster.Type{Name: "int", PtrDepth: 0, IsArray: false}
 
 	case *aster.StringExpr:
@@ -116,18 +115,14 @@ func (tc *TypeChecker) inferType(expr aster.Expression) *aster.Type {
 	case *aster.IdentExpr:
 		sym, exists := tc.CurrentTable.Resolve(e.Name)
 		if exists && sym.Type != nil {
-			// Correcting the "Line vs Depth" mix-up using explicit field names
 			e.Type = &aster.Type{
 				Name:     sym.Type.Name,
 				PtrDepth: sym.Type.PtrDepth,
 				IsArray:  sym.Type.IsArray,
 				Size:     sym.Type.Size,
-				// Note: We don't have Line in Type anymore,
-				// so we don't pass e.Line here.
 			}
 			return e.Type
 		}
-		// If not found, return an invalid type instead of "unknown"
 		return &aster.Type{Name: aster.INVALID.String(), PtrDepth: 0}
 
 	case *aster.IndexExpr:
@@ -150,14 +145,19 @@ func (tc *TypeChecker) inferType(expr aster.Expression) *aster.Type {
 
 		sym, exists := tc.GlobalTable.Resolve(callee.Name)
 		if !exists || sym == nil || sym.Type == nil {
-			return &aster.Type{Name: "void", PtrDepth: 0, IsArray: false}
+			// Dynamic fallback for standard functions like printf
+			retType := &aster.Type{Name: "void", PtrDepth: 0, IsArray: false}
+			callee.Type = retType
+			return retType
 		}
 
-		return &aster.Type{
+		// Fix: Decorate the callee identifier node with the resolved signature
+		callee.Type = &aster.Type{
 			Name:     sym.Type.Name,
 			PtrDepth: sym.Type.PtrDepth,
 			IsArray:  sym.Type.IsArray,
 		}
+		return callee.Type
 
 	case *aster.StructLiteral:
 		return tc.checkStructLiteral(e)
@@ -192,18 +192,9 @@ func (tc *TypeChecker) inferType(expr aster.Expression) *aster.Type {
 		return &aster.Type{Name: aster.INVALID.String(), PtrDepth: 0, IsArray: false}
 
 	case *aster.UnaryExpr:
-		subType := tc.inferType(e.Expr)
-		if subType == nil {
-			return &aster.Type{Name: aster.INVALID.String(), PtrDepth: 0}
-		}
-		if e.Op == "&" {
-			return &aster.Type{
-				Name:     subType.Name,
-				PtrDepth: subType.PtrDepth + 1,
-				IsArray:  subType.IsArray,
-			}
-		}
-		return subType
+		// Fix: Route directly to your robust checkUnaryExpr function
+		return tc.checkUnaryExpr(e)
+
 	default:
 		return nil
 	}
@@ -340,27 +331,33 @@ func (tc *TypeChecker) checkFieldAccess(expr *aster.FieldAccessExpr) *aster.Type
 		return &aster.Type{Name: "invalid", PtrDepth: 0, IsArray: false}
 	}
 
-	// 3. Decorating IdentExpr (The Fix)
+	// 2. Decorating the target Object expression dynamically to clear nil gaps
+	// This covers nested expressions, call returns, and standalone identifiers
 	if ident, ok := expr.Object.(*aster.IdentExpr); ok {
-		// IMPORTANT: We create a NEW struct instance here.
-		// Do NOT assign objType directly to break the memory cycle.
 		ident.Type = &aster.Type{
 			Name:     objType.Name,
 			PtrDepth: objType.PtrDepth,
 			IsArray:  objType.IsArray,
 		}
+	} else if call, ok := expr.Object.(*aster.CallExpr); ok {
+		if calleeIdent, ok := call.Callee.(*aster.IdentExpr); ok {
+			calleeIdent.Type = &aster.Type{
+				Name:     objType.Name,
+				PtrDepth: objType.PtrDepth,
+				IsArray:  objType.IsArray,
+			}
+		}
 	}
 
-	// 4. Resolve the struct in the global table
+	// 3. Resolve the struct in the global table
 	structSym, exists := tc.GlobalTable.Resolve(objType.Name)
 	if !exists {
 		return &aster.Type{Name: "invalid", PtrDepth: 0, IsArray: false}
 	}
 
-	// 5. Search for the field inside the struct
+	// 4. Search for the field inside the struct fields slice
 	for _, field := range structSym.Fields {
 		if field.Name == expr.Field {
-
 			return &aster.Type{
 				Name:     field.Type.Name,
 				PtrDepth: field.Type.PtrDepth,
@@ -369,6 +366,7 @@ func (tc *TypeChecker) checkFieldAccess(expr *aster.FieldAccessExpr) *aster.Type
 		}
 	}
 
+	tc.appendErrorf("field %s not found in struct %s", expr.Line, expr.Field, objType.Name)
 	return &aster.Type{Name: "invalid", PtrDepth: 0, IsArray: false}
 }
 
@@ -594,7 +592,7 @@ func (tc *TypeChecker) checkStructLiteral(lit *aster.StructLiteral) *aster.Type 
 		expectedFields[f.Name] = *f.Type
 	}
 
-	// 3. Validate each field provided in the literal
+	// 3. Validate and decorate each field provided in the literal
 	for _, providedField := range lit.Fields {
 		expectedType, fieldExists := expectedFields[providedField.Name]
 
@@ -603,9 +601,15 @@ func (tc *TypeChecker) checkStructLiteral(lit *aster.StructLiteral) *aster.Type 
 			continue
 		}
 
+		// Fix: Infer and propagate decoration down to the field values
 		providedType := tc.inferType(providedField.Value)
 
-		if providedType != nil && providedType.Name != aster.INVALID.String() {
+		if providedType != nil && fmt.Sprintf("%v", providedField.Value) != "<nil>" {
+			// Complete the inner node decoration if it is an identifier expression
+			if ident, ok := providedField.Value.(*aster.IdentExpr); ok {
+				ident.Type = providedType
+			}
+
 			// Compare Names, PtrDepth, and IsArray property accurately
 			if providedType.Name != expectedType.Name ||
 				providedType.PtrDepth != expectedType.PtrDepth ||
@@ -618,7 +622,7 @@ func (tc *TypeChecker) checkStructLiteral(lit *aster.StructLiteral) *aster.Type 
 		}
 	}
 
-	// 4. Return the struct as an aster.Type pointer with explicit fields
+	// 4. Return the explicit struct as an aster.Type pointer with 0 pointer depth
 	return &aster.Type{
 		Name:     structName,
 		PtrDepth: 0,
