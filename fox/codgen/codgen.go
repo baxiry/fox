@@ -31,8 +31,6 @@ func NewCodegen(proj *aster.Project) *Codegen {
 	}
 }
 
-
-
 func (cg *Codegen) Generate() string {
 	if cg.unit == nil {
 		panic("Codegen unit is nil!")
@@ -251,13 +249,21 @@ func (cg *Codegen) genStmt(stmt aster.Statement) {
 			fmt.Fprintf(&cg.builder, "%s %s[%d];\n", cType, s.Name, s.Type.Size)
 		} else {
 			if s.Value != nil {
-				fmt.Fprintf(&cg.builder, "%s %s = ", cType, s.Name)
-				cg.genExpr(s.Value)
-				cg.builder.WriteString(";\n")
+				// Check if we are allocating a Struct Literal that belongs on the Heap
+				if structLit, ok := s.Value.(*aster.StructLiteral); ok && s.Type.PtrDepth > 0 {
+					// Route allocation to the safe 8-byte padded heap allocator
+					cg.genHeapStructLiteral(structLit, s.Name)
+				} else {
+					// Traditional Stack/Value allocation layout
+					fmt.Fprintf(&cg.builder, "%s %s = ", cType, s.Name)
+					cg.genExpr(s.Value)
+					cg.builder.WriteString(";\n")
+				}
 			} else {
 				fmt.Fprintf(&cg.builder, "%s %s;\n", cType, s.Name)
 			}
 		}
+
 	case *aster.Assign:
 		cg.writeIndent()
 		cg.genExpr(s.Target)
@@ -266,11 +272,8 @@ func (cg *Codegen) genStmt(stmt aster.Statement) {
 		cg.builder.WriteString(";\n")
 
 	case *aster.ExprStmt:
-		// We must ensure the expression (like Declar) is generated
 		cg.writeIndent()
 		cg.genExpr(s.Expr)
-
-		// Add semicolon only if the expression doesn't handle its own terminator
 		if _, isDecl := s.Expr.(*aster.Declar); !isDecl {
 			cg.builder.WriteString(";\n")
 		}
@@ -286,7 +289,6 @@ func (cg *Codegen) genStmt(stmt aster.Statement) {
 	case *aster.ForStmt:
 		cg.writeIndent()
 		cg.builder.WriteString("for (")
-		// Back to your original working logic for ForStmt
 		if s.Init != nil {
 			if assign, ok := s.Init.(*aster.Assign); ok {
 				cg.genExpr(assign.Target)
@@ -308,7 +310,6 @@ func (cg *Codegen) genStmt(stmt aster.Statement) {
 		}
 		cg.builder.WriteString(") ")
 		cg.genBlock(s.Body)
-
 	}
 }
 
@@ -324,6 +325,62 @@ func (cg *Codegen) genBlock(block *aster.FrameBlock) {
 	cg.indent-- // Decrease indentation before closing
 	cg.writeIndent()
 	cg.builder.WriteString("}\n")
+}
+
+func (cg *Codegen) calculateClassIndex(sName string) int {
+	// 1. Fetch the struct layout configuration directly from the codegen symbol table
+	structSym, exists := cg.symbolTable.Resolve(sName)
+	if !exists || structSym == nil {
+		return 0 // Fallback to safe baseline if type lookup defaults
+	}
+
+	totalSize := 0
+	for _, field := range structSym.Fields {
+		// Calculate byte sizes based on explicit C primitives
+		if field.Type.PtrDepth > 0 || field.Type.Name == "string" {
+			totalSize += 8 // Pointers and char* strings consume 8 bytes on 64-bit systems
+		} else if field.Type.Name == "int" {
+			totalSize += 4 // Standard int32_t primitives consume 4 bytes
+		} else if field.Type.Name == "bool" {
+			totalSize += 1 // Standard boolean states consume 1 byte
+		}
+	}
+
+	// 2. Enforce structural alignment to prevent internal padding gaps (64-bit alignment)
+	if totalSize%8 != 0 {
+		totalSize = ((totalSize / 8) + 1) * 8
+	}
+
+	// 3. Add the mandatory 8-Byte Object Header padding to protect fgc tracking cycle fields
+	totalNeeded := totalSize + 8
+
+	// 4. Map the calculated boundary to our 8 fixed runtime configurations
+	configurations := []int{32, 64, 128, 256, 512, 1024, 2048, 4096}
+	for idx, maxCapacity := range configurations {
+		if totalNeeded <= maxCapacity {
+			return idx
+		}
+	}
+
+	return 7 // Fallback to the largest available size pool slot (4096 bytes)
+}
+
+func (cg *Codegen) genHeapStructLiteral(lit *aster.StructLiteral, targetVarName string) {
+	structName := lit.Type.Name
+	classIdx := cg.calculateClassIndex(structName)
+
+	// 1. Generate the raw pointer extraction and embed the 8-byte offset calculation directly in C
+	// We cast to (char*) first to perform clean single-byte arithmetic pointer increments
+	fmt.Fprintf(&cg.builder, "    %s* %s = (%s*)((char*)fgc_alloc(%d) + 8);\n",
+		structName, targetVarName, structName, classIdx)
+
+	// 2. Initialize the struct member variables values lineally using direct genExpr recursion
+	for _, providedField := range lit.Fields {
+		cg.writeIndent()
+		fmt.Fprintf(&cg.builder, "%s->%s = ", targetVarName, providedField.Name)
+		cg.genExpr(providedField.Value) // Directly emits the C-literal expression into cg.builder
+		cg.builder.WriteString(";\n")
+	}
 }
 
 // Generating the structure
@@ -351,12 +408,4 @@ func (cg *Codegen) isPointerType(expr aster.Expression) bool {
 		return e.Op == "&"
 	}
 	return false
-}
-
-func (cg *Codegen) decorateFieldAccess(e *aster.FieldAccessExpr) {
-	if ident, ok := e.Object.(*aster.IdentExpr); ok {
-		if sym, exists := cg.symbolTable.Resolve(ident.Name); exists {
-			ident.Type = sym.Type // الآن IdentExpr أصبح يعرف نوعه!
-		}
-	}
 }
