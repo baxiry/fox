@@ -95,10 +95,10 @@ func (cg *Codegen) genFunction(f *aster.Func) {
 	// If this is the main application entry point, inject foxGC initialization safely
 	if f.FuncName == "main" {
 		cg.writeIndent()
-		// تعريف متغير دليلي لحفظ عنوان قمة الستاك عند بدء التشغيل
+		// Defining a directory variable to store the stack top address at startup
 		fmt.Fprintf(&cg.builder, "int32_t stack_top_anchor;\n")
 		cg.writeIndent()
-		// تمرير عنوان المتغير إلى دالة تهيئة الرانتايم
+		// Passing the variable's address to the Runtime initialization function
 		fmt.Fprintf(&cg.builder, "fgc_init(&stack_top_anchor);\n")
 	}
 	if f.Body != nil {
@@ -392,7 +392,13 @@ func (cg *Codegen) genStruct(s *aster.Struct) {
 	for _, field := range s.Fields {
 		// Make sure to use mapType to convert string to char* or similar
 		cType := cg.mapType(field.Type)
-		fmt.Fprintf(&cg.builder, "    %s %s;\n", cType, field.Name)
+
+		// Fix: Handle static arrays inside struct fields to ensure correct physical memory stride
+		if field.Type != nil && field.Type.IsArray {
+			fmt.Fprintf(&cg.builder, "    %s %s[%d];\n", cType, field.Name, field.Type.Size)
+		} else {
+			fmt.Fprintf(&cg.builder, "    %s %s;\n", cType, field.Name)
+		}
 	}
 	fmt.Fprintf(&cg.builder, "} %s;\n\n", s.Name)
 }

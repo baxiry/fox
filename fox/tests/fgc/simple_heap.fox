@@ -2,12 +2,13 @@
 type User struct {
     name string
     age  int
+    padding [256]int
 }
 
 fn main() {
     // A loop to aggressively allocate memory and trigger the micro-heap threshold
     var i int
-    for i = 0; i < 200; i = i + 1 {
+    for i = 0; i < 10000; i = i + 1 {
         var u *User = User{name: "Test", age: i}
     }
 }

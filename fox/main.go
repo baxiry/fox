@@ -24,7 +24,7 @@ func main() {
 		os.Exit(1)
 	}
 
-	fmt.Println("fFox source code:\n", string(content))
+	fmt.Println("Fox source code:\n", string(content))
 
 	// 1. Parsing phase
 	parser := aster.NewParser()
