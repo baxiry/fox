@@ -92,12 +92,15 @@ func (cg *Codegen) genFunction(f *aster.Func) {
 
 	cg.indent++
 
-	// Fix: If this is the main application entry point, inject foxGC initialization safely
+	// If this is the main application entry point, inject foxGC initialization safely
 	if f.FuncName == "main" {
 		cg.writeIndent()
-		fmt.Fprintf(&cg.builder, "fgc_init();\n")
+		// تعريف متغير دليلي لحفظ عنوان قمة الستاك عند بدء التشغيل
+		fmt.Fprintf(&cg.builder, "int32_t stack_top_anchor;\n")
+		cg.writeIndent()
+		// تمرير عنوان المتغير إلى دالة تهيئة الرانتايم
+		fmt.Fprintf(&cg.builder, "fgc_init(&stack_top_anchor);\n")
 	}
-
 	if f.Body != nil {
 		for _, stmt := range f.Body.Stmts {
 			cg.genStmt(stmt)
