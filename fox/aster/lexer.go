@@ -50,6 +50,7 @@ const (
 	DEFINE
 	PLUS_ASSIGN
 	PLUS_DEFINE
+	PLUS_PLUS
 	EQ
 	NEQ
 	LT
@@ -199,6 +200,11 @@ func Lexer(input string) []Token {
 					i++
 				}
 				continue
+
+			case r == '+' && next == '+':
+				// handle: i++
+				addToken()
+				tokens = append(tokens, Token{Type: PLUS_PLUS, Lexeme: "++", Line: line, Column: col})
 
 			case r == '>' && next == '=':
 				addToken()
@@ -402,9 +408,7 @@ func Lexer(input string) []Token {
 		Column: col,
 	})
 
-	//	for k, v := range tokens {
-	//fmt.Print(k, ": ", v.Lexeme, ", ")
-	//	}
+	//for k, v := range tokens {fmt.Print(k, ": ", v.Lexeme, ", ")}
 	return tokens
 }
 
@@ -470,9 +474,9 @@ func IsKeyword(tok Token) bool {
 
 func IsOperator(tok Token) bool {
 	switch tok.Type {
-	case PLUS, MINUS, STAR, SLASH,
+	case PLUS, PLUS_PLUS, MINUS, STAR,
 		ASSIGN, DEFINE, EQ, NEQ,
-		LT, GT, LTE, GTE,
+		SLASH, LT, GT, LTE, GTE,
 		AND, AMP, OR, NOT, DOT:
 		return true
 	}
@@ -542,6 +546,8 @@ func (tt TokenType) String() string {
 	// Operators
 	case PLUS:
 		return "PLUS"
+	case PLUS_PLUS:
+		return "PLUS_PLUS"
 	case MINUS:
 		return "MINUS"
 	case STAR:

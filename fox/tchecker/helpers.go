@@ -5,7 +5,7 @@ import (
 	"fox/symbols"
 )
 
-// دالة تحويل المعاملات البرمجية بنقاء
+// Function to convert program parameters
 func mapParamsToSymbols(asterParams []aster.Param) []symbols.Param {
 	result := make([]symbols.Param, len(asterParams))
 	for i, param := range asterParams {
@@ -17,7 +17,7 @@ func mapParamsToSymbols(asterParams []aster.Param) []symbols.Param {
 	return result
 }
 
-// دالة تحويل حقول الهياكل المصححة لمنع خطأ الـ f
+// Function to convert corrected structure fields
 func mapFieldsToSymbols(asterFields []aster.Field) []symbols.StructField {
 	result := make([]symbols.StructField, len(asterFields))
 	for i, field := range asterFields {

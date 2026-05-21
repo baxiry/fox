@@ -296,13 +296,24 @@ func (cg *Codegen) genStmt(stmt aster.Statement) {
 	case *aster.ForStmt:
 		cg.writeIndent()
 		cg.builder.WriteString("for (")
+
+		/* 🔍 Dynamic Type Switch evaluates both mutations and inline structural shorthand declarations */
 		if s.Init != nil {
-			if assign, ok := s.Init.(*aster.Assign); ok {
-				cg.genExpr(assign.Target)
+			switch initStmt := s.Init.(type) {
+			case *aster.Assign:
+				/* Standard Path: Emit regular assignment configuration for existing bounds counters */
+				cg.genExpr(initStmt.Target)
 				cg.builder.WriteString(" = ")
-				cg.genExpr(assign.Value)
+				cg.genExpr(initStmt.Value)
+			case *aster.Declar:
+				/* Shorthand Path: Emit clean localized dynamic type bindings directly into the loop header */
+				cg.builder.WriteString("int32_t ")
+				cg.genExpr(initStmt.Name)
+				cg.builder.WriteString(" = ")
+				cg.genExpr(initStmt.Value)
 			}
 		}
+
 		cg.builder.WriteString("; ")
 		if s.Cond != nil {
 			cg.genExpr(s.Cond)
@@ -317,6 +328,7 @@ func (cg *Codegen) genStmt(stmt aster.Statement) {
 		}
 		cg.builder.WriteString(") ")
 		cg.genBlock(s.Body)
+
 	}
 }
 
@@ -337,15 +349,7 @@ func (cg *Codegen) genBlock(block *aster.FrameBlock) {
 func (cg *Codegen) genHeapStructLiteral(lit *aster.StructLiteral, targetVarName string) {
 	structName := lit.Type.Name
 
-	// 🔍 POINT 1: Verify that this function is actually executed for the User struct
-	fmt.Printf("\n[DEBUG-GEN] === Entering genHeapStructLiteral ===\n")
-	fmt.Printf("[DEBUG-GEN] Target Variable: %s, Struct Type Name: %s\n", targetVarName, structName)
-
 	classIdx := cg.calculateClassIndex(structName)
-
-	// 🔍 POINT 2: Check the exact final index returned to this function before printing C code
-	fmt.Printf("[DEBUG-GEN] Result from calculateClassIndex: %d\n", classIdx)
-	fmt.Printf("[DEBUG-GEN] =====================================\n\n")
 
 	// 1. Generate the raw pointer extraction and embed the 8-byte offset calculation directly in C
 	// We cast to (char*) first to perform clean single-byte arithmetic pointer increments
@@ -395,7 +399,7 @@ func (cg *Codegen) isPointerType(expr aster.Expression) bool {
 }
 
 func (cg *Codegen) calculateClassIndex(sName string) int {
-	// الاستعلام من مصدر الحقيقة الموحد عبر شجرة النطاقات
+	// Querying the unified truth source via the domain tree
 	structSym, exists := cg.symbolTable.Resolve(sName)
 	if !exists || structSym == nil {
 		return 0
@@ -405,7 +409,7 @@ func (cg *Codegen) calculateClassIndex(sName string) int {
 	for _, field := range structSym.Fields {
 		fieldSize := 0
 
-		// حساب الأحجام الفيزيائية بناءً على الأنواع الأساسية
+		// Calculating physical volumes based on basic types
 		if field.Type.PtrDepth > 0 || field.Type.Name == "string" {
 			fieldSize = 8
 		} else if field.Type.Name == "int" {
@@ -415,8 +419,7 @@ func (cg *Codegen) calculateClassIndex(sName string) int {
 		} else {
 			fieldSize = 8
 		}
-
-		// ضرب خطوة المساحة الفيزيائية في حال كان الحقل مصفوفة ثابتة
+		// Multiplying the physical space step if the field is a fixed matrix
 		if field.Type.IsArray && field.Type.Size > 0 {
 			fieldSize = fieldSize * field.Type.Size
 		}
@@ -424,14 +427,14 @@ func (cg *Codegen) calculateClassIndex(sName string) int {
 		totalSize += fieldSize
 	}
 
-	// المحاذاة الفيزيائية لـ 8 بايت لمنع الثغرات داخل الكاش
+	// Physical alignment of 8 bytes to prevent gaps within the cache
 	if totalSize%8 != 0 {
 		totalSize = ((totalSize / 8) + 1) * 8
 	}
 
 	totalNeeded := totalSize + 8
 
-	// مطابقة الحجم النهائي مع برك foxGC الثابتة
+	// Matching the final size with the fixed foxGC pools
 	configurations := []int{32, 64, 128, 256, 512, 1024, 2048, 4096}
 	for idx, maxCapacity := range configurations {
 		if totalNeeded <= maxCapacity {
@@ -439,5 +442,6 @@ func (cg *Codegen) calculateClassIndex(sName string) int {
 		}
 	}
 
-	return 8 // تمرير الكائنات الضخمة إلى خانة البركة الكبيرة POOL_LARGE
+	// Passing large objects to the large pool slot POOL_LARGE
+	return 8
 }

@@ -1,7 +1,12 @@
 
 fn main() {
-    var i int
-    for i = 0; i < 5; i = i + 1 {
+    for i := 0; i < 5; i++ {
         printf("Iteration: %d\n", i)
     }
+
+    var x int
+    for x = 0; x < 5; x++ {
+        printf("Iteration: %d\n", x)
+    }
+
 }

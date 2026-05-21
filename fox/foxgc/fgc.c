@@ -14,6 +14,16 @@ FgcClass fgc_classes[NUM_CLASSES];
 uint8_t block_map[NUM_BLOCKS];
 PoolProperties pool_props[NUM_CLASSES + 1];
 
+/* Global metrics managing the dynamic adaptive block-based pacing layout */
+// Dynamic threshold for proof-of-concept stress testing
+uint32_t g_max_allowed_blocks = 16;
+
+// Global tracking counter for operational blocks
+uint32_t g_active_blocks_allocated = 8;
+
+/* Boolean directory: True if block contains at least one live object context */
+bool g_block_contains_live_data[NUM_BLOCKS];
+
 void fgc_init(void *main_stack_top) {
     global_stack_top = (uintptr_t)main_stack_top;
 
@@ -79,29 +89,26 @@ void *fgc_alloc(uint8_t class_idx) {
 
     /* Global static tracking counter for active memory blocks across the
      * runtime */
-    static uint32_t active_blocks_allocated =
-        8; /* Starts with 8 blocks initialized at boot */
+
+    // Starts with 8 blocks initialized at boot
+    // static uint32_t active_blocks_allocated = 8; OLD CODE
 
     while (1) {
         if (c->cursor + step > c->end) {
             uintptr_t heap_start = (uintptr_t)fgc_heap_base;
             int allocated_new_block = 0;
 
-            /* Explicit rigid limit: Stop and trigger STW as soon as we hit
-             * 8 total megabytes */
-            if (active_blocks_allocated >= 8) {
-                active_blocks_allocated =
-                    8; /* Reset counter to baseline startup blocks */
-
+            // Check against the dynamic adaptive ceiling barrier
+            if (g_active_blocks_allocated >= g_max_allowed_blocks) {
                 volatile uintptr_t current_stack_anchor;
+
                 fgc_trigger_collection((void *)&current_stack_anchor);
 
                 c->cursor = fgc_classes[class_idx].start;
                 return fgc_alloc(class_idx);
             }
 
-            /* Scan the flat block map to carve a clean 1MB chunk from the free
-             * pool */
+            // Scan the flat block map to carve a clean 1MB chunk from free pool
             for (size_t block = 0; block < NUM_BLOCKS; block++) {
                 if (block_map[block] == POOL_FREE) {
                     uintptr_t new_block_addr =
@@ -112,8 +119,8 @@ void *fgc_alloc(uint8_t class_idx) {
                     c->cursor = new_block_addr;
                     c->end = new_block_addr + BLOCK_SIZE;
 
-                    active_blocks_allocated++; /* Advance the active block
-                                                  tracking metric */
+                    g_active_blocks_allocated++; /* Advance the active block
+                                                    tracker context */
                     allocated_new_block = 1;
                     break;
                 }
@@ -122,7 +129,6 @@ void *fgc_alloc(uint8_t class_idx) {
             /* Ultimate fallback safety guard if the mapped architecture
              * completely suffocates */
             if (!allocated_new_block) {
-                active_blocks_allocated = 8;
                 volatile uintptr_t current_stack_anchor;
                 fgc_trigger_collection((void *)&current_stack_anchor);
                 c->cursor = fgc_classes[class_idx].start;
@@ -152,8 +158,7 @@ void fgc_trigger_collection(void *current_stack_bottom) {
     fgc_collect(current_stack_bottom);
 }
 
-/* Single-pass linear stack scanning architecture running at maximum throughput
- */
+// Single-pass linear stack scanning architecture running at maximum throughput
 void fgc_collect(void *current_stack_bottom) {
     global_current_cycle++;
 
@@ -163,11 +168,11 @@ void fgc_collect(void *current_stack_bottom) {
     }
 
     uintptr_t stack_top = global_stack_top;
-    uintptr_t stack_bottom =
-        (uintptr_t)current_stack_bottom; // استخدام المرساة الممررة بدقة صخرية
 
-    /* Enforce rigid architectural bounds alignment independently of direction
-     */
+    // Using the passed anchor
+    uintptr_t stack_bottom = (uintptr_t)current_stack_bottom;
+
+    // Enforce rigid architectural bounds alignment independently of direction
     if (stack_bottom > stack_top) {
         uintptr_t temp = stack_top;
         stack_top = stack_bottom;
@@ -211,9 +216,69 @@ void fgc_collect(void *current_stack_bottom) {
         if (remainder == 0) {
             FoxHeader *live_header = (FoxHeader *)val;
             live_header->cycle = (uint16_t)global_current_cycle;
+
+            // Flip the Boolean bit to True: this block contains live memory
+            // roots
+            g_block_contains_live_data[block_index] = true;
         }
     }
 
+    // Base configuration slots always protected
+    uint32_t total_retained_blocks = 8;
+
+    // Sweep the flat block map and evict completely dead 1MB segments
+    for (size_t block = 8; block < NUM_BLOCKS; block++) {
+        uint8_t p_type = block_map[block];
+        if (p_type != POOL_FREE) {
+            if (g_block_contains_live_data[block] == false) {
+                // Block is completely dead! Evict it back to the POOL_FREE
+                // warehouse
+                block_map[block] = POOL_FREE;
+            } else {
+                // Block contains live root data, it must be retained in the
+                // layout
+                total_retained_blocks++;
+            }
+        }
+    }
+
+    // Adaptive Ceiling Guard: If the heap is genuinely full of live nodes,
+    // scale the boundary
+    if (total_retained_blocks >= g_max_allowed_blocks) {
+
+        // Double the ceiling capacity dynamically
+        g_max_allowed_blocks = g_max_allowed_blocks * 2;
+    }
+
+    // Sync global counter and clear Boolean tracking map for the next cycle
+    g_active_blocks_allocated = total_retained_blocks;
+    for (size_t i = 0; i < NUM_BLOCKS; i++) {
+        g_block_contains_live_data[i] = false;
+    }
+
+    printf("\n[foxGC-DEBUG] === STW Cycle %llu Internal State ===\n",
+           (unsigned long long)global_current_cycle);
+    printf("[foxGC-DEBUG] Total Active Operational Blocks Retained: %u\n",
+           total_retained_blocks);
+    printf("[foxGC-DEBUG] Current Dynamic Maximum Allocation Ceiling: %u\n",
+           g_max_allowed_blocks);
+
+    /* Scan and print the status of active blocks to see if reclamation worked
+     */
+    printf("[foxGC-DEBUG] Active Blocks Layout: ");
+    for (size_t block = 8; block < 24;
+         block++) { /* Scan a subset of blocks for testing */
+        uint8_t p_type = block_map[block];
+        if (p_type != POOL_FREE) {
+            printf("[Block %zu: Type %u, Live: %s] ", block, p_type,
+                   g_block_contains_live_data[block] ? "TRUE" : "FALSE");
+        }
+    }
+    printf(
+        "\n[foxGC-DEBUG] ==============================================\n\n");
+
+    // Reset cursor indices globally across all pools back to their local start
+    // boundaries
     for (int i = 0; i < NUM_CLASSES; i++) {
         fgc_classes[i].cursor = fgc_classes[i].start;
     }

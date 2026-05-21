@@ -220,7 +220,7 @@ func (tc *TypeChecker) registerFunctions(ast *aster.AST) {
 					IsArray:  f.Return.Type.IsArray,
 					Size:     f.Return.Type.Size,
 				}
-				// بناء توقيع الإرجاع الموحد فقط إذا كانت الدالة تمتلك إرجاعاً فعلياً
+				// Build the unified return signature only if the function has an actual return.
 				returnSignature = &symbols.ReturnSig{
 					Type: (*symbols.Type)(f.Return.Type),
 				}
@@ -236,8 +236,8 @@ func (tc *TypeChecker) registerFunctions(ast *aster.AST) {
 			sym := &symbols.Symbol{
 				Name:       f.FuncName,
 				Kind:       "func",
-				Type:       funcType,        // Crucial for Resolve() during CallExpr inference
-				ReturnType: returnSignature, // شحن التوقيع الآمن دون مخاطرة الـ nil
+				Type:       funcType, // Crucial for Resolve() during CallExpr inference
+				ReturnType: returnSignature,
 				Params:     mapParamsToSymbols(f.Params),
 			}
 
@@ -711,13 +711,7 @@ func (tc *TypeChecker) checkCallExpr(call *aster.CallExpr) string {
 		}
 	}
 
-	//if len(call.Args) != len(sym.Params) {
-	//	tc.appendErrorf("too many or too few arguments in call to %s", callee.Line, callee.Name)
-	//	return aster.INVALID.String()
-	//}
-
 	// 5. Validate each argument type against parameter type
-
 	// For variadic functions, we only perform strict type checking on the fixed parameters.
 	for i, arg := range call.Args {
 		providedType := tc.inferType(arg)

@@ -77,33 +77,33 @@ func (s *BadStmt) GetLine() int { return s.Line }
 func (s *BadStmt) isStmt()      {}
 func (s *BadStmt) isExpr()      {}
 
-// For BreakNode
+// BreakNode
 func (s *BreakNode) GetLine() int { return s.Line }
 func (s *BreakNode) isStmt()      {}
 
-// For VarDeclar
+// VarDeclar
 func (s *VarDeclar) isStmt() {}
 
 // expression too
 func (*Declar) isExpr() {}
 
-// For SpawnStmt
+// SpawnStmt
 func (s *SpawnStmt) GetLine() int { return s.Line }
 func (s *SpawnStmt) isStmt()      {}
 
-// For FrameBlock (or Block)
+// FrameBlock (or Block)
 func (s *FrameBlock) GetLine() int { return s.Line }
 func (s *FrameBlock) isStmt()      {}
 
-// For IfStmt
+// IfStmt
 func (s *IfStmt) GetLine() int { return s.Line }
 func (s *IfStmt) isStmt()      {}
 
-// For ForStmt
+// ForStmt
 func (s *ForStmt) GetLine() int { return s.Line }
 func (s *ForStmt) isStmt()      {}
 
-// For ReturnStmt
+// ReturnStmt
 func (s *ReturnStmt) GetLine() int { return s.Line }
 func (s *ReturnStmt) isStmt()      {}
 func (BadStmt) isStat()            {}
@@ -118,7 +118,7 @@ func (Declar) isStat()             {}
 func (ExprStmt) isStat()           {}
 func (*SpawnStmt) isStat()         {}
 
-// For ContinueNode
+// ContinueNode
 func (s *ContinueNode) GetLine() int { return s.Line }
 
 // Parsing Helpers
@@ -278,7 +278,7 @@ func (p *Parser) parseFor() Statement {
 
 	// 3. Case: for init; cond; post {} (C-style)
 	// Helper to distinguish between an assignment (i := 0) and an expression (a == 0)
-	isCurrentSegmentAssign := func() bool {
+	isPostAssign := func() bool {
 		curr := p.pos
 		for curr < len(p.tokens) && p.tokens[curr].Type != SEMICOLON {
 			if p.tokens[curr].Type == ASSIGN || p.tokens[curr].Type == DEFINE {
@@ -292,7 +292,7 @@ func (p *Parser) parseFor() Statement {
 	//INIT
 	if p.tokens[p.pos].Type != SEMICOLON {
 		// We use a modified check to see if we should call parseDefOrAssign
-		if isCurrentSegmentAssign() {
+		if isPostAssign() {
 			forStmt.Init = p.parseDefOrAssign()
 		} else {
 			// This is what will catch 'a == 0'
@@ -309,24 +309,44 @@ func (p *Parser) parseFor() Statement {
 	}
 	p.expectType(SEMICOLON)
 
-	// POST
+	//POST
 	if p.tokens[p.pos].Type != OPN_BRACE {
-		// Re-check for assignment in the post segment (e.g., i = i + 1)
-		isPostAssign := func() bool {
-			curr := p.pos
-			for curr < len(p.tokens) && p.tokens[curr].Type != OPN_BRACE {
-				if p.tokens[curr].Type == ASSIGN || p.tokens[curr].Type == DEFINE {
-					return true
-				}
-				curr++
-			}
-			return false
-		}
+		/* 🔍 Look ahead directly to check if the upcoming pattern represents a shorthand increment step */
+		if p.pos+1 < len(p.tokens) && p.tokens[p.pos+1].Type == PLUS_PLUS {
+			targetIdent := p.parsePostfix() /* Safely consume the variable identifier (e.g., 'i') */
+			opTok := p.tokens[p.pos]        /* Capture the actual "++" token for accurate line logging */
+			p.pos++                         /* Explicitly consume the "++" token to balance the parsing layout */
 
-		if isPostAssign() {
-			forStmt.Post = p.parseDefOrAssign()
+			/* Inject the structural sugar directly, transforming it into a standard i = i + 1 node */
+			forStmt.Post = &Assign{
+				Target: targetIdent,
+				Op:     "=",
+				Value: &BinaryExpr{
+					Op:    "+",
+					Left:  targetIdent,
+					Right: &IntExpr{Literal: "1", Value: 1, Line: opTok.Line},
+					Line:  opTok.Line,
+				},
+				Line: opTok.Line,
+			}
 		} else {
-			forStmt.Post = p.parseExprStatement()
+			/* Fallback to the original routing execution branches if standard expressions emerge */
+			isPostAssign := func() bool {
+				curr := p.pos
+				for curr < len(p.tokens) && p.tokens[curr].Type != OPN_BRACE {
+					if p.tokens[curr].Type == ASSIGN || p.tokens[curr].Type == DEFINE {
+						return true
+					}
+					curr++
+				}
+				return false
+			}
+
+			if isPostAssign() {
+				forStmt.Post = p.parseDefOrAssign()
+			} else {
+				forStmt.Post = p.parseExprStatement()
+			}
 		}
 	}
 
@@ -439,6 +459,8 @@ func (p *Parser) parseExprStatement() Statement {
 	return &ExprStmt{Expr: expr}
 }
 
+// ParseDefOrAssign processes variable initialization or inline target value mutations.
+// It acts as a static syntactic transformer for shorthand arithmetic increment steps.
 func (p *Parser) parseDefOrAssign() Statement {
 	// 1. Parse exactly one target on the left-hand side
 	target := p.parsePostfix()
@@ -450,7 +472,26 @@ func (p *Parser) parseDefOrAssign() Statement {
 		return nil
 	}
 
-	// 2. Identify the operator (must be '=' or ':=')
+	// 🔍 2. Check if this is a shorthand postfix increment operator (e.g., i++)
+	if p.currentToken().Type == PLUS_PLUS {
+		opTok := p.currentToken()
+		p.pos++ // Consume the "++" token cleanly
+
+		// Transform the shortcut operation internally into a standard semantic representation (i = i + 1)
+		return &Assign{
+			Target: target,
+			Op:     "=",
+			Value: &BinaryExpr{
+				Op:    "+",
+				Left:  target,
+				Right: &IntExpr{Literal: "1", Value: 1, Line: opTok.Line},
+				Line:  opTok.Line,
+			},
+			Line: opTok.Line,
+		}
+	}
+
+	// 3. Standard Path: Identify the operator (must be '=' or ':=')
 	opTok := p.currentToken()
 	if opTok.Type != ASSIGN && opTok.Type != DEFINE {
 		p.appendErrorf("expected '=' or ':=' after expression, but found %q", opTok.Line, opTok.Lexeme)
@@ -459,7 +500,7 @@ func (p *Parser) parseDefOrAssign() Statement {
 	}
 	p.pos++ // consume the operator
 
-	// 3. Parse exactly one expression on the right-hand side
+	// 4. Parse exactly one expression on the right-hand side
 	value := p.parseExpr()
 	if value == nil {
 		p.appendErrorf("expected expression on the right side of %s", opTok.Line, opTok.Lexeme)
@@ -472,24 +513,24 @@ func (p *Parser) parseDefOrAssign() Statement {
 		p.synchronize()
 	}
 
-	// 4. Return the appropriate node based on the operator type
+	// 5. Return the appropriate node based on the operator type
 	if opTok.Type == DEFINE {
 		if !p.isValidDefineTarget(target) {
 			p.appendErrorf("non-name on left side of :=", opTok.Line)
 		}
 		return &Declar{
-			Name:  target, // Now a single Expression/Ident
+			Name:  target,
 			Op:    opTok.Lexeme,
-			Value: value, // Now a single Expression
+			Value: value,
 			Line:  opTok.Line,
 		}
 	}
 
-	// Default to an Assignment node (=)
+	// Default to a standard Assignment node (=)
 	return &Assign{
-		Target: target, // Now a single Expression
+		Target: target,
 		Op:     opTok.Lexeme,
-		Value:  value, // Now a single Expression
+		Value:  value,
 		Line:   opTok.Line,
 	}
 }

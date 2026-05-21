@@ -4,20 +4,15 @@
 
 #include "foxgc/fgc.h"
 
-typedef struct {
-    char* name;
-    int32_t age;
-    int32_t padding[256];
-} User;
-
 int main() {
     int32_t stack_top_anchor;
     fgc_init(&stack_top_anchor);
-    int32_t i;
-    for (i = 0; (i < 10000); i = (i + 1)) {
-                    User* u = (User*)((char*)fgc_alloc(6) + 8);
-        u->name = "Test";
-        u->age = i;
+    for (int32_t i = 0; (i < 5); i = (i + 1)) {
+                printf("Iteration: %d\n", i);
+    }
+    int32_t x;
+    for (x = 0; (x < 5); x = (x + 1)) {
+                printf("Iteration: %d\n", x);
     }
     return 0;
 }

@@ -8,7 +8,7 @@ type User struct {
 fn main() {
     // A loop to aggressively allocate memory and trigger the micro-heap threshold
     var i int
-    for i = 0; i < 10000; i = i + 1 {
+    for i = 0; i < 1000000; i = i + 1 {
         var u *User = User{name: "Test", age: i}
     }
 }
