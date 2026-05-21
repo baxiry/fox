@@ -1,8 +1,12 @@
 package aster
 
+import "fox/symbols"
+
 // Project is the top-level root for a multi-package compilation
 type Project struct {
 	Packages []*Package
+
+	SymbolTable *symbols.SymbolTable
 }
 
 // Package now contains files and its name
@@ -47,7 +51,7 @@ func (e *IndexExpr) GetLine() int { return e.Line }
 // VarDeclar represents a variable declaration.
 type VarDeclar struct {
 	Name  string
-	Type  *Type
+	Type  *symbols.Type
 	Value Expression
 	Line  int
 }
@@ -67,13 +71,6 @@ type Statement interface {
 	isStmt()
 }
 
-type Type struct {
-	Name     string
-	PtrDepth int
-	Size     int
-	IsArray  bool
-}
-
 type Struct struct {
 	Name   string
 	Fields []Field
@@ -85,7 +82,7 @@ func (s *Struct) GetLine() int { return s.Line }
 
 type Field struct {
 	Name string
-	Type *Type
+	Type *symbols.Type
 	Line int
 }
 
@@ -109,13 +106,13 @@ func (f *Func) isDecl()      {}
 
 type Param struct {
 	Name string
-	Type *Type
+	Type *symbols.Type
 	Line int
 }
 
 type ReturnSig struct {
 	Name string
-	Type *Type
+	Type *symbols.Type
 	Line int
 }
 
@@ -153,12 +150,3 @@ func (s *Assign) isStmt()      {}
 // For ExprStmt struct
 func (s *ExprStmt) GetLine() int { return s.Line }
 func (s *ExprStmt) isStmt()      {}
-
-func (t *Type) IsSameAs(other *Type) bool {
-	if t == nil || other == nil {
-		return false
-	}
-	return t.Name == other.Name &&
-		t.PtrDepth == other.PtrDepth &&
-		t.IsArray == other.IsArray
-}

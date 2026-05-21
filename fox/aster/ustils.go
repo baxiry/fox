@@ -2,6 +2,7 @@ package aster
 
 import (
 	"fmt"
+	"fox/symbols"
 	"strings"
 )
 
@@ -163,8 +164,8 @@ func (p *Parser) advanceToken() {
 	}
 }
 
-func (p *Parser) makeType(name string, ptrDepth int) *Type {
-	return &Type{
+func (p *Parser) makeType(name string, ptrDepth int) *symbols.Type {
+	return &symbols.Type{
 		Name:     name,
 		PtrDepth: ptrDepth,
 	}

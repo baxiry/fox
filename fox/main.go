@@ -2,11 +2,12 @@ package main
 
 import (
 	"fmt"
+	"os"
+
 	"fox/aster"
 	"fox/codgen"
 	"fox/runner"
 	"fox/tchecker"
-	"os"
 
 	"github.com/kr/pretty"
 )
@@ -71,7 +72,11 @@ func main() {
 				},
 			},
 		},
+		//	SymbolTable: tc.GlobalTable.Symbols,
+
+		SymbolTable: tc.GlobalTable,
 	}
+	fmt.Println("symbols in projet", project.SymbolTable)
 
 	// 5. Code Generation phase
 	cg := codgen.NewCodegen(project)

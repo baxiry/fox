@@ -1,5 +1,7 @@
 package aster
 
+import "fox/symbols"
+
 type UnaryExpr struct {
 	Op   string // like "*", "&"
 	Expr Expression
@@ -74,7 +76,7 @@ type LiteralExpr struct {
 func (*LiteralExpr) isExpr() {}
 
 type IdentExpr struct {
-	Type *Type
+	Type *symbols.Type
 	Name string
 	Line int
 }
@@ -104,7 +106,7 @@ func (*UnaryExpr) isExpr() {}
 func (*CallExpr) isExpr() {}
 
 type StructLiteral struct {
-	Type   *Type
+	Type   *symbols.Type
 	Fields []FieldInit
 	Line   int
 }

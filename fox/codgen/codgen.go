@@ -3,17 +3,16 @@ package codgen
 import (
 	"fmt"
 	"fox/aster"
-	"fox/tchecker"
+	"fox/symbols"
 	"strings"
 )
 
 type Codegen struct {
-	builder strings.Builder
-	unit    *aster.AST
-	project *aster.Project
-	indent  int // To keep the generated C code clean:we
-
-	symbolTable *tchecker.SymbolTable
+	symbolTable *symbols.SymbolTable
+	builder     strings.Builder
+	unit        *aster.AST
+	project     *aster.Project
+	indent      int
 }
 
 func NewCodegen(proj *aster.Project) *Codegen {
@@ -24,10 +23,15 @@ func NewCodegen(proj *aster.Project) *Codegen {
 		}
 	}
 
+	activeTable := proj.SymbolTable
+	if activeTable == nil {
+		activeTable = symbols.NewSymbolTable(nil)
+	}
+
 	return &Codegen{
 		unit:        firstUnit,
 		project:     proj,
-		symbolTable: &tchecker.SymbolTable{},
+		symbolTable: activeTable,
 	}
 }
 
@@ -207,7 +211,7 @@ func (cg *Codegen) genCall(e *aster.CallExpr) {
 }
 
 // mapType converts Fox types to C standard types
-func (cg *Codegen) mapType(foxType *aster.Type) string {
+func (cg *Codegen) mapType(foxType *symbols.Type) string {
 	// Safety check to prevent Panic
 	if foxType == nil {
 		return "int32_t"
@@ -330,47 +334,18 @@ func (cg *Codegen) genBlock(block *aster.FrameBlock) {
 	cg.builder.WriteString("}\n")
 }
 
-func (cg *Codegen) calculateClassIndex(sName string) int {
-	// 1. Fetch the struct layout configuration directly from the codegen symbol table
-	structSym, exists := cg.symbolTable.Resolve(sName)
-	if !exists || structSym == nil {
-		return 0 // Fallback to safe baseline if type lookup defaults
-	}
-
-	totalSize := 0
-	for _, field := range structSym.Fields {
-		// Calculate byte sizes based on explicit C primitives
-		if field.Type.PtrDepth > 0 || field.Type.Name == "string" {
-			totalSize += 8 // Pointers and char* strings consume 8 bytes on 64-bit systems
-		} else if field.Type.Name == "int" {
-			totalSize += 4 // Standard int32_t primitives consume 4 bytes
-		} else if field.Type.Name == "bool" {
-			totalSize += 1 // Standard boolean states consume 1 byte
-		}
-	}
-
-	// 2. Enforce structural alignment to prevent internal padding gaps (64-bit alignment)
-	if totalSize%8 != 0 {
-		totalSize = ((totalSize / 8) + 1) * 8
-	}
-
-	// 3. Add the mandatory 8-Byte Object Header padding to protect fgc tracking cycle fields
-	totalNeeded := totalSize + 8
-
-	// 4. Map the calculated boundary to our 8 fixed runtime configurations
-	configurations := []int{32, 64, 128, 256, 512, 1024, 2048, 4096}
-	for idx, maxCapacity := range configurations {
-		if totalNeeded <= maxCapacity {
-			return idx
-		}
-	}
-
-	return 7 // Fallback to the largest available size pool slot (4096 bytes)
-}
-
 func (cg *Codegen) genHeapStructLiteral(lit *aster.StructLiteral, targetVarName string) {
 	structName := lit.Type.Name
+
+	// 🔍 POINT 1: Verify that this function is actually executed for the User struct
+	fmt.Printf("\n[DEBUG-GEN] === Entering genHeapStructLiteral ===\n")
+	fmt.Printf("[DEBUG-GEN] Target Variable: %s, Struct Type Name: %s\n", targetVarName, structName)
+
 	classIdx := cg.calculateClassIndex(structName)
+
+	// 🔍 POINT 2: Check the exact final index returned to this function before printing C code
+	fmt.Printf("[DEBUG-GEN] Result from calculateClassIndex: %d\n", classIdx)
+	fmt.Printf("[DEBUG-GEN] =====================================\n\n")
 
 	// 1. Generate the raw pointer extraction and embed the 8-byte offset calculation directly in C
 	// We cast to (char*) first to perform clean single-byte arithmetic pointer increments
@@ -417,4 +392,52 @@ func (cg *Codegen) isPointerType(expr aster.Expression) bool {
 		return e.Op == "&"
 	}
 	return false
+}
+
+func (cg *Codegen) calculateClassIndex(sName string) int {
+	// الاستعلام من مصدر الحقيقة الموحد عبر شجرة النطاقات
+	structSym, exists := cg.symbolTable.Resolve(sName)
+	if !exists || structSym == nil {
+		return 0
+	}
+
+	totalSize := 0
+	for _, field := range structSym.Fields {
+		fieldSize := 0
+
+		// حساب الأحجام الفيزيائية بناءً على الأنواع الأساسية
+		if field.Type.PtrDepth > 0 || field.Type.Name == "string" {
+			fieldSize = 8
+		} else if field.Type.Name == "int" {
+			fieldSize = 4
+		} else if field.Type.Name == "bool" {
+			fieldSize = 1
+		} else {
+			fieldSize = 8
+		}
+
+		// ضرب خطوة المساحة الفيزيائية في حال كان الحقل مصفوفة ثابتة
+		if field.Type.IsArray && field.Type.Size > 0 {
+			fieldSize = fieldSize * field.Type.Size
+		}
+
+		totalSize += fieldSize
+	}
+
+	// المحاذاة الفيزيائية لـ 8 بايت لمنع الثغرات داخل الكاش
+	if totalSize%8 != 0 {
+		totalSize = ((totalSize / 8) + 1) * 8
+	}
+
+	totalNeeded := totalSize + 8
+
+	// مطابقة الحجم النهائي مع برك foxGC الثابتة
+	configurations := []int{32, 64, 128, 256, 512, 1024, 2048, 4096}
+	for idx, maxCapacity := range configurations {
+		if totalNeeded <= maxCapacity {
+			return idx
+		}
+	}
+
+	return 8 // تمرير الكائنات الضخمة إلى خانة البركة الكبيرة POOL_LARGE
 }

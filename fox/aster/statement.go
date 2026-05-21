@@ -2,6 +2,7 @@ package aster
 
 import (
 	"fmt"
+	"fox/symbols"
 )
 
 type BreakNode struct {
@@ -141,7 +142,7 @@ func (p *Parser) parseVarDeclar() Statement {
 	p.expectType(VAR)
 	nameTok := p.expectIdent()
 
-	var typ *Type = nil
+	var typ *symbols.Type = nil
 	var value Expression = nil
 
 	curr := p.currentToken()

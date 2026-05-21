@@ -2,53 +2,46 @@ package runner
 
 import (
 	"fmt"
+	"log"
 	"os"
 	"os/exec"
+	"path/filepath"
 )
 
-// Run takes the generated C code and executes it using TCC.
-// It encapsulates all environment paths and compiler flags.
+// Run executes the external compiler infrastructure pipeline.
+// It synchronizes physical resource locations and manages stream lifetimes.
 func Run(cCode string) error {
-	// 1. Define paths (These could be moved to a config file later)
+	cwd, err := os.Getwd()
+	if err != nil {
+		log.Fatalf("Failed to retrieve current working directory: %v", err)
+	}
+
+	genFileName := filepath.Join(cwd, "main_gen.c")
+	fgcSourcePath := filepath.Join(cwd, "foxgc", "fgc.c")
+	outputExecutablePath := filepath.Join(cwd, "output")
+
+	// Emit the program payload onto the persistent storage layer
+	err = os.WriteFile(genFileName, []byte(cCode), 0644)
+	if err != nil {
+		log.Fatalf("Failed to physically write generated C code: %v", err)
+	}
+
 	tccPath := "../../tinycc/tcc"
 	libPath := "/Users/fedora/repo/tinycc"
 
-	// 2. Prepare the command:
-	// -run: compile and run immediately
-	// -B: set the library path for TCC internal files
-	// -: read source code from stdin
+	// Bind the compilation phase to specific structural paths, avoiding stdin duplication
+	cmd := exec.Command(tccPath, "-B"+libPath, "-o", outputExecutablePath, genFileName, fgcSourcePath)
 
-	//cmd := exec.Command(tccPath, "-B"+libPath, "-run", "-")
-	outputName := "output"
-
-	cmd := exec.Command(tccPath, "-B"+libPath, "-o", outputName, "-", "foxgc/fgc.c")
-
-	// 3. Set environment variables for TCC
 	cmd.Env = append(os.Environ(), "TCC_LIB_PATH="+libPath)
 
-	// 4. Set up pipes for input and output
-	stdin, err := cmd.StdinPipe()
-	if err != nil {
-		return fmt.Errorf("failed to create stdin pipe: %v", err)
-	}
-
-	// Redirect TCC output to Fox compiler's output
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr
 
-	// 5. Start the TCC process
+	// Invoke the backend compiler binary descriptor directly
 	if err := cmd.Start(); err != nil {
 		return fmt.Errorf("failed to start TCC process: %v", err)
 	}
 
-	// 6. Pipe the generated C code into TCC
-	_, err = stdin.Write([]byte(cCode))
-	if err != nil {
-		return fmt.Errorf("failed to write to stdin: %v", err)
-	}
-	stdin.Close() // Signal EOF to TCC so it starts compiling
-
-	// 7. Wait for execution to complete
 	if err := cmd.Wait(); err != nil {
 		return fmt.Errorf("execution finished with error: %v", err)
 	}

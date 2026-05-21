@@ -2,6 +2,7 @@ package aster
 
 import (
 	"fmt"
+	"fox/symbols"
 	"strconv"
 )
 
@@ -302,7 +303,7 @@ func (p *Parser) parsePrimary() Expression {
 	}
 }
 
-func (p *Parser) parseType() Type {
+func (p *Parser) parseType() symbols.Type {
 
 	if p.pos >= len(p.tokens) {
 		p.appendErrorf("unexpected end of input while parsing type", p.currentToken().Line)
@@ -341,10 +342,10 @@ func (p *Parser) parseType() Type {
 	if name.Type == ERROR {
 
 		p.synchronize() // Jump to the next safe statement
-		return Type{IsArray: isArr}
+		return symbols.Type{IsArray: isArr}
 	}
 
-	return Type{
+	return symbols.Type{
 		Name:     name.Lexeme,
 		PtrDepth: ptrDepth,
 		IsArray:  isArr,
@@ -579,7 +580,7 @@ func (p *Parser) parseFieldAssign() Field {
 	typeTok := p.expectIdent()
 
 	// Same here: Wrap the string Lexeme into the aster.Type struct
-	fieldType := Type{
+	fieldType := symbols.Type{
 		Name:     typeTok.Lexeme,
 		PtrDepth: 0,
 		IsArray:  false,
@@ -597,7 +598,7 @@ func (p *Parser) parseVarDecl() *VarDeclar {
 	p.pos++ // 1. Consume 'var'
 	name := p.expectIdent()
 
-	var typeNode *Type = nil
+	var typeNode *symbols.Type = nil
 	var value Expression = nil
 
 	// 2. Updated Check: Type can start with IDENT or OPN_BRACK
@@ -671,7 +672,7 @@ func (p *Parser) parseStructLiteral(typeName string) Expression {
 
 	p.expectType(CLS_BRACE) // Consumes '}'
 	return &StructLiteral{
-		Type:   &Type{Name: typeName},
+		Type:   &symbols.Type{Name: typeName},
 		Fields: fields,
 		Line:   p.currentToken().Line,
 	}

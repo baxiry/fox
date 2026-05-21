@@ -3,10 +3,11 @@ package tchecker
 import (
 	"fmt"
 	"fox/aster"
+	"fox/symbols"
 )
 
 // Update built-in functions to use aster.Type
-var builtInFunctions = map[string]*aster.Type{
+var builtInFunctions = map[string]*symbols.Type{
 	"printf": {Name: "void", IsArray: false},
 	"print":  {Name: "void", IsArray: false},
 	"len":    {Name: "int", IsArray: false},
@@ -14,49 +15,19 @@ var builtInFunctions = map[string]*aster.Type{
 }
 
 type TypeChecker struct {
-	GlobalTable     *SymbolTable
-	CurrentTable    *SymbolTable
-	CurrentFunction *Symbol
+	GlobalTable     *symbols.SymbolTable
+	CurrentTable    *symbols.SymbolTable
+	CurrentFunction *symbols.Symbol
 	CurrentRetTypes *aster.ReturnSig
 	CurrentLine     int
 	Errors          []string
-}
-
-// Sympol
-type Symbol struct {
-	Name       string
-	Type       *aster.Type
-	ScopeID    string
-	Kind       string           // "var", "func", "struct"
-	Params     []aster.Param    // For functions
-	ReturnType *aster.ReturnSig // Changed: Slice of types for multiple returns
-	Fields     []aster.Field    // For structs
-	IsShared   bool
-	IsBuiltIn  bool
-	IsVariadic bool
-}
-
-// SymbolTable
-type SymbolTable struct {
-	Symbols map[string]*Symbol
-	Parent  *SymbolTable
-	ScopeID string // "1.1" , "1.2" ...
-	nextID  int    // Internal counter for child scopes
-}
-
-// NewSymbolTable
-func NewSymbolTable(parent *SymbolTable) *SymbolTable {
-	return &SymbolTable{
-		Symbols: make(map[string]*Symbol),
-		Parent:  parent,
-	}
 }
 
 // NewTypeChecker
 
 func NewTypeChecker() *TypeChecker {
 
-	global := NewSymbolTable(nil)
+	global := symbols.NewSymbolTable(nil)
 	tc := &TypeChecker{
 		GlobalTable:  global,
 		CurrentTable: global,
@@ -69,19 +40,19 @@ func NewTypeChecker() *TypeChecker {
 
 func (tc *TypeChecker) injectBuiltIns() {
 	// Updated built-in registration to use explicit field mapping and pointers
-	tc.GlobalTable.Define("printf", &Symbol{
+	tc.GlobalTable.Define("printf", &symbols.Symbol{
 		Name:       "printf",
 		Kind:       "func",
 		IsBuiltIn:  true,
 		IsVariadic: true,
-		// Using pointer to aster.Type with explicit field assignment
-		Type: &aster.Type{
+		// Using pointer to symbols.Type with explicit field assignment
+		Type: &symbols.Type{
 			Name:     "void",
 			PtrDepth: 0,
 			IsArray:  false,
 		},
-		ReturnType: &aster.ReturnSig{
-			Type: &aster.Type{
+		ReturnType: &symbols.ReturnSig{
+			Type: &symbols.Type{
 				Name:     "void",
 				PtrDepth: 0,
 				IsArray:  false,
@@ -92,30 +63,30 @@ func (tc *TypeChecker) injectBuiltIns() {
 
 // tchecker.go
 var (
-	IntType    = &aster.Type{Name: "int"}
-	StringType = &aster.Type{Name: "string"}
-	BoolType   = &aster.Type{Name: "bool"}
+	IntType    = &symbols.Type{Name: "int"}
+	StringType = &symbols.Type{Name: "string"}
+	BoolType   = &symbols.Type{Name: "bool"}
 )
 
-func (tc *TypeChecker) inferType(expr aster.Expression) *aster.Type {
+func (tc *TypeChecker) inferType(expr aster.Expression) *symbols.Type {
 	if expr == nil {
 		return nil
 	}
 
 	switch e := expr.(type) {
 	case *aster.IntExpr:
-		return &aster.Type{Name: "int", PtrDepth: 0, IsArray: false}
+		return &symbols.Type{Name: "int", PtrDepth: 0, IsArray: false}
 
 	case *aster.StringExpr:
-		return &aster.Type{Name: "string", PtrDepth: 0, IsArray: false}
+		return &symbols.Type{Name: "string", PtrDepth: 0, IsArray: false}
 
 	case *aster.BoolExpr:
-		return &aster.Type{Name: "bool", PtrDepth: 0, IsArray: false}
+		return &symbols.Type{Name: "bool", PtrDepth: 0, IsArray: false}
 
 	case *aster.IdentExpr:
 		sym, exists := tc.CurrentTable.Resolve(e.Name)
 		if exists && sym.Type != nil {
-			e.Type = &aster.Type{
+			e.Type = &symbols.Type{
 				Name:     sym.Type.Name,
 				PtrDepth: sym.Type.PtrDepth,
 				IsArray:  sym.Type.IsArray,
@@ -123,15 +94,15 @@ func (tc *TypeChecker) inferType(expr aster.Expression) *aster.Type {
 			}
 			return e.Type
 		}
-		return &aster.Type{Name: aster.INVALID.String(), PtrDepth: 0}
+		return &symbols.Type{Name: aster.INVALID.String(), PtrDepth: 0}
 
 	case *aster.IndexExpr:
 		targetType := tc.inferType(e.Target)
 		if targetType == nil || !targetType.IsArray {
 			tc.appendErrorf("cannot index into non-array type", e.Line)
-			return &aster.Type{Name: aster.INVALID.String(), PtrDepth: 0, IsArray: false}
+			return &symbols.Type{Name: aster.INVALID.String(), PtrDepth: 0, IsArray: false}
 		}
-		return &aster.Type{Name: targetType.Name, PtrDepth: 0, IsArray: false}
+		return &symbols.Type{Name: targetType.Name, PtrDepth: 0, IsArray: false}
 
 	case *aster.CallExpr:
 		for _, arg := range e.Args {
@@ -140,19 +111,19 @@ func (tc *TypeChecker) inferType(expr aster.Expression) *aster.Type {
 
 		callee, ok := e.Callee.(*aster.IdentExpr)
 		if !ok {
-			return &aster.Type{Name: aster.INVALID.String(), PtrDepth: 0}
+			return &symbols.Type{Name: aster.INVALID.String(), PtrDepth: 0}
 		}
 
 		sym, exists := tc.GlobalTable.Resolve(callee.Name)
 		if !exists || sym == nil || sym.Type == nil {
 			// Dynamic fallback for standard functions like printf
-			retType := &aster.Type{Name: "void", PtrDepth: 0, IsArray: false}
+			retType := &symbols.Type{Name: "void", PtrDepth: 0, IsArray: false}
 			callee.Type = retType
 			return retType
 		}
 
 		// Fix: Decorate the callee identifier node with the resolved signature
-		callee.Type = &aster.Type{
+		callee.Type = &symbols.Type{
 			Name:     sym.Type.Name,
 			PtrDepth: sym.Type.PtrDepth,
 			IsArray:  sym.Type.IsArray,
@@ -170,18 +141,18 @@ func (tc *TypeChecker) inferType(expr aster.Expression) *aster.Type {
 		rightType := tc.inferType(e.Right)
 
 		if leftType == nil || rightType == nil {
-			return &aster.Type{Name: aster.INVALID.String(), PtrDepth: 0, IsArray: false}
+			return &symbols.Type{Name: aster.INVALID.String(), PtrDepth: 0, IsArray: false}
 		}
 
 		if leftType.Name == aster.INVALID.String() || rightType.Name == aster.INVALID.String() {
-			return &aster.Type{Name: aster.INVALID.String(), PtrDepth: 0, IsArray: false}
+			return &symbols.Type{Name: aster.INVALID.String(), PtrDepth: 0, IsArray: false}
 		}
 
 		switch e.Op {
 		case "==", "!=", "<", ">", "<=", ">=":
-			return &aster.Type{Name: "bool", PtrDepth: 0, IsArray: false}
+			return &symbols.Type{Name: "bool", PtrDepth: 0, IsArray: false}
 		case "&&", "||":
-			return &aster.Type{Name: "bool", PtrDepth: 0, IsArray: false}
+			return &symbols.Type{Name: "bool", PtrDepth: 0, IsArray: false}
 		}
 
 		if leftType.Name == rightType.Name && leftType.IsArray == rightType.IsArray {
@@ -189,7 +160,7 @@ func (tc *TypeChecker) inferType(expr aster.Expression) *aster.Type {
 		}
 
 		tc.appendErrorf("type mismatch: %s and %s", e.Line, leftType.Name, rightType.Name)
-		return &aster.Type{Name: aster.INVALID.String(), PtrDepth: 0, IsArray: false}
+		return &symbols.Type{Name: aster.INVALID.String(), PtrDepth: 0, IsArray: false}
 
 	case *aster.UnaryExpr:
 		// Fix: Route directly to your robust checkUnaryExpr function
@@ -200,54 +171,27 @@ func (tc *TypeChecker) inferType(expr aster.Expression) *aster.Type {
 	}
 }
 
-// Resolve retrieves a symbol by name, searching up the scope chain
-func (st *SymbolTable) Resolve(name string) (*Symbol, bool) {
-	// 1. Get symbol from the current scope's symbol table
-	symb, exists := st.Symbols[name]
-	if exists {
-		return symb, true
-	}
-
-	// 2. Recursively search in parent symbols if not found locally
-	if st.Parent != nil {
-		return st.Parent.Resolve(name)
-	}
-
-	return nil, false
-}
-
-// Define adds a new symbol to the current scope's symbol table
-func (st *SymbolTable) Define(name string, sym *Symbol) error {
-	if _, exists := st.Symbols[name]; exists {
-		return fmt.Errorf("symbol %s already defined in this scope", name)
-	}
-
-	// Ensure the symbol's type is stored accurately
-	st.Symbols[name] = sym
-	return nil
-}
-
-func (tc *TypeChecker) checkBinaryExpr(expr *aster.BinaryExpr) *aster.Type {
+func (tc *TypeChecker) checkBinaryExpr(expr *aster.BinaryExpr) *symbols.Type {
 	// 1. Get types of both sides (now as pointers)
 	leftType := tc.inferType(expr.Left)
 	rightType := tc.inferType(expr.Right)
 
 	// 2. Safety check for nil or invalid types
 	if leftType == nil || rightType == nil {
-		return &aster.Type{Name: aster.INVALID.String(), IsArray: false}
+		return &symbols.Type{Name: aster.INVALID.String(), IsArray: false}
 	}
 
 	// 3. Strict check: Compare Name and IsArray for precision
 	if leftType.Name != rightType.Name || leftType.IsArray != rightType.IsArray {
 		tc.appendErrorf("type error: mismatch between %s and %s", expr.Line, leftType.Name, rightType.Name)
-		return &aster.Type{Name: aster.INVALID.String(), IsArray: false}
+		return &symbols.Type{Name: aster.INVALID.String(), IsArray: false}
 	}
 
 	// 4. Determine result type based on the operator
 	switch expr.Op {
 	case "==", "!=", "<", ">", "<=", ">=", "&&", "||":
 		// Logical/Comparison ops always return a bool Type object
-		return &aster.Type{Name: "bool", IsArray: false}
+		return &symbols.Type{Name: "bool", IsArray: false}
 
 	default:
 		// Arithmetic ops return the same Type object (pointer)
@@ -266,28 +210,35 @@ func (tc *TypeChecker) registerFunctions(ast *aster.AST) {
 		if f, ok := decl.(*aster.Func); ok {
 
 			// Determine the primary Type pointer for the function symbol
-			var funcType *aster.Type
-			if f.Return != nil {
-				funcType = &aster.Type{
+			var funcType *symbols.Type
+			var returnSignature *symbols.ReturnSig = nil
+
+			if f.Return != nil && f.Return.Type != nil {
+				funcType = &symbols.Type{
 					Name:     f.Return.Type.Name,
 					PtrDepth: f.Return.Type.PtrDepth,
 					IsArray:  f.Return.Type.IsArray,
+					Size:     f.Return.Type.Size,
+				}
+				// بناء توقيع الإرجاع الموحد فقط إذا كانت الدالة تمتلك إرجاعاً فعلياً
+				returnSignature = &symbols.ReturnSig{
+					Type: (*symbols.Type)(f.Return.Type),
 				}
 			} else {
-				// Default to void if no return signature exists
-				funcType = &aster.Type{
+				// Default to void if no return signature exists safely
+				funcType = &symbols.Type{
 					Name:     "void",
 					PtrDepth: 0,
 					IsArray:  false,
 				}
 			}
 
-			sym := &Symbol{
+			sym := &symbols.Symbol{
 				Name:       f.FuncName,
 				Kind:       "func",
-				Type:       funcType, // Crucial for Resolve() during CallExpr inference
-				ReturnType: f.Return,
-				Params:     f.Params,
+				Type:       funcType,        // Crucial for Resolve() during CallExpr inference
+				ReturnType: returnSignature, // شحن التوقيع الآمن دون مخاطرة الـ nil
+				Params:     mapParamsToSymbols(f.Params),
 			}
 
 			tc.GlobalTable.Define(f.FuncName, sym)
@@ -296,7 +247,7 @@ func (tc *TypeChecker) registerFunctions(ast *aster.AST) {
 }
 
 func (tc *TypeChecker) checkVarDeclar(decl *aster.VarDeclar) {
-	var finalType *aster.Type
+	var finalType *symbols.Type
 
 	// 1. Determine the type (Explicit or Inferred)
 	if decl.Type != nil {
@@ -313,7 +264,7 @@ func (tc *TypeChecker) checkVarDeclar(decl *aster.VarDeclar) {
 	decl.Type = tc.cloneType(finalType)
 
 	// 3. Register the symbol with its own type copy
-	sym := &Symbol{
+	sym := &symbols.Symbol{
 		Name:    decl.Name,
 		Type:    tc.cloneType(finalType),
 		ScopeID: tc.CurrentTable.ScopeID,
@@ -324,24 +275,24 @@ func (tc *TypeChecker) checkVarDeclar(decl *aster.VarDeclar) {
 	}
 }
 
-func (tc *TypeChecker) checkFieldAccess(expr *aster.FieldAccessExpr) *aster.Type {
+func (tc *TypeChecker) checkFieldAccess(expr *aster.FieldAccessExpr) *symbols.Type {
 	// 1. Trace entry and the object being accessed
 	objType := tc.inferType(expr.Object)
 	if objType == nil {
-		return &aster.Type{Name: "invalid", PtrDepth: 0, IsArray: false}
+		return &symbols.Type{Name: "invalid", PtrDepth: 0, IsArray: false}
 	}
 
 	// 2. Decorating the target Object expression dynamically to clear nil gaps
 	// This covers nested expressions, call returns, and standalone identifiers
 	if ident, ok := expr.Object.(*aster.IdentExpr); ok {
-		ident.Type = &aster.Type{
+		ident.Type = &symbols.Type{
 			Name:     objType.Name,
 			PtrDepth: objType.PtrDepth,
 			IsArray:  objType.IsArray,
 		}
 	} else if call, ok := expr.Object.(*aster.CallExpr); ok {
 		if calleeIdent, ok := call.Callee.(*aster.IdentExpr); ok {
-			calleeIdent.Type = &aster.Type{
+			calleeIdent.Type = &symbols.Type{
 				Name:     objType.Name,
 				PtrDepth: objType.PtrDepth,
 				IsArray:  objType.IsArray,
@@ -352,13 +303,13 @@ func (tc *TypeChecker) checkFieldAccess(expr *aster.FieldAccessExpr) *aster.Type
 	// 3. Resolve the struct in the global table
 	structSym, exists := tc.GlobalTable.Resolve(objType.Name)
 	if !exists {
-		return &aster.Type{Name: "invalid", PtrDepth: 0, IsArray: false}
+		return &symbols.Type{Name: "invalid", PtrDepth: 0, IsArray: false}
 	}
 
 	// 4. Search for the field inside the struct fields slice
 	for _, field := range structSym.Fields {
 		if field.Name == expr.Field {
-			return &aster.Type{
+			return &symbols.Type{
 				Name:     field.Type.Name,
 				PtrDepth: field.Type.PtrDepth,
 				IsArray:  field.Type.IsArray,
@@ -367,7 +318,7 @@ func (tc *TypeChecker) checkFieldAccess(expr *aster.FieldAccessExpr) *aster.Type
 	}
 
 	tc.appendErrorf("field %s not found in struct %s", expr.Line, expr.Field, objType.Name)
-	return &aster.Type{Name: "invalid", PtrDepth: 0, IsArray: false}
+	return &symbols.Type{Name: "invalid", PtrDepth: 0, IsArray: false}
 }
 
 func (tc *TypeChecker) checkFuncDecl(fn *aster.Func) {
@@ -380,23 +331,24 @@ func (tc *TypeChecker) checkFuncDecl(fn *aster.Func) {
 	// Correctly set return signature and associate the Symbol's Type pointer
 	if fn.Return != nil {
 		// Use explicit field mapping to prevent positional struct errors
-		sym.Type = &aster.Type{
+		sym.Type = &symbols.Type{
 			Name:     fn.Return.Type.Name,
 			PtrDepth: fn.Return.Type.PtrDepth,
 			IsArray:  fn.Return.Type.IsArray,
 		}
 		tc.CurrentRetTypes = fn.Return
 	} else {
-		sym.Type = &aster.Type{Name: "void", PtrDepth: 0, IsArray: false}
+		sym.Type = &symbols.Type{Name: "void", PtrDepth: 0, IsArray: false}
 		tc.CurrentRetTypes = nil
 	}
 
 	tc.CurrentFunction = sym
 
 	// Proper scope management using explicit field assignments
-	childScopeID := tc.CurrentTable.generateChildID()
-	childTable := &SymbolTable{
-		Symbols: make(map[string]*Symbol),
+	childScopeID := tc.CurrentTable.GenerateChildID()
+
+	childTable := &symbols.SymbolTable{
+		Symbols: make(map[string]*symbols.Symbol),
 		Parent:  tc.CurrentTable,
 		ScopeID: childScopeID,
 	}
@@ -417,11 +369,11 @@ func (tc *TypeChecker) checkFuncDecl(fn *aster.Func) {
 		}
 
 		// Ensure parameter type is accurately stored as a pointer
-		paramSym := &Symbol{
+		paramSym := &symbols.Symbol{
 			Name:    param.Name,
 			Kind:    "var",
 			ScopeID: childScopeID,
-			Type: &aster.Type{
+			Type: &symbols.Type{
 				Name:     param.Type.Name,
 				PtrDepth: param.Type.PtrDepth,
 				IsArray:  param.Type.IsArray,
@@ -495,14 +447,6 @@ func (tc *TypeChecker) checkReturnStmt(stmt *aster.ReturnStmt) {
 	}
 }
 
-func (st *SymbolTable) generateChildID() string {
-	st.nextID++ // Increment internal counter
-	if st.ScopeID == "" {
-		return fmt.Sprintf("%d", st.nextID)
-	}
-	return fmt.Sprintf("%s.%d", st.ScopeID, st.nextID)
-}
-
 func (tc *TypeChecker) checkDeclar(decl *aster.Declar) {
 	// 1. Safety check for missing value
 	if decl.Value == nil {
@@ -537,7 +481,7 @@ func (tc *TypeChecker) checkDeclar(decl *aster.Declar) {
 	}
 
 	// 5. Register the symbol in the current table
-	sym := &Symbol{
+	sym := &symbols.Symbol{
 		Name:    varName,
 		Type:    inferredType,
 		ScopeID: tc.CurrentTable.ScopeID,
@@ -577,17 +521,17 @@ func (tc *TypeChecker) checkAssign(stmt *aster.Assign) {
 	}
 }
 
-func (tc *TypeChecker) checkStructLiteral(lit *aster.StructLiteral) *aster.Type {
+func (tc *TypeChecker) checkStructLiteral(lit *aster.StructLiteral) *symbols.Type {
 	// 1. Lookup the Struct definition in the Global Table
 	structName := lit.Type.Name
 	structSym, exists := tc.GlobalTable.Resolve(structName)
 	if !exists {
 		tc.appendErrorf("undefined type: %s", lit.Line, structName)
-		return &aster.Type{Name: aster.INVALID.String(), PtrDepth: 0, IsArray: false}
+		return &symbols.Type{Name: aster.INVALID.String(), PtrDepth: 0, IsArray: false}
 	}
 
 	// 2. Map fields for easy lookup during validation
-	expectedFields := make(map[string]aster.Type)
+	expectedFields := make(map[string]symbols.Type)
 	for _, f := range structSym.Fields {
 		expectedFields[f.Name] = *f.Type
 	}
@@ -622,8 +566,8 @@ func (tc *TypeChecker) checkStructLiteral(lit *aster.StructLiteral) *aster.Type 
 		}
 	}
 
-	// 4. Return the explicit struct as an aster.Type pointer with 0 pointer depth
-	return &aster.Type{
+	// 4. Return the explicit struct as an symbols.Type pointer with 0 pointer depth
+	return &symbols.Type{
 		Name:     structName,
 		PtrDepth: 0,
 		IsArray:  false,
@@ -642,7 +586,6 @@ func (tc *TypeChecker) checkGlobalVars(vars []aster.VarDeclar) {
 
 func (tc *TypeChecker) Check(a *aster.AST) {
 	tc.checkGlobalVarsAndStructs(a)
-
 	tc.registerFunctions(a)
 
 	for _, decl := range a.Decls {
@@ -650,8 +593,8 @@ func (tc *TypeChecker) Check(a *aster.AST) {
 		case *aster.Func:
 			tc.checkFuncDecl(d)
 		}
-
 	}
+
 }
 
 func (tc *TypeChecker) checkGlobalVarsAndStructs(ast *aster.AST) {
@@ -660,21 +603,21 @@ func (tc *TypeChecker) checkGlobalVarsAndStructs(ast *aster.AST) {
 		switch d := decl.(type) {
 
 		case *aster.Struct:
-			sym := &Symbol{
-				Name: d.Name,
-				Kind: "struct",
-				// Initialize an empty slice to hold fields
-				Fields: []aster.Field{},
+			sym := &symbols.Symbol{
+				Name:   d.Name,
+				Kind:   "struct",
+				Fields: []symbols.StructField{},
 			}
+
 			for _, f := range d.Fields {
 				if f.Name != "" {
-					sym.Fields = append(sym.Fields, aster.Field{
+					sym.Fields = append(sym.Fields, symbols.StructField{
 						Name: f.Name,
-						// Use explicit field mapping for Type
-						Type: &aster.Type{
+						Type: &symbols.Type{
 							Name:     f.Type.Name,
 							PtrDepth: f.Type.PtrDepth,
 							IsArray:  f.Type.IsArray,
+							Size:     f.Type.Size,
 						},
 					})
 				}
@@ -682,7 +625,7 @@ func (tc *TypeChecker) checkGlobalVarsAndStructs(ast *aster.AST) {
 			tc.GlobalTable.Define(d.Name, sym)
 
 		case *aster.VarDeclar:
-			var finalType *aster.Type
+			var finalType *symbols.Type
 
 			// Handle explicit type: var a int
 			if d.Type != nil {
@@ -693,14 +636,14 @@ func (tc *TypeChecker) checkGlobalVarsAndStructs(ast *aster.AST) {
 			}
 
 			if finalType == nil {
-				finalType = &aster.Type{Name: aster.INVALID.String(), PtrDepth: 0, IsArray: false}
+				finalType = &symbols.Type{Name: aster.INVALID.String(), PtrDepth: 0, IsArray: false}
 			}
 
 			// Register the variable in the GlobalTable using an explicit Type pointer
-			sym := &Symbol{
+			sym := &symbols.Symbol{
 				Name: d.Name,
 				Kind: "var",
-				Type: &aster.Type{
+				Type: &symbols.Type{
 					Name:     finalType.Name,
 					PtrDepth: finalType.PtrDepth,
 					IsArray:  finalType.IsArray,
@@ -733,11 +676,11 @@ func (tc *TypeChecker) checkCallExpr(call *aster.CallExpr) string {
 			rootTable = rootTable.Parent
 		}
 
-		rootTable.Define(callee.Name, &Symbol{
+		rootTable.Define(callee.Name, &symbols.Symbol{
 			Name: callee.Name,
 			Kind: "func",
 			// We give it a special marker to avoid parameter count errors later
-			Type: &aster.Type{Name: aster.INVALID.String()},
+			Type: &symbols.Type{Name: aster.INVALID.String()},
 		})
 		return aster.INVALID.String()
 	}
@@ -795,7 +738,7 @@ func (tc *TypeChecker) checkCallExpr(call *aster.CallExpr) string {
 	}
 
 	// Return the single available type name
-	return sym.ReturnType.Name
+	return sym.ReturnType.Type.Name
 }
 
 func (tc *TypeChecker) checkStmt(stmt aster.Statement) {
@@ -841,9 +784,9 @@ func (tc *TypeChecker) checkStmt(stmt aster.Statement) {
 
 func (tc *TypeChecker) checkForStmt(stmt *aster.ForStmt) {
 	// 1. Create a new scope for the loop
-	childScopeID := tc.CurrentTable.generateChildID()
-	childTable := &SymbolTable{
-		Symbols: make(map[string]*Symbol),
+	childScopeID := tc.CurrentTable.GenerateChildID()
+	childTable := &symbols.SymbolTable{
+		Symbols: make(map[string]*symbols.Symbol),
 		Parent:  tc.CurrentTable,
 		ScopeID: childScopeID,
 	}
@@ -927,11 +870,11 @@ func (tc *TypeChecker) checkSpawnStmt(spawn *aster.SpawnStmt) {
 	}
 }
 
-func (tc *TypeChecker) checkUnaryExpr(expr *aster.UnaryExpr) *aster.Type {
+func (tc *TypeChecker) checkUnaryExpr(expr *aster.UnaryExpr) *symbols.Type {
 	// 1. Identify the operand's type
 	operandType := tc.inferType(expr.Expr)
 	if operandType == nil || operandType.Name == aster.INVALID.String() {
-		return &aster.Type{Name: aster.INVALID.String()}
+		return &symbols.Type{Name: aster.INVALID.String()}
 	}
 
 	switch expr.Op {
@@ -939,11 +882,11 @@ func (tc *TypeChecker) checkUnaryExpr(expr *aster.UnaryExpr) *aster.Type {
 		// Fox Rule: No multi-level pointers (PtrDepth must be 0 before taking address)
 		if operandType.PtrDepth >= 1 {
 			tc.appendErrorf("multi-level ptr are not allowed", expr.Line)
-			return &aster.Type{Name: aster.INVALID.String()}
+			return &symbols.Type{Name: aster.INVALID.String()}
 		}
 
 		// Address-of: Increment the pointer depth to 1
-		return &aster.Type{
+		return &symbols.Type{
 			Name:     operandType.Name,
 			IsArray:  operandType.IsArray,
 			PtrDepth: operandType.PtrDepth + 1,
@@ -953,11 +896,11 @@ func (tc *TypeChecker) checkUnaryExpr(expr *aster.UnaryExpr) *aster.Type {
 		// Dereference: Ensure we have exactly depth 1 to strip
 		if operandType.PtrDepth <= 0 {
 			tc.appendErrorf("invalid indirect: %s is not a pointer", expr.Line, operandType.Name)
-			return &aster.Type{Name: aster.INVALID.String()}
+			return &symbols.Type{Name: aster.INVALID.String()}
 		}
 
 		// Return a copy with PtrDepth 0
-		return &aster.Type{
+		return &symbols.Type{
 			Name:     operandType.Name,
 			IsArray:  operandType.IsArray,
 			PtrDepth: 0,
@@ -967,15 +910,15 @@ func (tc *TypeChecker) checkUnaryExpr(expr *aster.UnaryExpr) *aster.Type {
 		// Logical Negation: Only for bool and depth 0
 		if operandType.Name != "bool" || operandType.PtrDepth > 0 || operandType.IsArray {
 			tc.appendErrorf("operator '!' not defined for type %s", expr.Line, operandType.Name)
-			return &aster.Type{Name: aster.INVALID.String()}
+			return &symbols.Type{Name: aster.INVALID.String()}
 		}
-		return &aster.Type{Name: "bool", IsArray: false, PtrDepth: 0}
+		return &symbols.Type{Name: "bool", IsArray: false, PtrDepth: 0}
 
 	case "-":
 		// Numeric Negation: Only for depth 0
 		if operandType.PtrDepth > 0 || operandType.IsArray {
 			tc.appendErrorf("cannot use '-' on pointer or array type", expr.Line)
-			return &aster.Type{Name: aster.INVALID.String()}
+			return &symbols.Type{Name: aster.INVALID.String()}
 		}
 		return operandType
 
@@ -986,7 +929,7 @@ func (tc *TypeChecker) checkUnaryExpr(expr *aster.UnaryExpr) *aster.Type {
 
 func (tc *TypeChecker) checkMultiAssignment(left []aster.Expression, right []aster.Expression, isDefine bool, line int) {
 
-	var expandedRightTypes []*aster.Type
+	var expandedRightTypes []*symbols.Type
 	for _, expr := range right {
 		retType := tc.inferType(expr)                            // inferReturnTypes(expr)
 		expandedRightTypes = append(expandedRightTypes, retType) //retTypes...)
@@ -1008,7 +951,7 @@ func (tc *TypeChecker) checkMultiAssignment(left []aster.Expression, right []ast
 
 		if isDefine && isIdent {
 			// Create a Symbol pointer as required by your Define method
-			newSymbol := &Symbol{
+			newSymbol := &symbols.Symbol{
 				Name: ident.Name,
 				Type: rightTypeName,
 			}
@@ -1024,11 +967,11 @@ func (tc *TypeChecker) checkMultiAssignment(left []aster.Expression, right []ast
 
 // cloneType creates a deep copy of a Type to avoid circular references
 // and field mismatching.
-func (tc *TypeChecker) cloneType(t *aster.Type) *aster.Type {
+func (tc *TypeChecker) cloneType(t *symbols.Type) *symbols.Type {
 	if t == nil {
 		return nil
 	}
-	return &aster.Type{
+	return &symbols.Type{
 		Name:     t.Name,
 		PtrDepth: t.PtrDepth,
 		IsArray:  t.IsArray,

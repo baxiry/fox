@@ -23,11 +23,15 @@ typedef struct {
 
 // Compile-time mathematical configuration for the 1MB Flat Block Map
 #define BLOCK_SIZE_BITS 20 // 2^20 Bytes equals exactly 1 Megabyte
-#define BLOCK_SIZE (1ULL << BLOCK_SIZE_BITS) // 1MB block size bitmask baseline
-#define HEAP_SIZE                                                              \
-    (4ULL * 1024 * 1024 * 1024) // 4 Gigabytes of continuous virtual memory
-#define NUM_BLOCKS                                                             \
-    (HEAP_SIZE / BLOCK_SIZE) // Total indices in the block map (4096 blocks)
+
+// 1MB block size bitmask baseline
+#define BLOCK_SIZE (1ULL << BLOCK_SIZE_BITS)
+
+// 4 Gigabytes of continuous virtual memory
+#define HEAP_SIZE (4ULL * 1024 * 1024 * 1024)
+
+// Total indices in the block map (4096 blocks)
+#define NUM_BLOCKS (HEAP_SIZE / BLOCK_SIZE)
 
 // Categorization of pools stored in the fast L1 cache map array
 typedef enum {
@@ -54,11 +58,21 @@ typedef struct {
 } PoolProperties;
 
 #define NUM_CLASSES 8
+
+// Global Execution Anchors and Context Matrices Shared Across System Layers
 extern FgcClass fgc_classes[NUM_CLASSES];
 extern uint64_t global_current_cycle;
+extern void *fgc_heap_base;
+extern uintptr_t global_stack_top;
 
+// Fast Metadata Lookups and Flat Block Mapping Global Registries
+extern uint8_t block_map[NUM_BLOCKS];
+extern PoolProperties pool_props[NUM_CLASSES + 1];
+
+// Global Core System Function API Signatures
 void fgc_init(void *main_stack_top);
 void *fgc_alloc(uint8_t class_idx);
-void fgc_trigger_collection(void);
+void fgc_collect(void *current_stack_bottom);
+void fgc_trigger_collection(void *current_stack_bottom);
 
 #endif // FGC_H
