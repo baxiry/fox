@@ -349,18 +349,24 @@ func (cg *Codegen) genBlock(block *aster.FrameBlock) {
 func (cg *Codegen) genHeapStructLiteral(lit *aster.StructLiteral, targetVarName string) {
 	structName := lit.Type.Name
 
+	// Resolve the accurate index matching the pre-aligned 8-byte foxGC pools
 	classIdx := cg.calculateClassIndex(structName)
 
-	// 1. Generate the raw pointer extraction and embed the 8-byte offset calculation directly in C
-	// We cast to (char*) first to perform clean single-byte arithmetic pointer increments
-	fmt.Fprintf(&cg.builder, "    %s* %s = (%s*)((char*)fgc_alloc(%d) + 8);\n",
-		structName, targetVarName, structName, classIdx)
+	// Invoke our new static scanning logic to determine the explicit pointer flag
+	hasPointers := cg.structHasPointers(structName)
 
-	// 2. Initialize the struct member variables values lineally using direct genExpr recursion
+	// Assign a sequential or placeholder type tag for the compiled structural footprint
+	typeTag := 1
+
+	// Generate the fresh three-argument pointer extraction using the optimized contract layout
+	fmt.Fprintf(&cg.builder, "    %s* %s = (%s*)((char*)fgc_alloc(%d, %d, %d) + 8);\n",
+		structName, targetVarName, structName, classIdx, typeTag, hasPointers)
+
+	// Initialize the struct member variables values lineally using direct genExpr recursion
 	for _, providedField := range lit.Fields {
 		cg.writeIndent()
 		fmt.Fprintf(&cg.builder, "%s->%s = ", targetVarName, providedField.Name)
-		cg.genExpr(providedField.Value) // Directly emits the C-literal expression into cg.builder
+		cg.genExpr(providedField.Value)
 		cg.builder.WriteString(";\n")
 	}
 }
@@ -396,6 +402,23 @@ func (cg *Codegen) isPointerType(expr aster.Expression) bool {
 		return e.Op == "&"
 	}
 	return false
+}
+
+func (cg *Codegen) structHasPointers(sName string) int {
+	structSym, exists := cg.symbolTable.Resolve(sName)
+	if !exists || structSym == nil {
+		return 0
+	}
+
+	// Scan through the pre-defined fields within the compile-time symbol layout
+	for _, field := range structSym.Fields {
+		// If the field is a pointer or a dynamic string layout, flag it immediately
+		if field.Type.PtrDepth > 0 || field.Type.Name == "string" {
+			return 1 // Contains live heap references
+		}
+	}
+
+	return 0 // Pure raw primitive data structure layout
 }
 
 func (cg *Codegen) calculateClassIndex(sName string) int {

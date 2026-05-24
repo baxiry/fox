@@ -14,7 +14,7 @@ int main() {
     fgc_init(&stack_top_anchor);
     int32_t i;
     for (i = 0; (i < 1000000); i = (i + 1)) {
-                    User* u = (User*)((char*)fgc_alloc(6) + 8);
+                    User* u = (User*)((char*)fgc_alloc(6, 1, 0) + 8);
         u->id = 123;
     }
     return 0;

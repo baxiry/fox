@@ -258,8 +258,18 @@ void fgc_collect(void *current_stack_bottom) {
     for (int i = 0; i < NUM_CLASSES; i++) {
         fgc_classes[i].cursor = fgc_classes[i].start;
     }
+
+    printf("\n[foxGC-DEBUG] === STW Cycle %llu Internal State ===\n",
+           (unsigned long long)global_current_cycle);
+    printf("[foxGC-DEBUG] Total Active Operational Blocks Retained: %u\n",
+           total_retained_blocks);
+    printf("[foxGC-DEBUG] Current Dynamic Maximum Allocation Ceiling: %u\n",
+           g_max_allowed_blocks);
+    printf("[foxGC-DEBUG] ========================================\n\n");
 }
 
 void fgc_trigger_collection(void *current_stack_bottom) {
+    printf("[foxGC] Emergency: Out of memory block space! Triggering STW "
+           "Collection.\n");
     fgc_collect(current_stack_bottom);
 }
