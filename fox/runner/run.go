@@ -26,8 +26,8 @@ func Run(cCode string) error {
 		log.Fatalf("Failed to physically write generated C code: %v", err)
 	}
 
-	tccPath := "../../tinycc/tcc"
-	libPath := "/Users/fedora/repo/tinycc"
+	tccPath := "deps/tinycc/tcc"
+	libPath := "deps/tinycc"
 
 	// Bind the compilation phase to specific structural paths, avoiding stdin duplication
 	cmd := exec.Command(tccPath, "-B"+libPath, "-o", outputExecutablePath, genFileName, fgcSourcePath)
