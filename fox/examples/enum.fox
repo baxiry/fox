@@ -1,0 +1,20 @@
+
+type Status enum {
+    Active{id int}
+    Inactive{reason int}
+}
+
+fn main() {
+    // 1. Reserve the active state object in the hip
+    var s *Status = Status.Active{id: 777}
+
+    // 2. Isolating paths and removing runtime checks
+    match s {
+        Active(id) {
+            printf("Status is active with ID: %d\n", id)
+        }
+        Inactive(reason) {
+            printf("Status is inactive. Reason code: %d\n", reason)
+        }
+    }
+}

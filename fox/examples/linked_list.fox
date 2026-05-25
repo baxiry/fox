@@ -1,0 +1,32 @@
+
+type Node struct {
+    value int
+    next  *Node
+}
+
+fn main() {
+    // 1. Creating a related list header
+
+    var root *Node = Node{value: 999}
+    
+    // 2. A sharp repetitive loop to stuff and generate millions of consecutive dead nodes
+    // This will force the corsair to spin and fire STW repeatedly    
+
+    var i int
+    for i = 0; i < 500000; i = i + 1 {
+
+        // Lively and interconnected,
+        // tree-like structure with the true head
+
+        var current *Node = Node{value: i}
+        current.next = root
+        
+        // Transfer the head to the new node
+        root = current
+        
+        // Dead organisms are born and die immediately
+        // in the same cycle to produce pressure on the hip
+
+        var garbage *Node = Node{value: 404}
+    }
+}
