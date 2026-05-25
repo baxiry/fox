@@ -15,6 +15,7 @@ uint32_t g_max_allowed_blocks = 16;
 uint32_t g_active_blocks_allocated = 8;
 bool g_block_contains_live_data[NUM_BLOCKS];
 
+// init heap
 void fgc_init(void *main_stack_top) {
     global_stack_top = (uintptr_t)main_stack_top;
 
@@ -49,46 +50,92 @@ void fgc_init(void *main_stack_top) {
     }
 }
 
-void *fgc_alloc_large(size_t size, uint16_t type_tag, uint8_t has_pointers) {
-    size_t total_needed_blocks = (size + BLOCK_SIZE - 1) >> BLOCK_SIZE_BITS;
-    uintptr_t heap_start = (uintptr_t)fgc_heap_base;
-    size_t found_consecutive = 0;
-    size_t start_block = 0;
+// trace objects
 
-    for (size_t i = 8; i < NUM_BLOCKS; i++) {
-        if (block_map[i] == POOL_FREE) {
-            if (found_consecutive == 0)
-                start_block = i;
-            found_consecutive++;
-            if (found_consecutive == total_needed_blocks) {
-                break;
+void fgc_trace_object(uintptr_t start_obj_address, uint8_t start_p_type) {
+    size_t configurations[NUM_CLASSES] = {32,  64,   128,  256,
+                                          512, 1024, 2048, 4096};
+
+    uintptr_t heap_start = (uintptr_t)fgc_heap_base;
+    uintptr_t heap_end = heap_start + HEAP_SIZE;
+
+    uintptr_t current_obj_addr = start_obj_address;
+    uint8_t current_p_type = start_p_type;
+    uint64_t chain_depth = 0; // counter to track how deep we go inline
+
+    printf("[foxGC-TRACE] >>> Starting Flat Deep Tracing for graph root at: "
+           "0x%lx\n",
+           (unsigned long)start_obj_address);
+
+    while (1) {
+        size_t pool_stride = configurations[current_p_type - 1];
+        uintptr_t current_word = current_obj_addr + 8;
+        uintptr_t end_address = current_obj_addr + pool_stride;
+
+        uintptr_t next_obj_to_trace = 0;
+        uint8_t next_p_type = 0;
+
+        while (current_word < end_address) {
+            uintptr_t potential_ptr = *(uintptr_t *)current_word;
+            current_word += 8;
+
+            if (potential_ptr < heap_start || potential_ptr >= heap_end) {
+                continue;
+            }
+
+            uintptr_t child_relative = potential_ptr - heap_start;
+            size_t child_block_idx = child_relative >> BLOCK_SIZE_BITS;
+
+            uint8_t child_p_type = block_map[child_block_idx];
+            if (child_p_type == POOL_FREE || child_p_type == POOL_LARGE) {
+                continue;
+            }
+
+            size_t child_step = configurations[child_p_type - 1];
+            uintptr_t child_pool_start =
+                heap_start + (child_block_idx << BLOCK_SIZE_BITS);
+            uintptr_t child_offset_within_block =
+                potential_ptr - child_pool_start;
+
+            uintptr_t child_base_address =
+                child_pool_start +
+                (child_offset_within_block / child_step) * child_step;
+            FoxHeader *child_header = (FoxHeader *)child_base_address;
+
+            if (child_header->cycle != (uint16_t)global_current_cycle) {
+                child_header->cycle = (uint16_t)global_current_cycle;
+                g_block_contains_live_data[child_block_idx] = true;
+
+                if (child_header->has_pointers == 1) {
+                    next_obj_to_trace = child_base_address;
+                    next_p_type = child_p_type;
+                }
+            }
+        }
+
+        if (next_obj_to_trace != 0) {
+            current_obj_addr = next_obj_to_trace;
+            current_p_type = next_p_type;
+            chain_depth++;
+
+            // Print a status update every 50,000 nodes to avoid flooding the
+            // terminal screen too fast
+            if (chain_depth % 50000 == 0) {
+                printf("[foxGC-TRACE] Successfully protected %llu linked nodes "
+                       "inline. Current address: 0x%lx\n",
+                       (unsigned long long)chain_depth,
+                       (unsigned long)current_obj_addr);
             }
         } else {
-            found_consecutive = 0;
+            printf("[foxGC-TRACE] <<< Chain end reached safely. Total inlined "
+                   "nodes traced and protected: %llu\n",
+                   (unsigned long long)chain_depth);
+            break;
         }
     }
-
-    if (found_consecutive < total_needed_blocks) {
-        volatile uintptr_t current_stack_anchor;
-        fgc_trigger_collection((void *)&current_stack_anchor);
-        return fgc_alloc_large(size, type_tag, has_pointers);
-    }
-
-    for (size_t i = start_block; i < start_block + total_needed_blocks; i++) {
-        block_map[i] = POOL_LARGE;
-    }
-
-    g_active_blocks_allocated += total_needed_blocks;
-
-    uintptr_t allocated_address = heap_start + (start_block << BLOCK_SIZE_BITS);
-    FoxHeader *header = (FoxHeader *)allocated_address;
-    header->cycle = (uint16_t)global_current_cycle;
-    header->type_tag = type_tag;
-    header->has_pointers = has_pointers;
-
-    return (void *)allocated_address;
 }
 
+// allocate objects
 void *fgc_alloc(uint8_t class_idx, uint16_t type_tag, uint8_t has_pointers) {
     FgcClass *c = &fgc_classes[class_idx];
     size_t step = c->obj_size;
@@ -149,6 +196,48 @@ void *fgc_alloc(uint8_t class_idx, uint16_t type_tag, uint8_t has_pointers) {
         c->cursor += step;
     }
 }
+// allocate big objects
+void *fgc_alloc_large(size_t size, uint16_t type_tag, uint8_t has_pointers) {
+    size_t total_needed_blocks = (size + BLOCK_SIZE - 1) >> BLOCK_SIZE_BITS;
+    uintptr_t heap_start = (uintptr_t)fgc_heap_base;
+    size_t found_consecutive = 0;
+    size_t start_block = 0;
+
+    for (size_t i = 8; i < NUM_BLOCKS; i++) {
+        if (block_map[i] == POOL_FREE) {
+            if (found_consecutive == 0)
+                start_block = i;
+            found_consecutive++;
+            if (found_consecutive == total_needed_blocks) {
+                break;
+            }
+        } else {
+            found_consecutive = 0;
+        }
+    }
+
+    if (found_consecutive < total_needed_blocks) {
+        volatile uintptr_t current_stack_anchor;
+        fgc_trigger_collection((void *)&current_stack_anchor);
+        return fgc_alloc_large(size, type_tag, has_pointers);
+    }
+
+    for (size_t i = start_block; i < start_block + total_needed_blocks; i++) {
+        block_map[i] = POOL_LARGE;
+    }
+
+    g_active_blocks_allocated += total_needed_blocks;
+
+    uintptr_t allocated_address = heap_start + (start_block << BLOCK_SIZE_BITS);
+    FoxHeader *header = (FoxHeader *)allocated_address;
+    header->cycle = (uint16_t)global_current_cycle;
+    header->type_tag = type_tag;
+    header->has_pointers = has_pointers;
+
+    return (void *)allocated_address;
+}
+
+// track and clean memory
 
 void fgc_collect(void *current_stack_bottom) {
     global_current_cycle++;
@@ -222,14 +311,9 @@ void fgc_collect(void *current_stack_bottom) {
             live_header->cycle = (uint16_t)global_current_cycle;
             g_block_contains_live_data[block_index] = true;
 
-            // Optimization: Skip tracing completely if the object is purely
-            // primitive data
-            if (live_header->has_pointers == 0) {
-                continue;
+            if (live_header->has_pointers == 1) {
+                fgc_trace_object(base_obj_address, p_type);
             }
-
-            // TODO: In the 1000-line version, dispatch object offsets to the
-            // parallel heap tracing queues here
         }
     }
 
@@ -258,18 +342,10 @@ void fgc_collect(void *current_stack_bottom) {
     for (int i = 0; i < NUM_CLASSES; i++) {
         fgc_classes[i].cursor = fgc_classes[i].start;
     }
-
-    printf("\n[foxGC-DEBUG] === STW Cycle %llu Internal State ===\n",
-           (unsigned long long)global_current_cycle);
-    printf("[foxGC-DEBUG] Total Active Operational Blocks Retained: %u\n",
-           total_retained_blocks);
-    printf("[foxGC-DEBUG] Current Dynamic Maximum Allocation Ceiling: %u\n",
-           g_max_allowed_blocks);
-    printf("[foxGC-DEBUG] ========================================\n\n");
 }
 
+// allarm
+
 void fgc_trigger_collection(void *current_stack_bottom) {
-    printf("[foxGC] Emergency: Out of memory block space! Triggering STW "
-           "Collection.\n");
     fgc_collect(current_stack_bottom);
 }

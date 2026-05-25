@@ -494,22 +494,40 @@ func (tc *TypeChecker) checkDeclar(decl *aster.Declar) {
 }
 
 func (tc *TypeChecker) checkAssign(stmt *aster.Assign) {
-	// 1. Infer types for both sides of the assignment
+	// Step 1: Intercept completely undefined variables early using CurrentTable context
+	if ident, ok := stmt.Target.(*aster.IdentExpr); ok {
+		_, exists := tc.CurrentTable.Resolve(ident.Name)
+		if !exists {
+			// Log the true root cause directly, EXACTLY ONCE
+			tc.appendErrorf("at checkAssign func: variable '%s' is undefined before assignment", stmt.Line, ident.Name)
+
+			// Inject a ghost Symbol into the Symbols map to silence subsequent blind duplicate calls
+			ghostType := &symbols.Type{Name: "INVALID", PtrDepth: 0, Size: 0, IsArray: false}
+			ghostSymbol := &symbols.Symbol{
+				Name: ident.Name,
+				Type: ghostType,
+			}
+
+			tc.CurrentTable.Define(ident.Name, ghostSymbol)
+			return // Short-circuit instantly, skipping inferType entirely
+		}
+	}
+
+	// 2. Infer types safely only for symbols known to exist
 	lhsType := tc.inferType(stmt.Target)
 	rhsType := tc.inferType(stmt.Value)
 
-	// 2. Immediate safety check for nil types
+	// 3. Immediate safety check for nil types
 	if lhsType == nil || rhsType == nil {
 		return
 	}
 
-	// 3. Skip validation for the blank identifier "_"
+	// 4. Skip validation for the blank identifier "_"
 	if ident, ok := stmt.Target.(*aster.IdentExpr); ok && ident.Name == "_" {
 		return
 	}
 
-	// 4. Validate type compatibility including Name, PtrDepth, and IsArray
-	// Note: We use explicit field checks to ensure absolute accuracy
+	// 5. Validate type compatibility including Name, PtrDepth, and IsArray
 	if lhsType.Name != rhsType.Name ||
 		lhsType.PtrDepth != rhsType.PtrDepth ||
 		lhsType.IsArray != rhsType.IsArray {

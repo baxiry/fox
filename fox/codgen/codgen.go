@@ -373,16 +373,22 @@ func (cg *Codegen) genHeapStructLiteral(lit *aster.StructLiteral, targetVarName 
 
 // Generating the structure
 func (cg *Codegen) genStruct(s *aster.Struct) {
-	fmt.Fprintf(&cg.builder, "typedef struct {\n")
+	fmt.Fprintf(&cg.builder, "typedef struct %s {\n", s.Name)
+
 	for _, field := range s.Fields {
-		// Make sure to use mapType to convert string to char* or similar
 		cType := cg.mapType(field.Type)
 
-		// Fix: Handle static arrays inside struct fields to ensure correct physical memory stride
+		// Architectural Check: If the field is a pointer referencing its own parent struct layout
+		prefix := ""
+		if field.Type != nil && field.Type.PtrDepth > 0 && field.Type.Name == s.Name {
+			prefix = "struct "
+		}
+
+		// Handle static arrays inside struct fields to ensure correct physical memory stride
 		if field.Type != nil && field.Type.IsArray {
-			fmt.Fprintf(&cg.builder, "    %s %s[%d];\n", cType, field.Name, field.Type.Size)
+			fmt.Fprintf(&cg.builder, "    %s%s %s[%d];\n", prefix, cType, field.Name, field.Type.Size)
 		} else {
-			fmt.Fprintf(&cg.builder, "    %s %s;\n", cType, field.Name)
+			fmt.Fprintf(&cg.builder, "    %s%s %s;\n", prefix, cType, field.Name)
 		}
 	}
 	fmt.Fprintf(&cg.builder, "} %s;\n\n", s.Name)
