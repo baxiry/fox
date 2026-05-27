@@ -60,7 +60,7 @@ func (p *Parser) synchronize() {
 
 		// Check if the current token is a major keyword that starts a new block/statement
 		switch p.tokens[p.pos].Type {
-		case FUNC, TYPE, IF, FOR, RETURN, VAR:
+		case FUNC, STRUCT, TYPE, IF, FOR, RETURN, VAR:
 			return
 		}
 
@@ -538,10 +538,12 @@ func (p *Parser) parseImport() []string {
 }
 
 func (p *Parser) parseStruct() *Struct {
+	line := p.currentToken().Line
 
-	p.expectType(TYPE)
-	name := p.expectIdent()
 	p.expectType(STRUCT)
+
+	name := p.expectIdent()
+
 	p.expectType(OPN_BRACE)
 
 	fields := []Field{}
@@ -560,7 +562,12 @@ func (p *Parser) parseStruct() *Struct {
 	}
 
 	p.expectType(CLS_BRACE)
-	return &Struct{Name: name.Lexeme, Fields: fields, Line: p.currentToken().Line}
+
+	return &Struct{
+		Name:   name.Lexeme,
+		Fields: fields,
+		Line:   line,
+	}
 }
 
 func (p *Parser) parseField() Field {
@@ -679,6 +686,8 @@ func (p *Parser) parseStructLiteral(typeName string) Expression {
 }
 
 // AST Builder
+
+// AST Builder
 func (p *Parser) Builder(data []byte) *AST {
 	p.tokens = Lexer(string(data))
 
@@ -687,19 +696,24 @@ func (p *Parser) Builder(data []byte) *AST {
 	}
 
 	for p.pos < len(p.tokens) {
-		token := p.tokens[p.pos]
+		if p.tokens[p.pos].Type == EOF {
+			break
+		}
 
-		switch token.Type {
+		switch p.tokens[p.pos].Type {
 		case PACKAGE:
 			ast.Package.Name = p.parsePackage()
-		case STRUCT:
 
 		case IMPORT:
 			ast.Imports = p.parseImport()
 
-		case TYPE:
+		case STRUCT:
 			st := p.parseStruct()
 			ast.Decls = append(ast.Decls, st)
+
+		case ENUM:
+			enum := p.parseEnum()
+			ast.Decls = append(ast.Decls, enum)
 
 		case FUNC:
 			ast.Decls = append(ast.Decls, p.parseFunc())
@@ -707,19 +721,15 @@ func (p *Parser) Builder(data []byte) *AST {
 		case VAR:
 			ast.Decls = append(ast.Decls, p.parseVarDecl())
 
-			//case IDENT:
-			//	p.errors = append(p.errors, "cant use identifier at level package")
-			//	println("catch error")
-			//  p.pos++
+		case NEW_LINE:
+			p.pos++
 
 		default:
-			if token.Type == IDENT || token.Type == DEFINE || token.Type == ASSIGN {
-				p.Errors = append(p.Errors, fmt.Sprintf(
-					"line %d: non-declaration statement outside function body", token.Line))
-				p.synchronize()
-			} else {
-				p.pos++
-			}
+			p.Errors = append(p.Errors, fmt.Sprintf(
+				"line %d: syntax error: unexpected token %s (%q) outside declaration scope",
+				p.tokens[p.pos].Line, p.tokens[p.pos].Type.String(), p.tokens[p.pos].Lexeme))
+
+			p.pos++
 		}
 	}
 

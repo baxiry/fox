@@ -1,0 +1,12 @@
+
+
+struct User  { name string; age int; info string }
+struct Info  {}
+
+fn main() {
+  o := Obj{}
+  user := User{name: "dada", age: 20}
+  user = User{name: "adam", age: 12}
+  printf("%s, %d\n", user.name, user.age)
+}
+

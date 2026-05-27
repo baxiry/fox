@@ -135,11 +135,49 @@ func isLetterOrDigit(b byte) bool {
 	return isLetter(b) || isDigit(b)
 }
 
-// current get the current token
+// Clean, isolated global skipping method for structural blocks
+func (p *Parser) skipNewlinesAndSpaces() {
+	for p.pos < len(p.tokens) {
+		t := p.tokens[p.pos].Type
+		if t == NEW_LINE || t == COMMENT {
+			p.pos++
+			continue
+		}
+		break
+	}
+}
+
+// advanceAndSkip pushes the cursor forward and automatically swallows all trailing vertical lines
+func (p *Parser) advanceAndSkip() {
+	if p.pos < len(p.tokens) {
+		p.pos++
+	}
+
+	for p.pos < len(p.tokens) && p.tokens[p.pos].Type == NEW_LINE {
+		p.pos++
+	}
+
+	if p.debug {
+		curr := p.currentToken()
+		fmt.Printf("[DEBUG] Clean Advance to Pos: %d | Token: %s | Lexeme: '%s'\n",
+			p.pos, curr.Type.String(), curr.Lexeme)
+	}
+}
+
+// current get the current posision token
 func (p *Parser) currentToken() Token {
 	if p.pos >= len(p.tokens) {
-		return Token{Type: EOF, Lexeme: "EOF", Line: p.currentToken().Line}
+		lastLine := 1
+		if len(p.tokens) > 0 {
+			lastLine = p.tokens[len(p.tokens)-1].Line
+		}
+		return Token{
+			Type:   EOF,
+			Lexeme: "EOF",
+			Line:   lastLine,
+		}
 	}
+
 	return p.tokens[p.pos]
 }
 

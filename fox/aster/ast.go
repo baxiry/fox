@@ -122,6 +122,18 @@ type FieldAccessExpr struct {
 	Line   int
 }
 
+// AliasDecl represents statements like: alias Name = string
+type AliasDecl struct {
+	Name string        // Name of the new alias identifier (e.g., "Name")
+	Type *symbols.Type // Underlying base data type pointer (e.g., "string")
+	Line int           // Line number for compilation error reporting
+}
+
+// isDecl implements the Decl interface cleanly at file scope layout level
+func (a *AliasDecl) isDecl()      {}
+func (a *AliasDecl) isStmt()      {}
+func (a *AliasDecl) GetLine() int { return a.Line }
+
 func (f *FieldAccessExpr) GetLine() int { return f.Line }
 func (*FieldAccessExpr) isExpr()        {}
 

@@ -1,5 +1,0 @@
-
-type Name string
-type Age int
-
-fn main() {}

@@ -146,7 +146,6 @@ func (p *Parser) parseVarDeclar() Statement {
 	var value Expression = nil
 
 	curr := p.currentToken()
-	//  STAR
 	if curr.Type == IDENT || curr.Type == OPN_BRACK || curr.Type == STAR {
 		t := p.parseType()
 		typ = &t
@@ -154,7 +153,15 @@ func (p *Parser) parseVarDeclar() Statement {
 
 	if p.currentToken().Type == ASSIGN {
 		p.pos++ // consume '='
-		value = p.parseExpr()
+		p.skip()
+
+		if p.currentToken().Type == IDENT && p.pos+1 < len(p.tokens) && p.tokens[p.pos+1].Type == DOT {
+			parentNameTok := p.expectIdent()
+
+			value = p.parseEnumLiteral(parentNameTok.Lexeme)
+		} else {
+			value = p.parseExpr()
+		}
 	}
 
 	p.skipNewlines()
@@ -567,16 +574,22 @@ func (p *Parser) parseStatement() Statement {
 
 	switch tok.Type {
 	case VAR:
-
 		stmt = p.parseVarDeclar()
 
 	case RETURN:
 		stmt = p.parseReturn()
+
 	case IF:
 		return p.parseIf()
 
 	case FOR:
 		return p.parseFor()
+
+	case SWITCH:
+		return p.parseSwitch()
+
+	case MATCH:
+		return p.parseMatch()
 
 	case BREAK:
 		p.pos++
