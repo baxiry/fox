@@ -759,35 +759,32 @@ func (tc *TypeChecker) checkStmt(stmt aster.Statement) {
 	}
 
 	switch s := stmt.(type) {
-	// 1. Explicit Variable Declarations (var i int = 10)
+
 	case *aster.VarDeclar:
 		tc.checkVarDeclar(s)
 
-	// 2. Short Variable Declarations (i := 10)
 	case *aster.Declar:
 		tc.checkDeclar(s)
 
-	// 3. Assignment Operations (x = 20, user.name = "Adam")
 	case *aster.Assign:
 		tc.checkAssign(s)
 
-	// 4. Expression as a Statement (e.g., standalone function calls)
 	case *aster.ExprStmt:
 		if s.Expr != nil {
 			tc.inferType(s.Expr)
 		}
 
-	// 5. If Conditional Statements
 	case *aster.IfStmt:
 		tc.checkIfStmt(s)
 
-	// 6. For Loop Statements
 	case *aster.ForStmt:
 		tc.checkForStmt(s)
 
-	// 7. Return Statements
 	case *aster.ReturnStmt:
 		tc.checkReturnStmt(s)
+
+	case *aster.MatchStmt:
+		tc.checkMatchStmt(s)
 
 	default:
 		// Unknown statement type encountered

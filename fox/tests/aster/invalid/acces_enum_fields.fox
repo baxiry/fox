@@ -1,0 +1,15 @@
+
+enum Status {
+    Active{id int}
+    Inactive{reason int}
+}
+
+fn main() {
+    var s *Status = Status.Active{id: 777}
+
+    match s {
+    case Active : 
+        printf("Status is active with ID: %d\n", id)
+    }
+}
+

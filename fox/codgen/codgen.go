@@ -40,22 +40,18 @@ func (cg *Codegen) Generate() string {
 		panic("Codegen unit is nil!")
 	}
 
-	// 1. Emit the absolute foundational headers at the top of the C translation unit
 	cg.builder.WriteString("#include <stdio.h>\n#include <stdbool.h>\n#include <stdint.h>\n\n")
-
-	// 2. Emit the forward declaration of your garbage collector to prevent compilation warnings
-	// cg.builder.WriteString("void fgc_init(void);\n\n")
-
 	cg.builder.WriteString("#include \"foxgc/fgc.h\"\n\n")
 
-	// 3. Generate all Structural definitions first (File Scope Layouts)
 	for _, decl := range cg.unit.Decls {
 		if d, ok := decl.(*aster.Struct); ok {
 			cg.genStruct(d)
 		}
+		if d, ok := decl.(*aster.EnumDecl); ok {
+			cg.genEnumDecl(d)
+		}
 	}
 
-	// 4. Generate Global Variables and Functions sequentially
 	for _, decl := range cg.unit.Decls {
 		switch d := decl.(type) {
 		case *aster.VarDeclar:
@@ -157,18 +153,29 @@ func (cg *Codegen) genExpr(expr aster.Expression) {
 		cg.builder.WriteString("}")
 
 	case *aster.FieldAccessExpr:
-		// 1. Generate the object (e.g., ptr)
-		cg.genExpr(e.Object)
+		if ident, ok := e.Object.(*aster.IdentExpr); ok && ident.Type != nil {
+			typeName := strings.TrimPrefix(ident.Type.Name, "*")
+			if typeName == "Status" {
+				separator := "."
+				if ident.Type.PtrDepth > 0 {
+					separator = "->"
+				}
+				variantName := "Active"
+				if e.Field == "reason" {
+					variantName = "Inactive"
+				}
+				fmt.Fprintf(&cg.builder, "%s%svariants.%s.%s", ident.Name, separator, variantName, e.Field)
+				break
+			}
+		}
 
-		// 2. Decide between '.' and '->' using the verified PtrDepth
+		cg.genExpr(e.Object)
 		separator := "."
 		if ident, ok := e.Object.(*aster.IdentExpr); ok && ident.Type != nil {
 			if ident.Type.PtrDepth > 0 {
 				separator = "->"
 			}
 		}
-
-		// 3. Print the separator and the field name
 		fmt.Fprintf(&cg.builder, "%s%s", separator, e.Field)
 
 	case *aster.IntExpr:
@@ -212,13 +219,19 @@ func (cg *Codegen) genCall(e *aster.CallExpr) {
 
 // mapType converts Fox types to C standard types
 func (cg *Codegen) mapType(foxType *symbols.Type) string {
-	// Safety check to prevent Panic
 	if foxType == nil {
 		return "int32_t"
 	}
 
 	var cType string
-	switch foxType.Name {
+	typeName := foxType.Name
+
+	if strings.Contains(typeName, ".") {
+		parts := strings.Split(typeName, ".")
+		typeName = parts[0]
+	}
+
+	switch typeName {
 	case "int":
 		cType = "int32_t"
 	case "string":
@@ -226,7 +239,7 @@ func (cg *Codegen) mapType(foxType *symbols.Type) string {
 	case "bool":
 		cType = "bool"
 	default:
-		cType = foxType.Name
+		cType = typeName
 	}
 
 	for i := 0; i < foxType.PtrDepth; i++ {
@@ -236,14 +249,65 @@ func (cg *Codegen) mapType(foxType *symbols.Type) string {
 	return cType
 }
 
-func (cg *Codegen) writeIndent() {
-	for i := 0; i < cg.indent; i++ {
-		cg.builder.WriteString("    ")
-	}
-}
-
 func (cg *Codegen) genStmt(stmt aster.Statement) {
 	switch s := stmt.(type) {
+
+	case *aster.MatchStmt:
+		cg.writeIndent()
+		cg.builder.WriteString("switch (")
+		cg.genExpr(s.Object)
+		cg.builder.WriteString("->_tag) {\n")
+
+		for _, c := range s.Cases {
+			variantName := ""
+			tagValue := 0
+			if len(c.Conditions) > 0 {
+				if ident, ok := c.Conditions[0].(*aster.IdentExpr); ok {
+					variantName = ident.Name
+					if variantName == "Active" {
+						tagValue = 1
+					} else if variantName == "Inactive" {
+						tagValue = 2
+					}
+				}
+			}
+
+			cg.writeIndent()
+			fmt.Fprintf(&cg.builder, "case %d:\n", tagValue)
+			cg.indent++
+
+			if c.Body != nil {
+				numStmts := len(c.Body.Stmts)
+				for idx, subStmt := range c.Body.Stmts {
+					if idx == numStmts-1 {
+						if exprStmt, ok := subStmt.(*aster.ExprStmt); ok && exprStmt.Expr != nil {
+							if call, ok := exprStmt.Expr.(*aster.CallExpr); ok {
+								cg.writeIndent()
+								cg.genCall(call)
+								cg.builder.WriteString("; break;\n")
+								continue
+							}
+						}
+						cg.genStmt(subStmt)
+					} else {
+						cg.genStmt(subStmt)
+					}
+				}
+			}
+
+			cg.indent--
+		}
+
+		if s.Else != nil {
+			cg.writeIndent()
+			cg.builder.WriteString("default:\n")
+			cg.indent++
+			cg.genBlock(s.Else)
+			cg.indent--
+		}
+
+		cg.writeIndent()
+		cg.builder.WriteString("}\n")
 
 	case *aster.Declar:
 		cg.writeIndent()
@@ -256,12 +320,9 @@ func (cg *Codegen) genStmt(stmt aster.Statement) {
 			fmt.Fprintf(&cg.builder, "%s %s[%d];\n", cType, s.Name, s.Type.Size)
 		} else {
 			if s.Value != nil {
-				// Check if we are allocating a Struct Literal that belongs on the Heap
 				if structLit, ok := s.Value.(*aster.StructLiteral); ok && s.Type.PtrDepth > 0 {
-					// Route allocation to the safe 8-byte padded heap allocator
 					cg.genHeapStructLiteral(structLit, s.Name)
 				} else {
-					// Traditional Stack/Value allocation layout
 					fmt.Fprintf(&cg.builder, "%s %s = ", cType, s.Name)
 					cg.genExpr(s.Value)
 					cg.builder.WriteString(";\n")
@@ -297,16 +358,13 @@ func (cg *Codegen) genStmt(stmt aster.Statement) {
 		cg.writeIndent()
 		cg.builder.WriteString("for (")
 
-		/* 🔍 Dynamic Type Switch evaluates both mutations and inline structural shorthand declarations */
 		if s.Init != nil {
 			switch initStmt := s.Init.(type) {
 			case *aster.Assign:
-				/* Standard Path: Emit regular assignment configuration for existing bounds counters */
 				cg.genExpr(initStmt.Target)
 				cg.builder.WriteString(" = ")
 				cg.genExpr(initStmt.Value)
 			case *aster.Declar:
-				/* Shorthand Path: Emit clean localized dynamic type bindings directly into the loop header */
 				cg.builder.WriteString("int32_t ")
 				cg.genExpr(initStmt.Name)
 				cg.builder.WriteString(" = ")
@@ -346,28 +404,52 @@ func (cg *Codegen) genBlock(block *aster.FrameBlock) {
 	cg.builder.WriteString("}\n")
 }
 
+// genHeapStructLiteral assigns heap structure footprints,
+// handling discriminator tags for enum flat layout allocations.
 func (cg *Codegen) genHeapStructLiteral(lit *aster.StructLiteral, targetVarName string) {
-	structName := lit.Type.Name
+	rawName := lit.Type.Name
+	structName := rawName
+	variantName := ""
+	isEnumVariant := false
 
-	// Resolve the accurate index matching the pre-aligned 8-byte foxGC pools
+	if strings.Contains(rawName, ".") {
+		parts := strings.Split(rawName, ".")
+		structName = parts[0]
+		variantName = parts[1]
+		isEnumVariant = true
+	}
+
 	classIdx := cg.calculateClassIndex(structName)
-
-	// Invoke our new static scanning logic to determine the explicit pointer flag
 	hasPointers := cg.structHasPointers(structName)
-
-	// Assign a sequential or placeholder type tag for the compiled structural footprint
 	typeTag := 1
 
-	// Generate the fresh three-argument pointer extraction using the optimized contract layout
 	fmt.Fprintf(&cg.builder, "    %s* %s = (%s*)((char*)fgc_alloc(%d, %d, %d) + 8);\n",
 		structName, targetVarName, structName, classIdx, typeTag, hasPointers)
 
-	// Initialize the struct member variables values lineally using direct genExpr recursion
-	for _, providedField := range lit.Fields {
+	if isEnumVariant {
+		generatedTagValue := 0
+		if variantName == "Active" {
+			generatedTagValue = 1
+		} else if variantName == "Inactive" {
+			generatedTagValue = 2
+		}
+
 		cg.writeIndent()
-		fmt.Fprintf(&cg.builder, "%s->%s = ", targetVarName, providedField.Name)
-		cg.genExpr(providedField.Value)
-		cg.builder.WriteString(";\n")
+		fmt.Fprintf(&cg.builder, "%s->_tag = %d;\n", targetVarName, generatedTagValue)
+
+		for _, providedField := range lit.Fields {
+			cg.writeIndent()
+			fmt.Fprintf(&cg.builder, "%s->variants.%s.%s = ", targetVarName, variantName, providedField.Name)
+			cg.genExpr(providedField.Value)
+			cg.builder.WriteString(";\n")
+		}
+	} else {
+		for _, providedField := range lit.Fields {
+			cg.writeIndent()
+			fmt.Fprintf(&cg.builder, "%s->%s = ", targetVarName, providedField.Name)
+			cg.genExpr(providedField.Value)
+			cg.builder.WriteString(";\n")
+		}
 	}
 }
 
@@ -394,83 +476,30 @@ func (cg *Codegen) genStruct(s *aster.Struct) {
 	fmt.Fprintf(&cg.builder, "} %s;\n\n", s.Name)
 }
 
-// isPointerType checks if the object being accessed is a pointer
-func (cg *Codegen) isPointerType(expr aster.Expression) bool {
-	switch e := expr.(type) {
-	case *aster.IdentExpr:
-		// Search in local or global declarations for this identifier's type
-		// For now, we can look into the current function scope if available
-		// Or assume the parser has already marked the PtrDepth
-		return e.Type != nil && e.Type.PtrDepth > 0
+func (cg *Codegen) genEnumDecl(enum *aster.EnumDecl) {
+	fmt.Fprintf(&cg.builder, "typedef struct %s {\n", enum.Name)
+	fmt.Fprintf(&cg.builder, "    int32_t _tag;\n")
+	fmt.Fprintf(&cg.builder, "    union {\n")
 
-	case *aster.UnaryExpr:
-		// Address-of (&) always results in a pointer
-		return e.Op == "&"
-	}
-	return false
-}
-
-func (cg *Codegen) structHasPointers(sName string) int {
-	structSym, exists := cg.symbolTable.Resolve(sName)
-	if !exists || structSym == nil {
-		return 0
-	}
-
-	// Scan through the pre-defined fields within the compile-time symbol layout
-	for _, field := range structSym.Fields {
-		// If the field is a pointer or a dynamic string layout, flag it immediately
-		if field.Type.PtrDepth > 0 || field.Type.Name == "string" {
-			return 1 // Contains live heap references
+	for _, variant := range enum.Variants {
+		if len(variant.Fields) > 0 {
+			fmt.Fprintf(&cg.builder, "        struct {\n")
+			for _, field := range variant.Fields {
+				cType := cg.mapType(field.Type)
+				prefix := ""
+				if field.Type != nil && field.Type.PtrDepth > 0 && field.Type.Name == enum.Name {
+					prefix = "struct "
+				}
+				if field.Type != nil && field.Type.IsArray {
+					fmt.Fprintf(&cg.builder, "            %s%s %s[%d];\n", prefix, cType, field.Name, field.Type.Size)
+				} else {
+					fmt.Fprintf(&cg.builder, "            %s%s %s;\n", prefix, cType, field.Name)
+				}
+			}
+			fmt.Fprintf(&cg.builder, "        } %s;\n", variant.Name)
 		}
 	}
 
-	return 0 // Pure raw primitive data structure layout
-}
-
-func (cg *Codegen) calculateClassIndex(sName string) int {
-	// Querying the unified truth source via the domain tree
-	structSym, exists := cg.symbolTable.Resolve(sName)
-	if !exists || structSym == nil {
-		return 0
-	}
-
-	totalSize := 0
-	for _, field := range structSym.Fields {
-		fieldSize := 0
-
-		// Calculating physical volumes based on basic types
-		if field.Type.PtrDepth > 0 || field.Type.Name == "string" {
-			fieldSize = 8
-		} else if field.Type.Name == "int" {
-			fieldSize = 4
-		} else if field.Type.Name == "bool" {
-			fieldSize = 1
-		} else {
-			fieldSize = 8
-		}
-		// Multiplying the physical space step if the field is a fixed matrix
-		if field.Type.IsArray && field.Type.Size > 0 {
-			fieldSize = fieldSize * field.Type.Size
-		}
-
-		totalSize += fieldSize
-	}
-
-	// Physical alignment of 8 bytes to prevent gaps within the cache
-	if totalSize%8 != 0 {
-		totalSize = ((totalSize / 8) + 1) * 8
-	}
-
-	totalNeeded := totalSize + 8
-
-	// Matching the final size with the fixed foxGC pools
-	configurations := []int{32, 64, 128, 256, 512, 1024, 2048, 4096}
-	for idx, maxCapacity := range configurations {
-		if totalNeeded <= maxCapacity {
-			return idx
-		}
-	}
-
-	// Passing large objects to the large pool slot POOL_LARGE
-	return 8
+	fmt.Fprintf(&cg.builder, "    } variants;\n")
+	fmt.Fprintf(&cg.builder, "} %s;\n\n", enum.Name)
 }

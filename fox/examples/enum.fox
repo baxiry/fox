@@ -5,11 +5,15 @@ enum Status {
 }
 
 fn main() {
-    var s *Status = Status.Active{id: 777}
+    var s *Status = Status.Inactive{reason: 0}
 
     match s {
     case Active : 
-        printf("Status is active with ID: %d\n", id)
+        printf("Status is active with ID: %d\n", s.id)
+
+    case Inactive: 
+        printf("s in inactive %d\n", s.reason)
+
     }
 }
 
