@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"fox/aster"
 	"fox/symbols"
+	"strings"
 )
 
 // Update built-in functions to use aster.Type
@@ -328,11 +329,15 @@ func (tc *TypeChecker) checkFuncDecl(fn *aster.Func) {
 		return
 	}
 
-	// Correctly set return signature and associate the Symbol's Type pointer
 	if fn.Return != nil {
-		// Use explicit field mapping to prevent positional struct errors
+		typeName := fn.Return.Type.Name
+
+		if fn.Return.IsErrorUnion {
+			typeName = "_Result_" + typeName
+		}
+
 		sym.Type = &symbols.Type{
-			Name:     fn.Return.Type.Name,
+			Name:     typeName,
 			PtrDepth: fn.Return.Type.PtrDepth,
 			IsArray:  fn.Return.Type.IsArray,
 		}
@@ -344,7 +349,6 @@ func (tc *TypeChecker) checkFuncDecl(fn *aster.Func) {
 
 	tc.CurrentFunction = sym
 
-	// Proper scope management using explicit field assignments
 	childScopeID := tc.CurrentTable.GenerateChildID()
 
 	childTable := &symbols.SymbolTable{
@@ -356,11 +360,9 @@ func (tc *TypeChecker) checkFuncDecl(fn *aster.Func) {
 	previousTable := tc.CurrentTable
 	tc.CurrentTable = childTable
 
-	// Register parameters into the function's local scope
 	for _, param := range fn.Params {
 		typeName := param.Type.Name
 
-		// Validate type existence (Basic or Custom Structs)
 		isBuiltin := typeName == "int" || typeName == "string" || typeName == "bool" || typeName == "void"
 		if !isBuiltin {
 			if _, exists := tc.GlobalTable.Resolve(typeName); !exists {
@@ -368,7 +370,6 @@ func (tc *TypeChecker) checkFuncDecl(fn *aster.Func) {
 			}
 		}
 
-		// Ensure parameter type is accurately stored as a pointer
 		paramSym := &symbols.Symbol{
 			Name:    param.Name,
 			Kind:    "var",
@@ -389,7 +390,6 @@ func (tc *TypeChecker) checkFuncDecl(fn *aster.Func) {
 		tc.checkBlock(fn.Body)
 	}
 
-	// Restore previous scope after function analysis
 	tc.CurrentTable = previousTable
 	tc.CurrentFunction = nil
 }
@@ -406,36 +406,49 @@ func (tc *TypeChecker) checkBlock(block *aster.FrameBlock) {
 }
 
 func (tc *TypeChecker) checkReturnStmt(stmt *aster.ReturnStmt) {
-	// 1. Ensure the return is inside a function context
 	if tc.CurrentFunction == nil {
 		tc.appendErrorf("return statement outside function", stmt.Line)
 		return
 	}
 
-	expectedSig := tc.CurrentFunction.ReturnType
+	expectedType := tc.CurrentFunction.Type
 	actualExpr := stmt.Result
 
-	// 2. Handle void returns (no return signature or void type)
-	if expectedSig == nil || expectedSig.Type.Name == "void" {
+	if expectedType == nil || expectedType.Name == "void" {
 		if actualExpr != nil {
 			tc.appendErrorf("too many arguments to return: expected 0, got 1", stmt.Line)
 		}
 		return
 	}
 
-	// 3. Infer the actual return type from the expression
 	if actualExpr == nil {
-		tc.appendErrorf("missing return value: expected %s", stmt.Line, expectedSig.Type.Name)
+		tc.appendErrorf("missing return value: expected %s", stmt.Line, expectedType.Name)
 		return
 	}
 
 	actualType := tc.inferType(actualExpr)
 	if actualType == nil || actualType.Name == aster.INVALID.String() {
-		return // Error already reported by inferType
+		return
 	}
 
-	// 4. Validate Type compatibility (Name, PtrDepth, and IsArray)
-	expectedType := expectedSig.Type
+	if strings.HasPrefix(expectedType.Name, "_Result_") || (tc.CurrentRetTypes != nil && tc.CurrentRetTypes.IsErrorUnion) {
+		if actualType.Name == "Error" {
+			return
+		}
+
+		cleanExpectedName := strings.TrimPrefix(expectedType.Name, "_Result_")
+		if actualType.Name != cleanExpectedName ||
+			actualType.PtrDepth != expectedType.PtrDepth ||
+			actualType.IsArray != expectedType.IsArray {
+
+			tc.appendErrorf("cannot use %s (ptr %d) as success type %s (ptr %d) in error-union return argument",
+				stmt.Line,
+				actualType.Name, actualType.PtrDepth,
+				cleanExpectedName, expectedType.PtrDepth)
+		}
+		return
+	}
+
 	if actualType.Name != expectedType.Name ||
 		actualType.PtrDepth != expectedType.PtrDepth ||
 		actualType.IsArray != expectedType.IsArray {

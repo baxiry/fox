@@ -75,7 +75,7 @@ func (p *Parser) parseUnary() Expression {
 
 		switch p.tokens[p.pos].Type {
 
-		case NOT, MINUS, STAR, AMP:
+		case EXCLAM, MINUS, STAR, AMP:
 			op := p.tokens[p.pos]
 			p.pos++
 			return &UnaryExpr{Op: op.Lexeme, Expr: p.parseUnary(), Line: op.Line}
@@ -215,7 +215,7 @@ func precedence(t TokenType) (int, bool) {
 func isUnaryStart(tok Token) bool {
 	return tok.Type == AMP ||
 		tok.Type == STAR ||
-		tok.Type == NOT ||
+		tok.Type == EXCLAM ||
 		tok.Type == MINUS
 }
 

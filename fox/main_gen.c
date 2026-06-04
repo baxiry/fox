@@ -4,29 +4,50 @@
 
 #include "foxgc/fgc.h"
 
-typedef struct Status {
-    int32_t _tag;
+typedef struct Error {
+    char* msg;
+    int32_t code;
+} Error;
+
+typedef struct _Result_int {
+    FoxHeader header;
     union {
-        struct {
-            int32_t id;
-        } Active;
-        struct {
-            int32_t reason;
-        } Inactive;
-    } variants;
-} Status;
+        int success;
+        Error error;
+    } value;
+} _Result_int;
+
+_Result_int divide(int32_t a, int32_t b) {
+    if (b == 0) {
+        _Result_int __ret_env;
+        __ret_env.header.error_flag = 1;
+        __ret_env.value.error.msg = "cannot divide by zero";
+        __ret_env.value.error.code = 400;
+        return __ret_env;
+    }
+
+_Result_int __ret_env;
+    __ret_env.header.error_flag = 0;
+    __ret_env.value.success = a / b;
+    return __ret_env;
+}
 
 int main() {
     int32_t stack_top_anchor;
     fgc_init(&stack_top_anchor);
-        Status* s = (Status*)((char*)fgc_alloc(0, 1, 0) + 8);
-    s->_tag = 2;
-    s->variants.Inactive.reason = 0;
-    switch (s->_tag) {
+_Result_int res = divide(10, 0);
+    switch (res.header.error_flag) {
     case 1:
-        printf("Status is active with ID: %d\n", s->variants.Active.id); break;
-    case 2:
-        printf("s in inactive %d\n", s->variants.Inactive.reason); break;
+        printf("Operation failed! Error: %s (Code: %d)\n", res.value.error.msg, res.value.error.code); break;
+    default:
+        printf("Operation succeeded! Result is: %d\n", res.value.success); break;
+    }
+    res = divide(10, 10);
+    switch (res.header.error_flag) {
+    case 1:
+        printf("Operation failed! Error: %s (Code: %d)\n", res.value.error.msg, res.value.error.code); break;
+    default:
+        printf("Operation succeeded! Result is: %d\n", res.value.success); break;
     }
     return 0;
 }

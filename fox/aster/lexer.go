@@ -60,7 +60,7 @@ const (
 	AND
 	AMP
 	OR
-	NOT
+	EXCLAM
 	DOT
 	PIPE
 
@@ -315,7 +315,7 @@ func Lexer(input string) []Token {
 
 		case '!':
 			ls.addToken()
-			ls.tokens = append(ls.tokens, Token{Type: NOT, Lexeme: tkn, Line: ls.line, Column: ls.col})
+			ls.tokens = append(ls.tokens, Token{Type: EXCLAM, Lexeme: tkn, Line: ls.line, Column: ls.col})
 			i++
 			continue
 		case '/':
@@ -511,8 +511,8 @@ func (t TokenType) String() string {
 		return "AMP"
 	case OR:
 		return "OR"
-	case NOT:
-		return "NOT"
+	case EXCLAM:
+		return "EXCLAM"
 	case DOT:
 		return "DOT"
 	case PIPE:
@@ -617,7 +617,7 @@ func IsOperator(tok Token) bool {
 	case PLUS, PLUS_PLUS, MINUS, STAR,
 		ASSIGN, DEFINE, EQ, NEQ, PIPE,
 		SLASH, LT, GT, LTE, GTE,
-		AND, AMP, OR, NOT, DOT:
+		AND, AMP, OR, EXCLAM, DOT:
 		return true
 	}
 	return false

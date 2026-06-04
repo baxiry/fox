@@ -8,11 +8,12 @@ import (
 )
 
 type Codegen struct {
-	symbolTable *symbols.SymbolTable
-	builder     strings.Builder
-	unit        *aster.AST
-	project     *aster.Project
-	indent      int
+	symbolTable     *symbols.SymbolTable
+	builder         strings.Builder
+	unit            *aster.AST
+	project         *aster.Project
+	indent          int
+	CurrentFunction *aster.Func
 }
 
 func NewCodegen(proj *aster.Project) *Codegen {
@@ -52,6 +53,8 @@ func (cg *Codegen) Generate() string {
 		}
 	}
 
+	cg.genResultEnvelopes()
+
 	for _, decl := range cg.unit.Decls {
 		switch d := decl.(type) {
 		case *aster.VarDeclar:
@@ -64,22 +67,49 @@ func (cg *Codegen) Generate() string {
 	return cg.builder.String()
 }
 
+func (cg *Codegen) genResultEnvelopes() {
+	generated := make(map[string]bool)
+
+	for _, decl := range cg.unit.Decls {
+		if f, ok := decl.(*aster.Func); ok && f.Return != nil && f.Return.IsErrorUnion {
+			baseTypeName := f.Return.Type.Name
+			envelopeName := "_Result_" + baseTypeName
+
+			if generated[envelopeName] {
+				continue
+			}
+			generated[envelopeName] = true
+
+			fmt.Fprintf(&cg.builder, "typedef struct %s {\n", envelopeName)
+			fmt.Fprintf(&cg.builder, "    FoxHeader header;\n")
+			fmt.Fprintf(&cg.builder, "    union {\n")
+			fmt.Fprintf(&cg.builder, "        %s success;\n", baseTypeName)
+			fmt.Fprintf(&cg.builder, "        Error error;\n")
+			fmt.Fprintf(&cg.builder, "    } value;\n")
+			fmt.Fprintf(&cg.builder, "} %s;\n\n", envelopeName)
+		}
+	}
+}
+
 func (cg *Codegen) genGlobalVar(decl *aster.VarDeclar) {
 	cType := cg.mapType(decl.Type)
 	fmt.Fprintf(&cg.builder, "%s %s;\n", cType, decl.Name)
 }
 
 func (cg *Codegen) genFunction(f *aster.Func) {
-	// 1. Determine Return Type
+	cg.CurrentFunction = f
+
 	retType := "void"
-	// Special case: C's main function MUST return int
 	if f.FuncName == "main" {
 		retType = "int"
 	} else if f.Return != nil {
-		retType = cg.mapType(f.Return.Type)
+		if f.Return.IsErrorUnion {
+			retType = "_Result_" + f.Return.Type.Name
+		} else {
+			retType = cg.mapType(f.Return.Type)
+		}
 	}
 
-	// 2. Generate function signature
 	fmt.Fprintf(&cg.builder, "%s %s(", retType, f.FuncName)
 	for i, p := range f.Params {
 		pType := cg.mapType(p.Type)
@@ -92,13 +122,10 @@ func (cg *Codegen) genFunction(f *aster.Func) {
 
 	cg.indent++
 
-	// If this is the main application entry point, inject foxGC initialization safely
 	if f.FuncName == "main" {
 		cg.writeIndent()
-		// Defining a directory variable to store the stack top address at startup
 		fmt.Fprintf(&cg.builder, "int32_t stack_top_anchor;\n")
 		cg.writeIndent()
-		// Passing the variable's address to the Runtime initialization function
 		fmt.Fprintf(&cg.builder, "fgc_init(&stack_top_anchor);\n")
 	}
 	if f.Body != nil {
@@ -107,8 +134,6 @@ func (cg *Codegen) genFunction(f *aster.Func) {
 		}
 	}
 
-	// 3. Smart return handling
-	// Only add "return 0" if it's the main function OR a void function
 	if f.FuncName == "main" {
 		cg.writeIndent()
 		cg.builder.WriteString("return 0;\n")
@@ -116,6 +141,8 @@ func (cg *Codegen) genFunction(f *aster.Func) {
 
 	cg.indent--
 	cg.builder.WriteString("}\n\n")
+
+	cg.CurrentFunction = nil
 }
 
 func (cg *Codegen) genExpr(expr aster.Expression) {
@@ -155,6 +182,21 @@ func (cg *Codegen) genExpr(expr aster.Expression) {
 	case *aster.FieldAccessExpr:
 		if ident, ok := e.Object.(*aster.IdentExpr); ok && ident.Type != nil {
 			typeName := strings.TrimPrefix(ident.Type.Name, "*")
+
+			if strings.HasPrefix(typeName, "_Result_") {
+				separator := "."
+				if ident.Type.PtrDepth > 0 {
+					separator = "->"
+				}
+
+				if e.Field == "msg" || e.Field == "code" {
+					fmt.Fprintf(&cg.builder, "%s%svalue.error.%s", ident.Name, separator, e.Field)
+				} else {
+					fmt.Fprintf(&cg.builder, "%s%svalue.success.%s", ident.Name, separator, e.Field)
+				}
+				break
+			}
+
 			if typeName == "Status" {
 				separator := "."
 				if ident.Type.PtrDepth > 0 {
@@ -188,11 +230,9 @@ func (cg *Codegen) genExpr(expr aster.Expression) {
 		cg.builder.WriteString(e.Name)
 
 	case *aster.BinaryExpr:
-		cg.builder.WriteString("(")
 		cg.genExpr(e.Left)
 		fmt.Fprintf(&cg.builder, " %s ", e.Op)
 		cg.genExpr(e.Right)
-		cg.builder.WriteString(")")
 
 	case *aster.CallExpr:
 		cg.genCall(e)
@@ -217,7 +257,6 @@ func (cg *Codegen) genCall(e *aster.CallExpr) {
 	cg.builder.WriteString(")")
 }
 
-// mapType converts Fox types to C standard types
 func (cg *Codegen) mapType(foxType *symbols.Type) string {
 	if foxType == nil {
 		return "int32_t"
@@ -231,15 +270,19 @@ func (cg *Codegen) mapType(foxType *symbols.Type) string {
 		typeName = parts[0]
 	}
 
-	switch typeName {
-	case "int":
-		cType = "int32_t"
-	case "string":
-		cType = "char*"
-	case "bool":
-		cType = "bool"
-	default:
+	if strings.HasPrefix(typeName, "_Result_") {
 		cType = typeName
+	} else {
+		switch typeName {
+		case "int":
+			cType = "int32_t"
+		case "string":
+			cType = "char*"
+		case "bool":
+			cType = "bool"
+		default:
+			cType = typeName
+		}
 	}
 
 	for i := 0; i < foxType.PtrDepth; i++ {
@@ -252,24 +295,84 @@ func (cg *Codegen) mapType(foxType *symbols.Type) string {
 func (cg *Codegen) genStmt(stmt aster.Statement) {
 	switch s := stmt.(type) {
 
-	case *aster.MatchStmt:
+	case *aster.IfStmt:
 		cg.writeIndent()
-		cg.builder.WriteString("switch (")
-		cg.genExpr(s.Object)
-		cg.builder.WriteString("->_tag) {\n")
+		cg.builder.WriteString("if (")
+		cg.genExpr(s.Cond)
+		cg.builder.WriteString(") ")
+
+		savedFunc := cg.CurrentFunction
+
+		if s.Then != nil {
+			cg.genBlock(s.Then)
+		}
+
+		cg.CurrentFunction = savedFunc
+
+		if s.Else != nil {
+			cg.builder.WriteString(" else ")
+			if block, ok := s.Else.(*aster.FrameBlock); ok {
+				cg.genBlock(block)
+			} else {
+				cg.writeIndent()
+				cg.builder.WriteString("{\n")
+				cg.indent++
+				cg.writeIndent()
+				cg.genStmt(s.Else)
+				cg.indent--
+				cg.writeIndent()
+				cg.builder.WriteString("}\n")
+			}
+		} else {
+			cg.builder.WriteString("\n")
+		}
+
+		cg.CurrentFunction = savedFunc
+
+	case *aster.MatchStmt:
+		isErrorEnvelope := false
+		var objectIdentName string
+		if ident, ok := s.Object.(*aster.IdentExpr); ok && ident.Type != nil {
+			objectIdentName = ident.Name
+			if strings.HasPrefix(ident.Type.Name, "_Result_") {
+				isErrorEnvelope = true
+			}
+		}
+
+		cg.writeIndent()
+		if isErrorEnvelope {
+			cg.builder.WriteString("switch (")
+			cg.genExpr(s.Object)
+			cg.builder.WriteString(".header.error_flag) {\n")
+		} else {
+			cg.builder.WriteString("switch (")
+			cg.genExpr(s.Object)
+			cg.builder.WriteString("->_tag) {\n")
+		}
 
 		for _, c := range s.Cases {
-			variantName := ""
 			tagValue := 0
+			isErrorCase := false
+
 			if len(c.Conditions) > 0 {
 				if ident, ok := c.Conditions[0].(*aster.IdentExpr); ok {
-					variantName = ident.Name
-					if variantName == "Active" {
-						tagValue = 1
-					} else if variantName == "Inactive" {
-						tagValue = 2
+					if isErrorEnvelope {
+						if ident.Name == "Error" {
+							isErrorCase = true
+							tagValue = 1
+						}
+					} else {
+						if ident.Name == "Active" {
+							tagValue = 1
+						} else if ident.Name == "Inactive" {
+							tagValue = 2
+						}
 					}
 				}
+			}
+
+			if isErrorEnvelope && !isErrorCase {
+				tagValue = 0
 			}
 
 			cg.writeIndent()
@@ -283,6 +386,29 @@ func (cg *Codegen) genStmt(stmt aster.Statement) {
 						if exprStmt, ok := subStmt.(*aster.ExprStmt); ok && exprStmt.Expr != nil {
 							if call, ok := exprStmt.Expr.(*aster.CallExpr); ok {
 								cg.writeIndent()
+
+								isPrintfCall := false
+								if callIdent, ok := call.Callee.(*aster.IdentExpr); ok && callIdent.Name == "printf" {
+									isPrintfCall = true
+								}
+
+								if isErrorEnvelope && !isErrorCase && isPrintfCall {
+									fmt.Fprintf(&cg.builder, "printf(")
+									if len(call.Args) > 0 {
+										cg.genExpr(call.Args[0])
+										for k := 1; k < len(call.Args); k++ {
+											cg.builder.WriteString(", ")
+											if argIdent, ok := call.Args[k].(*aster.IdentExpr); ok && argIdent.Name == objectIdentName {
+												fmt.Fprintf(&cg.builder, "%s.value.success", objectIdentName)
+											} else {
+												cg.genExpr(call.Args[k])
+											}
+										}
+									}
+									cg.builder.WriteString("); break;\n")
+									continue
+								}
+
 								cg.genCall(call)
 								cg.builder.WriteString("; break;\n")
 								continue
@@ -302,7 +428,39 @@ func (cg *Codegen) genStmt(stmt aster.Statement) {
 			cg.writeIndent()
 			cg.builder.WriteString("default:\n")
 			cg.indent++
-			cg.genBlock(s.Else)
+
+			for _, subStmt := range s.Else.Stmts {
+				if exprStmt, ok := subStmt.(*aster.ExprStmt); ok && exprStmt.Expr != nil {
+					if call, ok := exprStmt.Expr.(*aster.CallExpr); ok {
+						isPrintfCall := false
+						if callIdent, ok := call.Callee.(*aster.IdentExpr); ok && callIdent.Name == "printf" {
+							isPrintfCall = true
+						}
+
+						if isErrorEnvelope && isPrintfCall {
+							cg.writeIndent()
+							fmt.Fprintf(&cg.builder, "printf(")
+							if len(call.Args) > 0 {
+								cg.genExpr(call.Args[0])
+								for k := 1; k < len(call.Args); k++ {
+									cg.builder.WriteString(", ")
+									if argIdent, ok := call.Args[k].(*aster.IdentExpr); ok && argIdent.Name == objectIdentName {
+										fmt.Fprintf(&cg.builder, "%s.value.success", objectIdentName)
+									} else {
+										cg.genExpr(call.Args[k])
+									}
+								}
+							}
+							// إغلاق القوس الحاضن للدالة بنجاح وحقن الـ break المدمجة بسلام
+							cg.builder.WriteString("); break;\n")
+							continue
+						}
+					}
+				}
+				cg.writeIndent()
+				cg.genStmt(subStmt)
+			}
+
 			cg.indent--
 		}
 
@@ -310,8 +468,24 @@ func (cg *Codegen) genStmt(stmt aster.Statement) {
 		cg.builder.WriteString("}\n")
 
 	case *aster.Declar:
-		cg.writeIndent()
-		cg.genExpr(s)
+		if ident, ok := s.Name.(*aster.IdentExpr); ok {
+			typeName := "int32_t"
+			if s.Value != nil {
+				if call, ok := s.Value.(*aster.CallExpr); ok {
+					if callIdent, ok := call.Callee.(*aster.IdentExpr); ok && callIdent.Type != nil {
+						if strings.HasPrefix(callIdent.Type.Name, "_Result_") {
+							typeName = callIdent.Type.Name
+						}
+					}
+				} else if lit, ok := s.Value.(*aster.StructLiteral); ok && lit.Type != nil {
+					typeName = lit.Type.Name
+				}
+			}
+
+			fmt.Fprintf(&cg.builder, "%s %s = ", typeName, ident.Name)
+			cg.genExpr(s.Value)
+			cg.builder.WriteString(";\n")
+		}
 
 	case *aster.VarDeclar:
 		cg.writeIndent()
@@ -347,7 +521,55 @@ func (cg *Codegen) genStmt(stmt aster.Statement) {
 		}
 
 	case *aster.ReturnStmt:
-		cg.writeIndent()
+		if cg.CurrentFunction != nil && cg.CurrentFunction.Return != nil && cg.CurrentFunction.Return.IsErrorUnion {
+			baseTypeName := strings.TrimPrefix(cg.CurrentFunction.Return.Type.Name, "_Result_")
+			envelopeName := "_Result_" + baseTypeName
+
+			fmt.Fprintf(&cg.builder, "%s __ret_env;\n", envelopeName)
+
+			isErrorValue := false
+			if lit, ok := s.Result.(*aster.StructLiteral); ok {
+				hasMsg := false
+				hasCode := false
+				for _, f := range lit.Fields {
+					if f.Name == "msg" {
+						hasMsg = true
+					}
+					if f.Name == "code" {
+						hasCode = true
+					}
+				}
+				if hasMsg && hasCode {
+					isErrorValue = true
+				}
+			}
+
+			if isErrorValue {
+				cg.writeIndent()
+				cg.builder.WriteString("__ret_env.header.error_flag = 1;\n")
+
+				if lit, ok := s.Result.(*aster.StructLiteral); ok {
+					for _, field := range lit.Fields {
+						cg.writeIndent()
+						fmt.Fprintf(&cg.builder, "__ret_env.value.error.%s = ", field.Name)
+						cg.genExpr(field.Value)
+						cg.builder.WriteString(";\n")
+					}
+				}
+			} else {
+				cg.writeIndent()
+				cg.builder.WriteString("__ret_env.header.error_flag = 0;\n")
+				cg.writeIndent()
+				cg.builder.WriteString("__ret_env.value.success = ")
+				cg.genExpr(s.Result)
+				cg.builder.WriteString(";\n")
+			}
+
+			cg.writeIndent()
+			cg.builder.WriteString("return __ret_env;\n")
+			break
+		}
+
 		cg.builder.WriteString("return ")
 		if s.Result != nil {
 			cg.genExpr(s.Result)

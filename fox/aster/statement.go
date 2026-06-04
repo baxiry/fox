@@ -372,11 +372,10 @@ func isExprStart(tok Token) bool {
 	case IDENT,
 		INT, FLOAT, STRING,
 		TRUE, FALSE,
-
 		OPN_PAREN, // (a + b)
 		AMP,       // &a
 		STAR,      // *a
-		NOT,       // !a
+		EXCLAM,    // !a
 		MINUS:     // -a
 
 		return true
@@ -420,27 +419,30 @@ func (p *Parser) parseReturn() Statement {
 }
 
 func (p *Parser) parseRetSign() *ReturnSig {
-	// If it's a void function starting with {
 	if p.currentToken().Type == OPN_BRACE {
 		return nil
 	}
 
-	// Parse the first (and only) return type
 	line := p.currentToken().Line
 	typ := p.parseType()
 
-	// If the user tries to add another type with a comma
+	isErrorUnion := false
+	if p.currentToken().Type == EXCLAM {
+		p.pos++
+		isErrorUnion = true
+	}
+
 	if p.currentToken().Type == COMMA {
 		p.appendErrorf("multi-value return types are not supported", p.currentToken().Line)
-		// Skip tokens until we find the start of the function body
 		for p.pos < len(p.tokens) && p.currentToken().Type != OPN_BRACE {
 			p.pos++
 		}
 	}
 
 	return &ReturnSig{
-		Type: &typ,
-		Line: line,
+		Type:         &typ,
+		IsErrorUnion: isErrorUnion,
+		Line:         line,
 	}
 }
 
@@ -557,7 +559,7 @@ func (p *Parser) isValidDefineTarget(expr Expression) bool {
 func (t Token) IsOperator() bool {
 	switch t.Type {
 	case PLUS, MINUS, STAR, SLASH, ASSIGN, DEFINE,
-		EQ, NEQ, LT, GT, LTE, GTE, AND, OR, NOT, DOT:
+		EQ, NEQ, LT, GT, LTE, GTE, AND, OR, EXCLAM, DOT:
 		return true
 	default:
 		return false

@@ -17,9 +17,10 @@ type Param struct {
 	Type *Type
 }
 
-// ReturnSig tracks multi-return type signatures
+// ReturnSig signature
 type ReturnSig struct {
-	Type *Type
+	Type         *Type
+	IsErrorUnion bool
 }
 
 // StructField mirrors the verified field specs inside a struct type

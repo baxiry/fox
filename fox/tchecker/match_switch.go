@@ -2,6 +2,7 @@ package tchecker
 
 import (
 	"fox/aster"
+	"strings"
 )
 
 func (tc *TypeChecker) checkMatchStmt(s *aster.MatchStmt) {
@@ -9,19 +10,62 @@ func (tc *TypeChecker) checkMatchStmt(s *aster.MatchStmt) {
 		return
 	}
 
-	// 1. استنباط والتحقق من نوع المتغير المستهدف بالفحص (مثل s)
-	_ = tc.inferType(s.Object)
+	objType := tc.inferType(s.Object)
+	if objType == nil {
+		return
+	}
 
-	// 2. حلقة معزولة تماماً لزيارة وفحص الأنواع والجمل داخل كل فرع case
+	isErrorEnvelope := strings.HasPrefix(objType.Name, "_Result_")
+
 	for _, c := range s.Cases {
-		// فحص كتلة الجمل والتعليمات التابعة للفرع الحالي باستخدام دالتك القياسية
+		isErrorCase := false
+		if len(c.Conditions) > 0 {
+			if ident, ok := c.Conditions[0].(*aster.IdentExpr); ok && ident.Name == "Error" {
+				isErrorCase = true
+			}
+		}
+
+		if isErrorEnvelope {
+			if isErrorCase {
+				originalType := objType.Name
+				objType.Name = "Error"
+
+				if c.Body != nil {
+					tc.checkBlock(c.Body)
+				}
+
+				objType.Name = originalType
+				continue
+			} else {
+				originalType := objType.Name
+				objType.Name = strings.TrimPrefix(originalType, "_Result_")
+
+				if c.Body != nil {
+					tc.checkBlock(c.Body)
+				}
+
+				objType.Name = originalType
+				continue
+			}
+		}
+
 		if c.Body != nil {
 			tc.checkBlock(c.Body)
 		}
 	}
 
-	// 3. فحص الفرع البديل الافتراضي else إن وجد
 	if s.Else != nil {
-		tc.checkBlock(s.Else)
+		if isErrorEnvelope {
+			originalType := objType.Name
+			objType.Name = strings.TrimPrefix(originalType, "_Result_")
+
+			tc.checkBlock(s.Else)
+
+			objType.Name = originalType
+		} else {
+			tc.checkBlock(s.Else)
+		}
 	}
 }
+
+// end

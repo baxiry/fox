@@ -18,9 +18,9 @@ typedef struct {
     uint16_t cycle;    // 2 Bytes: The marking epoch cycle tracker
     uint16_t type_tag; // 2 Bytes: Supports over 65k enterprise types & unions
     uint8_t has_pointers; // 1 Byte: Explicit flag (0 = primitive, 1 = trace)
-    uint8_t
-        padding[3]; // 3 Bytes: Pure trailing padding reserved for thread locks
-} FoxHeader; // Total size = 2 + 2 + 1 + 3 = 8 Bytes (Perfect 64-bit alignment)
+    uint8_t error_flag;   // for error
+    uint8_t padding[2];
+} FoxHeader; // Total size  = 8 Bytes
 
 // Size-class descriptor matching the dynamic adaptive block map framework
 typedef struct {

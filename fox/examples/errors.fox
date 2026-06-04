@@ -1,0 +1,35 @@
+
+struct Error {
+    msg string
+    code int
+}
+
+fn divide(a int, b int) int! {
+    if b == 0 {
+        return Error{msg: "cannot divide by zero", code: 400}
+    }
+    return a / b
+}
+
+fn main() {
+    res := divide(10, 0)
+
+    match res {
+    case Error:
+        printf("Operation failed! Error: %s (Code: %d)\n", res.msg, res.code)
+    
+    else:
+        printf("Operation succeeded! Result is: %d\n", res)
+    }
+
+    res = divide(10, 10)
+
+    match res {
+    case Error:
+        printf("Operation failed! Error: %s (Code: %d)\n", res.msg, res.code)
+    
+    else:
+        printf("Operation succeeded! Result is: %d\n", res)
+    }
+
+}

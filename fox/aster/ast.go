@@ -111,9 +111,10 @@ type Param struct {
 }
 
 type ReturnSig struct {
-	Name string
-	Type *symbols.Type
-	Line int
+	IsErrorUnion bool
+	Name         string
+	Type         *symbols.Type
+	Line         int
 }
 
 type FieldAccessExpr struct {
