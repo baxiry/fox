@@ -18,10 +18,10 @@ var builtInFunctions = map[string]*symbols.Type{
 type TypeChecker struct {
 	GlobalTable     *symbols.SymbolTable
 	CurrentTable    *symbols.SymbolTable
-	CurrentFunction *symbols.Symbol
+	CurrFn          *symbols.Symbol
 	CurrentRetTypes *aster.ReturnSig
-	CurrentLine     int
 	Errors          []string
+	CurrentLine     int
 }
 
 // NewTypeChecker
@@ -52,7 +52,7 @@ func (tc *TypeChecker) injectBuiltIns() {
 			PtrDepth: 0,
 			IsArray:  false,
 		},
-		ReturnType: &symbols.ReturnSig{
+		RetTp: &symbols.ReturnSig{
 			Type: &symbols.Type{
 				Name:     "void",
 				PtrDepth: 0,
@@ -117,18 +117,27 @@ func (tc *TypeChecker) inferType(expr aster.Expression) *symbols.Type {
 
 		sym, exists := tc.GlobalTable.Resolve(callee.Name)
 		if !exists || sym == nil || sym.Type == nil {
-			// Dynamic fallback for standard functions like printf
 			retType := &symbols.Type{Name: "void", PtrDepth: 0, IsArray: false}
 			callee.Type = retType
 			return retType
 		}
 
-		// Fix: Decorate the callee identifier node with the resolved signature
 		callee.Type = &symbols.Type{
 			Name:     sym.Type.Name,
 			PtrDepth: sym.Type.PtrDepth,
 			IsArray:  sym.Type.IsArray,
 		}
+
+		// قراءة علم التقشير من العقدة e مباشرة لحل مشكلة عدم التعريف
+		if e.UnwrapPanic && strings.HasPrefix(callee.Type.Name, "_Result_") {
+			cleanName := strings.TrimPrefix(callee.Type.Name, "_Result_")
+			return &symbols.Type{
+				Name:     cleanName,
+				PtrDepth: callee.Type.PtrDepth,
+				IsArray:  callee.Type.IsArray,
+			}
+		}
+
 		return callee.Type
 
 	case *aster.StructLiteral:
@@ -235,11 +244,11 @@ func (tc *TypeChecker) registerFunctions(ast *aster.AST) {
 			}
 
 			sym := &symbols.Symbol{
-				Name:       f.FuncName,
-				Kind:       "func",
-				Type:       funcType, // Crucial for Resolve() during CallExpr inference
-				ReturnType: returnSignature,
-				Params:     mapParamsToSymbols(f.Params),
+				Name:   f.FuncName,
+				Kind:   "func",
+				Type:   funcType, // Crucial for Resolve() during CallExpr inference
+				RetTp:  returnSignature,
+				Params: mapParamsToSymbols(f.Params),
 			}
 
 			tc.GlobalTable.Define(f.FuncName, sym)
@@ -347,7 +356,7 @@ func (tc *TypeChecker) checkFuncDecl(fn *aster.Func) {
 		tc.CurrentRetTypes = nil
 	}
 
-	tc.CurrentFunction = sym
+	tc.CurrFn = sym
 
 	childScopeID := tc.CurrentTable.GenerateChildID()
 
@@ -391,7 +400,7 @@ func (tc *TypeChecker) checkFuncDecl(fn *aster.Func) {
 	}
 
 	tc.CurrentTable = previousTable
-	tc.CurrentFunction = nil
+	tc.CurrFn = nil
 }
 
 func (tc *TypeChecker) checkBlock(block *aster.FrameBlock) {
@@ -406,12 +415,12 @@ func (tc *TypeChecker) checkBlock(block *aster.FrameBlock) {
 }
 
 func (tc *TypeChecker) checkReturnStmt(stmt *aster.ReturnStmt) {
-	if tc.CurrentFunction == nil {
+	if tc.CurrFn == nil {
 		tc.appendErrorf("return statement outside function", stmt.Line)
 		return
 	}
 
-	expectedType := tc.CurrentFunction.Type
+	expectedType := tc.CurrFn.Type
 	actualExpr := stmt.Result
 
 	if expectedType == nil || expectedType.Name == "void" {
@@ -763,7 +772,7 @@ func (tc *TypeChecker) checkCallExpr(call *aster.CallExpr) string {
 	}
 
 	// Return the single available type name
-	return sym.ReturnType.Type.Name
+	return sym.RetTp.Type.Name
 }
 
 func (tc *TypeChecker) checkStmt(stmt aster.Statement) {
@@ -784,7 +793,19 @@ func (tc *TypeChecker) checkStmt(stmt aster.Statement) {
 
 	case *aster.ExprStmt:
 		if s.Expr != nil {
-			tc.inferType(s.Expr)
+			exprType := tc.inferType(s.Expr)
+
+			if call, ok := s.Expr.(*aster.CallExpr); ok && exprType != nil {
+				if strings.HasPrefix(exprType.Name, "_Result_") {
+					if call.UnwrapPanic {
+						if tc.CurrFn == nil || tc.CurrFn.RetTp == nil || !tc.CurrFn.RetTp.IsErrorUnion {
+							tc.appendErrorf("cannot use early-return modifier '!' in a function that does not return an error union", call.Line)
+						}
+					} else {
+						tc.appendErrorf("unhandled error: function returns an error union that must be consumed via 'match' or propagated with '!'", call.Line)
+					}
+				}
+			}
 		}
 
 	case *aster.IfStmt:
@@ -800,7 +821,6 @@ func (tc *TypeChecker) checkStmt(stmt aster.Statement) {
 		tc.checkMatchStmt(s)
 
 	default:
-		// Unknown statement type encountered
 	}
 }
 
@@ -953,7 +973,7 @@ func (tc *TypeChecker) checkMultiAssignment(left []aster.Expression, right []ast
 
 	var expandedRightTypes []*symbols.Type
 	for _, expr := range right {
-		retType := tc.inferType(expr)                            // inferReturnTypes(expr)
+		retType := tc.inferType(expr)                            // inferRetTps(expr)
 		expandedRightTypes = append(expandedRightTypes, retType) //retTypes...)
 	}
 

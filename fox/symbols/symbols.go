@@ -36,7 +36,7 @@ type Symbol struct {
 	ScopeID    string
 	Kind       string        // "var", "func", "struct"
 	Params     []Param       // Allocated for functions tracking context
-	ReturnType *ReturnSig    // Multi-return tracking signature
+	RetTp      *ReturnSig    // Multi-return tracking signature
 	Fields     []StructField // Static structure members dimensions layout
 	IsShared   bool
 	IsBuiltIn  bool

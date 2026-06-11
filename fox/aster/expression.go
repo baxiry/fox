@@ -96,9 +96,10 @@ func (e *BinaryExpr) GetLine() int { return e.Line }
 
 // Callee Expression
 type CallExpr struct {
-	Callee Expression
-	Args   []Expression
-	Line   int
+	Callee      Expression
+	Args        []Expression
+	Line        int
+	UnwrapPanic bool
 }
 
 func (*UnaryExpr) isExpr() {}
@@ -135,10 +136,17 @@ func (p *Parser) parseCall(name string) *CallExpr {
 
 	p.expectType(CLS_PAREN)
 
+	unwrapPanic := false
+	if p.currentToken().Type == EXCLAM {
+		p.pos++
+		unwrapPanic = true
+	}
+
 	return &CallExpr{
-		Callee: &IdentExpr{Name: name, Line: p.currentToken().Line},
-		Args:   args,
-		Line:   p.currentToken().Line,
+		Callee:      &IdentExpr{Name: name, Line: p.currentToken().Line},
+		Args:        args,
+		Line:        p.currentToken().Line,
+		UnwrapPanic: unwrapPanic,
 	}
 }
 

@@ -41,8 +41,8 @@ func (cg *Codegen) Generate() string {
 		panic("Codegen unit is nil!")
 	}
 
-	cg.builder.WriteString("#include <stdio.h>\n#include <stdbool.h>\n#include <stdint.h>\n\n")
-	cg.builder.WriteString("#include \"foxgc/fgc.h\"\n\n")
+	cg.builder.WriteString(
+		"#include <stdio.h>\n#include <stdbool.h>\n#include <stdint.h>\n#include <stdlib.h>\n#include \"foxgc/fgc.h\"\n\n")
 
 	for _, decl := range cg.unit.Decls {
 		if d, ok := decl.(*aster.Struct); ok {
@@ -156,14 +156,35 @@ func (cg *Codegen) genExpr(expr aster.Expression) {
 
 	case *aster.Declar:
 		if ident, ok := e.Name.(*aster.IdentExpr); ok {
-			// Determine the type: Struct name or default int32_t
-			if lit, ok := e.Value.(*aster.StructLiteral); ok {
-				fmt.Fprintf(&cg.builder, "%s %s = ", lit.Type.Name, ident.Name)
-			} else {
-				fmt.Fprintf(&cg.builder, "int32_t %s = ", ident.Name)
+			typeName := "int32_t"
+			if e.Value != nil {
+				isUnwrapped := false
+				if call, ok := e.Value.(*aster.CallExpr); ok && call.UnwrapPanic {
+					isUnwrapped = true
+				} else if bin, ok := e.Value.(*aster.BinaryExpr); ok {
+					if leftCall, ok := bin.Left.(*aster.CallExpr); ok && leftCall.UnwrapPanic {
+						isUnwrapped = true
+					}
+					if rightCall, ok := bin.Right.(*aster.CallExpr); ok && rightCall.UnwrapPanic {
+						isUnwrapped = true
+					}
+				}
+
+				if isUnwrapped {
+					typeName = "int32_t"
+				} else if call, ok := e.Value.(*aster.CallExpr); ok {
+					if callIdent, ok := call.Callee.(*aster.IdentExpr); ok && callIdent.Type != nil {
+						if strings.HasPrefix(callIdent.Type.Name, "_Result_") {
+							typeName = callIdent.Type.Name
+						}
+					}
+				} else if lit, ok := e.Value.(*aster.StructLiteral); ok && lit.Type != nil {
+					typeName = lit.Type.Name
+				}
 			}
+
+			fmt.Fprintf(&cg.builder, "%s %s = ", typeName, ident.Name)
 			cg.genExpr(e.Value)
-			// Semicolon is written here for Declarations
 			cg.builder.WriteString(";\n")
 		}
 
@@ -235,6 +256,49 @@ func (cg *Codegen) genExpr(expr aster.Expression) {
 		cg.genExpr(e.Right)
 
 	case *aster.CallExpr:
+		if e.UnwrapPanic {
+			cg.builder.WriteString("({\n")
+			cg.indent++
+
+			baseTypeName := "int"
+			if ident, ok := e.Callee.(*aster.IdentExpr); ok && ident.Type != nil {
+				baseTypeName = strings.TrimPrefix(ident.Type.Name, "_Result_")
+			}
+			envelopeName := "_Result_" + baseTypeName
+
+			cg.writeIndent()
+			fmt.Fprintf(&cg.builder, "%s __tmp_err_env = ", envelopeName)
+			cg.genCall(e)
+			cg.builder.WriteString(";\n")
+
+			cg.writeIndent()
+			cg.builder.WriteString("if (__tmp_err_env.header.error_flag == 1) {\n")
+			cg.indent++
+
+			// الفرز الذكي والمعزول مئة بالمئة لمسار تمرير الخطأ أو الخروج الاضطراري
+			if cg.CurrentFunction != nil && cg.CurrentFunction.Return != nil && cg.CurrentFunction.Return.IsErrorUnion {
+				cg.writeIndent()
+				cg.builder.WriteString("return __tmp_err_env;\n")
+			} else {
+				cg.writeIndent()
+				fmt.Fprintf(&cg.builder, "printf(\"Runtime Panic: unhandled error in function main! Message: %%s\\n\", __tmp_err_env.value.error.msg);\n")
+				cg.writeIndent()
+				cg.builder.WriteString("exit(1);\n")
+			}
+
+			cg.indent--
+			cg.writeIndent()
+			cg.builder.WriteString("}\n")
+
+			cg.writeIndent()
+			cg.builder.WriteString("__tmp_err_env.value.success;\n")
+
+			cg.indent--
+			cg.writeIndent()
+			cg.builder.WriteString("})")
+			break
+		}
+
 		cg.genCall(e)
 
 	case *aster.IndexExpr:
@@ -468,10 +532,25 @@ func (cg *Codegen) genStmt(stmt aster.Statement) {
 		cg.builder.WriteString("}\n")
 
 	case *aster.Declar:
+		cg.writeIndent()
 		if ident, ok := s.Name.(*aster.IdentExpr); ok {
 			typeName := "int32_t"
 			if s.Value != nil {
-				if call, ok := s.Value.(*aster.CallExpr); ok {
+				isUnwrapped := false
+				if call, ok := s.Value.(*aster.CallExpr); ok && call.UnwrapPanic {
+					isUnwrapped = true
+				} else if bin, ok := s.Value.(*aster.BinaryExpr); ok {
+					if leftCall, ok := bin.Left.(*aster.CallExpr); ok && leftCall.UnwrapPanic {
+						isUnwrapped = true
+					}
+					if rightCall, ok := bin.Right.(*aster.CallExpr); ok && rightCall.UnwrapPanic {
+						isUnwrapped = true
+					}
+				}
+
+				if isUnwrapped {
+					typeName = "int32_t"
+				} else if call, ok := s.Value.(*aster.CallExpr); ok {
 					if callIdent, ok := call.Callee.(*aster.IdentExpr); ok && callIdent.Type != nil {
 						if strings.HasPrefix(callIdent.Type.Name, "_Result_") {
 							typeName = callIdent.Type.Name

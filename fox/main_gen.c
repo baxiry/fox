@@ -1,7 +1,7 @@
 #include <stdio.h>
 #include <stdbool.h>
 #include <stdint.h>
-
+#include <stdlib.h>
 #include "foxgc/fgc.h"
 
 typedef struct Error {
@@ -35,20 +35,33 @@ _Result_int __ret_env;
 int main() {
     int32_t stack_top_anchor;
     fgc_init(&stack_top_anchor);
-_Result_int res = divide(10, 0);
-    switch (res.header.error_flag) {
-    case 1:
-        printf("Operation failed! Error: %s (Code: %d)\n", res.value.error.msg, res.value.error.code); break;
-    default:
-        printf("Operation succeeded! Result is: %d\n", res.value.success); break;
-    }
-    res = divide(10, 10);
-    switch (res.header.error_flag) {
-    case 1:
-        printf("Operation failed! Error: %s (Code: %d)\n", res.value.error.msg, res.value.error.code); break;
-    default:
-        printf("Operation succeeded! Result is: %d\n", res.value.success); break;
-    }
+    int32_t res = ({
+        _Result_int __tmp_err_env = divide(10, 20);
+        if (__tmp_err_env.header.error_flag == 1) {
+            printf("Runtime Panic: unhandled error in function main! Message: %s\n", __tmp_err_env.value.error.msg);
+            exit(1);
+        }
+        __tmp_err_env.value.success;
+    });
+    printf("Operation succeeded! Result is: %d\n", res);
+    res = ({
+        _Result_int __tmp_err_env = divide(10, 20);
+        if (__tmp_err_env.header.error_flag == 1) {
+            printf("Runtime Panic: unhandled error in function main! Message: %s\n", __tmp_err_env.value.error.msg);
+            exit(1);
+        }
+        __tmp_err_env.value.success;
+    }) + 30;
+    printf("Operation succeeded! Result is: %d\n", res);
+    res = ({
+        _Result_int __tmp_err_env = divide(10, 0);
+        if (__tmp_err_env.header.error_flag == 1) {
+            printf("Runtime Panic: unhandled error in function main! Message: %s\n", __tmp_err_env.value.error.msg);
+            exit(1);
+        }
+        __tmp_err_env.value.success;
+    }) + 30;
+    printf("error: %d\n", res);
     return 0;
 }
 
