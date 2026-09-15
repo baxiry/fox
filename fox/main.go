@@ -5,7 +5,7 @@ import (
 	"os"
 
 	"fox/aster"
-	"fox/codgen"
+	"fox/cgen"
 	"fox/runner"
 	"fox/tchecker"
 )
@@ -79,7 +79,7 @@ func main() {
 	fmt.Println("symbols in projet", project.SymbolTable)
 
 	// 5. Code Generation phase
-	cg := codgen.NewCodegen(project)
+	cg := cgen.NewCodegen(project)
 	cCode := cg.Generate()
 
 	fmt.Println("C Output Code:")

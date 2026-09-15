@@ -1,4 +1,4 @@
-package codgen
+package cgen
 
 func (cg *Codegen) writeIndent() {
 	for i := 0; i < cg.indent; i++ {

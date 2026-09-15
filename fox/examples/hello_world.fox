@@ -1,6 +1,6 @@
 
 var msg string
 fn main() {
-    msg = "hello\nHow are you\nI am fine\n"
+    msg = "hello world\n"
     printf(msg)
 }

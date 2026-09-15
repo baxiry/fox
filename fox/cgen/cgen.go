@@ -1,4 +1,4 @@
-package codgen
+package cgen
 
 import (
 	"fmt"
@@ -42,7 +42,7 @@ func (cg *Codegen) Generate() string {
 	}
 
 	cg.builder.WriteString(
-		"#include <stdio.h>\n#include <stdbool.h>\n#include <stdint.h>\n#include <stdlib.h>\n#include \"foxgc/fgc.h\"\n\n")
+		"#include <stdio.h>\n#include <stdbool.h>\n#include <stdint.h>\n#include <stdlib.h>\n#include \"../foxgc/fgc.h\"\n\n")
 
 	for _, decl := range cg.unit.Decls {
 		if d, ok := decl.(*aster.Struct); ok {
@@ -251,9 +251,11 @@ func (cg *Codegen) genExpr(expr aster.Expression) {
 		cg.builder.WriteString(e.Name)
 
 	case *aster.BinaryExpr:
+		cg.builder.WriteString("(")
 		cg.genExpr(e.Left)
 		fmt.Fprintf(&cg.builder, " %s ", e.Op)
 		cg.genExpr(e.Right)
+		cg.builder.WriteString(")")
 
 	case *aster.CallExpr:
 		if e.UnwrapPanic {
@@ -426,11 +428,20 @@ func (cg *Codegen) genStmt(stmt aster.Statement) {
 							tagValue = 1
 						}
 					} else {
-						if ident.Name == "Active" {
+						switch ident.Name {
+						case "Active":
 							tagValue = 1
-						} else if ident.Name == "Inactive" {
+						case "Inactive":
 							tagValue = 2
+
 						}
+						/*
+							if ident.Name == "Active" {
+								tagValue = 1
+							} else if ident.Name == "Inactive" {
+								tagValue = 2
+							}
+						*/
 					}
 				}
 			}
@@ -515,7 +526,7 @@ func (cg *Codegen) genStmt(stmt aster.Statement) {
 									}
 								}
 							}
-							// إغلاق القوس الحاضن للدالة بنجاح وحقن الـ break المدمجة بسلام
+							// Successfully close the function's incubator bracket and safely inject the "break"
 							cg.builder.WriteString("); break;\n")
 							continue
 						}
@@ -729,12 +740,20 @@ func (cg *Codegen) genHeapStructLiteral(lit *aster.StructLiteral, targetVarName 
 
 	if isEnumVariant {
 		generatedTagValue := 0
-		if variantName == "Active" {
+		switch variantName {
+		case "Active":
 			generatedTagValue = 1
-		} else if variantName == "Inactive" {
+		case "Inactive":
 			generatedTagValue = 2
 		}
 
+		/*
+			if variantName == "Active" {
+				generatedTagValue = 1
+			} else if variantName == "Inactive" {
+				generatedTagValue = 2
+			}
+		*/
 		cg.writeIndent()
 		fmt.Fprintf(&cg.builder, "%s->_tag = %d;\n", targetVarName, generatedTagValue)
 

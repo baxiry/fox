@@ -16,9 +16,9 @@ func Run(cCode string) error {
 		log.Fatalf("Failed to retrieve current working directory: %v", err)
 	}
 
-	genFileName := filepath.Join(cwd, "main_gen.c")
 	fgcSourcePath := filepath.Join(cwd, "foxgc", "fgc.c")
-	outputExecutablePath := filepath.Join(cwd, "output")
+	genFileName := filepath.Join(cwd, "out/main_gen.c")
+	outputExecutablePath := filepath.Join(cwd, "out/output")
 
 	// Emit the program payload onto the persistent storage layer
 	err = os.WriteFile(genFileName, []byte(cCode), 0644)
@@ -44,6 +44,15 @@ func Run(cCode string) error {
 
 	if err := cmd.Wait(); err != nil {
 		return fmt.Errorf("execution finished with error: %v", err)
+	}
+
+	runCmd := exec.Command(outputExecutablePath)
+	runCmd.Stdout = os.Stdout
+	runCmd.Stderr = os.Stderr
+	runCmd.Stdin = os.Stdin
+
+	if err := runCmd.Run(); err != nil {
+		return fmt.Errorf("failed to run output binary: %v", err)
 	}
 
 	return nil
