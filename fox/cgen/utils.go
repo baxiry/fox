@@ -1,5 +1,10 @@
 package cgen
 
+import (
+	"fox/symbols"
+	"strings"
+)
+
 func (cg *Codegen) writeIndent() {
 	for i := 0; i < cg.indent; i++ {
 		cg.builder.WriteString("    ")
@@ -67,4 +72,39 @@ func (cg *Codegen) calculateClassIndex(sName string) int {
 
 	// Passing large objects to the large pool slot POOL_LARGE
 	return 8
+}
+
+func (cg *Codegen) mapType(foxType *symbols.Type) string {
+	if foxType == nil {
+		return "int32_t"
+	}
+
+	var cType string
+	typeName := foxType.Name
+
+	if strings.Contains(typeName, ".") {
+		parts := strings.Split(typeName, ".")
+		typeName = parts[0]
+	}
+
+	if strings.HasPrefix(typeName, "_Result_") {
+		cType = typeName
+	} else {
+		switch typeName {
+		case "int":
+			cType = "int32_t"
+		case "string":
+			cType = "char*"
+		case "bool":
+			cType = "bool"
+		default:
+			cType = typeName
+		}
+	}
+
+	for i := 0; i < foxType.PtrDepth; i++ {
+		cType += "*"
+	}
+
+	return cType
 }

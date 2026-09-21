@@ -63,9 +63,9 @@ void fgc_trace_object(uintptr_t start_obj_address, uint8_t start_p_type) {
     uint8_t current_p_type = start_p_type;
     uint64_t chain_depth = 0; // counter to track how deep we go inline
 
-    printf("[foxGC-TRACE] >>> Starting Flat Deep Tracing for graph root at: "
-           "0x%lx\n",
-           (unsigned long)start_obj_address);
+    // printf("[foxGC-TRACE] >>> Starting Flat Deep Tracing for graph root at: "
+    //       "0x%lx\n",
+    //      (unsigned long)start_obj_address);
 
     while (1) {
         size_t pool_stride = configurations[current_p_type - 1];
@@ -120,16 +120,18 @@ void fgc_trace_object(uintptr_t start_obj_address, uint8_t start_p_type) {
 
             // Print a status update every 50,000 nodes to avoid flooding the
             // terminal screen too fast
-            if (chain_depth % 50000 == 0) {
+            //
+            /* if (chain_depth % 50000 == 0) {
                 printf("[foxGC-TRACE] Successfully protected %llu linked nodes "
                        "inline. Current address: 0x%lx\n",
                        (unsigned long long)chain_depth,
                        (unsigned long)current_obj_addr);
-            }
+            }*/
         } else {
-            printf("[foxGC-TRACE] <<< Chain end reached safely. Total inlined "
-                   "nodes traced and protected: %llu\n",
-                   (unsigned long long)chain_depth);
+            /* printf("[foxGC-TRACE] <<< Chain end reached safely. Total inlined
+               " "nodes traced and protected: %llu\n", (unsigned long
+               long)chain_depth);
+                    */
             break;
         }
     }

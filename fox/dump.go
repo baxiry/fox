@@ -3,6 +3,7 @@ package main
 import (
 	"fmt"
 	"fox/aster"
+	"strings"
 
 	"github.com/davecgh/go-spew/spew"
 )
@@ -15,7 +16,7 @@ var dump = spew.ConfigState{
 	ContinueOnMethod:        true,
 }
 
-func DumpAST(node interface{}, indent string) {
+func DumpAST(node any, indent string) {
 	if node == nil {
 		return
 	}
@@ -35,10 +36,14 @@ func DumpAST(node interface{}, indent string) {
 
 	case *aster.Func:
 		retName := "void"
-		if n.Return != nil {
-			retName = n.Return.Type.Name
-			if n.Return.IsErrorUnion {
-				retName += "!"
+		if n.Return != nil && len(n.Return.Fields) > 0 {
+			var fields []string
+			for _, field := range n.Return.Fields {
+				fields = append(fields, field.Name+" "+field.Type.Name)
+			}
+			retName = strings.Join(fields, ", ")
+			if n.Return.HasError {
+				retName += " !"
 			}
 		}
 		fmt.Printf("%sFunc: %s() %s\n", indent, n.FuncName, retName)
@@ -47,7 +52,6 @@ func DumpAST(node interface{}, indent string) {
 				DumpAST(stmt, indent+"    ")
 			}
 		}
-
 	case *aster.IfStmt:
 		fmt.Printf("%sIfStmt (Cond: ", indent)
 		DumpAST(n.Cond, "")
@@ -71,8 +75,8 @@ func DumpAST(node interface{}, indent string) {
 
 	case *aster.ReturnStmt:
 		fmt.Printf("%sReturnStmt: ", indent)
-		if n.Result != nil {
-			DumpAST(n.Result, "")
+		if n.Results != nil {
+			DumpAST(n.Results, "")
 		} else {
 			fmt.Printf("void")
 		}

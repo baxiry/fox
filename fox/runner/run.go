@@ -46,14 +46,5 @@ func Run(cCode string) error {
 		return fmt.Errorf("execution finished with error: %v", err)
 	}
 
-	runCmd := exec.Command(outputExecutablePath)
-	runCmd.Stdout = os.Stdout
-	runCmd.Stderr = os.Stderr
-	runCmd.Stdin = os.Stdin
-
-	if err := runCmd.Run(); err != nil {
-		return fmt.Errorf("failed to run output binary: %v", err)
-	}
-
 	return nil
 }

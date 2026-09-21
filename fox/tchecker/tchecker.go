@@ -19,7 +19,7 @@ type TypeChecker struct {
 	GlobalTable     *symbols.SymbolTable
 	CurrentTable    *symbols.SymbolTable
 	CurrFn          *symbols.Symbol
-	CurrentRetTypes *aster.ReturnSig
+	CurrentRetTypes *symbols.ReturnSig
 	Errors          []string
 	CurrentLine     int
 }
@@ -53,11 +53,17 @@ func (tc *TypeChecker) injectBuiltIns() {
 			IsArray:  false,
 		},
 		RetTp: &symbols.ReturnSig{
-			Type: &symbols.Type{
-				Name:     "void",
-				PtrDepth: 0,
-				IsArray:  false,
+			Fields: []symbols.ReturnField{
+				{
+					Name: "",
+					Type: symbols.Type{
+						Name:     "void",
+						PtrDepth: 0,
+						IsArray:  false,
+					},
+				},
 			},
+			HasError: false,
 		},
 	})
 }
@@ -219,23 +225,35 @@ func (tc *TypeChecker) registerFunctions(ast *aster.AST) {
 	for _, decl := range ast.Decls {
 		if f, ok := decl.(*aster.Func); ok {
 
-			// Determine the primary Type pointer for the function symbol
 			var funcType *symbols.Type
 			var returnSignature *symbols.ReturnSig = nil
 
-			if f.Return != nil && f.Return.Type != nil {
-				funcType = &symbols.Type{
-					Name:     f.Return.Type.Name,
-					PtrDepth: f.Return.Type.PtrDepth,
-					IsArray:  f.Return.Type.IsArray,
-					Size:     f.Return.Type.Size,
-				}
-				// Build the unified return signature only if the function has an actual return.
+			if f.Return != nil && len(f.Return.Fields) > 0 {
+				// Construct the new ReturnSig matching the updated AST architecture
 				returnSignature = &symbols.ReturnSig{
-					Type: (*symbols.Type)(f.Return.Type),
+					Fields:   f.Return.Fields,
+					HasError: f.Return.HasError,
+					Line:     f.Return.Line,
+				}
+
+				// Single value return without error gets its direct type name
+				if len(f.Return.Fields) == 1 && !f.Return.HasError {
+					funcType = &symbols.Type{
+						Name:     f.Return.Fields[0].Type.Name,
+						PtrDepth: f.Return.Fields[0].Type.PtrDepth,
+						IsArray:  f.Return.Fields[0].Type.IsArray,
+						Size:     f.Return.Fields[0].Type.Size,
+					}
+				} else {
+					// Multi-value or fallible return gets an implicit anonymous struct type
+					funcType = &symbols.Type{
+						Name:     "_Fox_res_" + f.FuncName,
+						PtrDepth: 0,
+						IsArray:  false,
+					}
 				}
 			} else {
-				// Default to void if no return signature exists safely
+				// Void return when no return signature is provided
 				funcType = &symbols.Type{
 					Name:     "void",
 					PtrDepth: 0,
@@ -255,7 +273,6 @@ func (tc *TypeChecker) registerFunctions(ast *aster.AST) {
 		}
 	}
 }
-
 func (tc *TypeChecker) checkVarDeclar(decl *aster.VarDeclar) {
 	var finalType *symbols.Type
 
@@ -338,18 +355,36 @@ func (tc *TypeChecker) checkFuncDecl(fn *aster.Func) {
 		return
 	}
 
-	if fn.Return != nil {
-		typeName := fn.Return.Type.Name
-
-		if fn.Return.IsErrorUnion {
-			typeName = "_Result_" + typeName
+	if fn.Return != nil && len(fn.Return.Fields) > 0 {
+		// Verify that all return types exist in global scope or are built-ins
+		for _, field := range fn.Return.Fields {
+			typeName := field.Type.Name
+			isBuiltin := typeName == "int" || typeName == "string" || typeName == "bool" || typeName == "i32" || typeName == "f32" || typeName == "str"
+			if !isBuiltin {
+				if _, exists := tc.GlobalTable.Resolve(typeName); !exists {
+					tc.appendErrorf("undefined return type: %s in function %s", field.Line, typeName, fn.FuncName)
+				}
+			}
 		}
 
-		sym.Type = &symbols.Type{
-			Name:     typeName,
-			PtrDepth: fn.Return.Type.PtrDepth,
-			IsArray:  fn.Return.Type.IsArray,
+		// Handle explicit return signature (single or multi-value / fallible)
+		if len(fn.Return.Fields) == 1 && !fn.Return.HasError {
+			// Single return value without error handling
+			sym.Type = &symbols.Type{
+				Name:     fn.Return.Fields[0].Type.Name,
+				PtrDepth: fn.Return.Fields[0].Type.PtrDepth,
+				IsArray:  fn.Return.Fields[0].Type.IsArray,
+			}
+		} else {
+			// Anonymous return struct generated for multi-return or fallible returns
+			typeName := "_Fox_res_" + fn.FuncName
+			sym.Type = &symbols.Type{
+				Name:     typeName,
+				PtrDepth: 0,
+				IsArray:  false,
+			}
 		}
+
 		tc.CurrentRetTypes = fn.Return
 	} else {
 		sym.Type = &symbols.Type{Name: "void", PtrDepth: 0, IsArray: false}
@@ -372,7 +407,7 @@ func (tc *TypeChecker) checkFuncDecl(fn *aster.Func) {
 	for _, param := range fn.Params {
 		typeName := param.Type.Name
 
-		isBuiltin := typeName == "int" || typeName == "string" || typeName == "bool" || typeName == "void"
+		isBuiltin := typeName == "int" || typeName == "string" || typeName == "bool" || typeName == "void" || typeName == "i32" || typeName == "f32" || typeName == "str"
 		if !isBuiltin {
 			if _, exists := tc.GlobalTable.Resolve(typeName); !exists {
 				tc.appendErrorf("undefined type: %s", param.Line, typeName)
@@ -395,6 +430,28 @@ func (tc *TypeChecker) checkFuncDecl(fn *aster.Func) {
 		}
 	}
 
+	// Define named return variables in the function scope
+	if fn.Return != nil && len(fn.Return.Fields) > 0 {
+		for _, retField := range fn.Return.Fields {
+			if retField.Name != "" {
+				retSym := &symbols.Symbol{
+					Name:    retField.Name,
+					Kind:    "var",
+					ScopeID: childScopeID,
+					Type: &symbols.Type{
+						Name:     retField.Type.Name,
+						PtrDepth: retField.Type.PtrDepth,
+						IsArray:  retField.Type.IsArray,
+					},
+				}
+
+				if err := tc.CurrentTable.Define(retField.Name, retSym); err != nil {
+					tc.appendErrorf(err.Error(), retField.Line)
+				}
+			}
+		}
+	}
+
 	if fn.Body != nil {
 		tc.checkBlock(fn.Body)
 	}
@@ -402,7 +459,6 @@ func (tc *TypeChecker) checkFuncDecl(fn *aster.Func) {
 	tc.CurrentTable = previousTable
 	tc.CurrFn = nil
 }
-
 func (tc *TypeChecker) checkBlock(block *aster.FrameBlock) {
 	if block == nil {
 		return
@@ -421,51 +477,66 @@ func (tc *TypeChecker) checkReturnStmt(stmt *aster.ReturnStmt) {
 	}
 
 	expectedType := tc.CurrFn.Type
-	actualExpr := stmt.Result
+	resultsCount := len(stmt.Results)
 
+	// handle void return case
 	if expectedType == nil || expectedType.Name == "void" {
-		if actualExpr != nil {
-			tc.appendErrorf("too many arguments to return: expected 0, got 1", stmt.Line)
+		if resultsCount > 0 {
+			tc.appendErrorf("too many arguments to return: expected 0, got %d", stmt.Line, resultsCount)
 		}
 		return
 	}
 
-	if actualExpr == nil {
+	// 2. There are no return expressions in a function that requires a return
+	if resultsCount == 0 {
 		tc.appendErrorf("missing return value: expected %s", stmt.Line, expectedType.Name)
 		return
 	}
 
-	actualType := tc.inferType(actualExpr)
-	if actualType == nil || actualType.Name == aster.INVALID.String() {
-		return
-	}
-
-	if strings.HasPrefix(expectedType.Name, "_Result_") || (tc.CurrentRetTypes != nil && tc.CurrentRetTypes.IsErrorUnion) {
-		if actualType.Name == "Error" {
+	// 3. Return simple singleton
+	if resultsCount == 1 {
+		actualExpr := stmt.Results[0]
+		actualType := tc.inferType(actualExpr)
+		if actualType == nil || actualType.Name == aster.INVALID.String() {
 			return
 		}
 
-		cleanExpectedName := strings.TrimPrefix(expectedType.Name, "_Result_")
-		if actualType.Name != cleanExpectedName ||
+		if strings.HasPrefix(expectedType.Name, "_Result_") || (tc.CurrentRetTypes != nil && tc.CurrentRetTypes.HasError) {
+			if actualType.Name == "Error" {
+				return
+			}
+
+			cleanExpectedName := strings.TrimPrefix(expectedType.Name, "_Result_")
+			if actualType.Name != cleanExpectedName ||
+				actualType.PtrDepth != expectedType.PtrDepth ||
+				actualType.IsArray != expectedType.IsArray {
+
+				tc.appendErrorf("cannot use %s (ptr %d) as success type %s (ptr %d) in error-union return argument",
+					stmt.Line,
+					actualType.Name, actualType.PtrDepth,
+					cleanExpectedName, expectedType.PtrDepth)
+			}
+			return
+		}
+
+		if actualType.Name != expectedType.Name ||
 			actualType.PtrDepth != expectedType.PtrDepth ||
 			actualType.IsArray != expectedType.IsArray {
 
-			tc.appendErrorf("cannot use %s (ptr %d) as success type %s (ptr %d) in error-union return argument",
+			tc.appendErrorf("cannot use %s (ptr %d) as type %s (ptr %d) in return argument",
 				stmt.Line,
 				actualType.Name, actualType.PtrDepth,
-				cleanExpectedName, expectedType.PtrDepth)
+				expectedType.Name, expectedType.PtrDepth)
 		}
 		return
 	}
 
-	if actualType.Name != expectedType.Name ||
-		actualType.PtrDepth != expectedType.PtrDepth ||
-		actualType.IsArray != expectedType.IsArray {
-
-		tc.appendErrorf("cannot use %s (ptr %d) as type %s (ptr %d) in return argument",
-			stmt.Line,
-			actualType.Name, actualType.PtrDepth,
-			expectedType.Name, expectedType.PtrDepth)
+	// 4. Multiple returns
+	for _, actualExpr := range stmt.Results {
+		actualType := tc.inferType(actualExpr)
+		if actualType == nil || actualType.Name == aster.INVALID.String() {
+			continue
+		}
 	}
 }
 
@@ -771,8 +842,18 @@ func (tc *TypeChecker) checkCallExpr(call *aster.CallExpr) string {
 		}
 	}
 
-	// Return the single available type name
-	return sym.RetTp.Type.Name
+	// Ensure return signature and fields exist
+	if sym.RetTp == nil || len(sym.RetTp.Fields) == 0 {
+		return "void"
+	}
+
+	// If fallible or multi-value, return the implicit struct name
+	if sym.RetTp.HasError || len(sym.RetTp.Fields) > 1 {
+		return "_Fox_res_" + sym.Name
+	}
+
+	// Return the single available type name from the fields slice
+	return sym.RetTp.Fields[0].Type.Name
 }
 
 func (tc *TypeChecker) checkStmt(stmt aster.Statement) {
@@ -798,7 +879,7 @@ func (tc *TypeChecker) checkStmt(stmt aster.Statement) {
 			if call, ok := s.Expr.(*aster.CallExpr); ok && exprType != nil {
 				if strings.HasPrefix(exprType.Name, "_Result_") {
 					if call.UnwrapPanic {
-						if tc.CurrFn == nil || tc.CurrFn.RetTp == nil || !tc.CurrFn.RetTp.IsErrorUnion {
+						if tc.CurrFn == nil || tc.CurrFn.RetTp == nil || !tc.CurrFn.RetTp.HasError {
 							tc.appendErrorf("cannot use early-return modifier '!' in a function that does not return an error union", call.Line)
 						}
 					} else {

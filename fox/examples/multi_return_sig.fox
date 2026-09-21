@@ -12,21 +12,10 @@ fn getUserAndObj() user User, obj Obj {
     return user, obj
 }
 
-fn getPtrs() user *User, obj *Obj {
-   user.name = "adam" 
-   obj.size = 10 
-    return user, obj
-}
-
 fn main() {
     res := getUserAndObj()
     u := res.user
     o := res.obj
     printf(u.name)
     printf(o.size)
-
-
-    ptr := getPtrs()
-    printf(&ptr.user.name)
-    printf(&ptr.obj.size)
 }

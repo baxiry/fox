@@ -18,8 +18,8 @@ type ContinueNode struct {
 func (ContinueNode) isStmt() {}
 
 type ReturnStmt struct {
-	Result Expression
-	Line   int
+	Results []Expression
+	Line    int
 }
 
 type IfStmt struct {
@@ -388,62 +388,112 @@ func (p *Parser) parseReturn() Statement {
 	line := p.currentToken().Line
 	p.expectType(RETURN)
 
-	// 1. If it's an empty return (void function)
+	// 1. إذا كانت جملة return فارغة (مثل النهاية السطرية أو نهاية البلوك)
 	if p.currentToken().Type == SEMICOLON ||
 		p.currentToken().Type == NEW_LINE ||
 		p.currentToken().Type == CLS_BRACE {
 		return &ReturnStmt{
-			Result: nil,
-			Line:   line,
+			Results: nil,
+			Line:    line,
 		}
 	}
 
-	// 2. Parse exactly one expression
-	result := p.parseExpr()
-	if result == nil {
-		p.appendErrorf("expected expression after return", line)
-		return nil
-	}
+	results := make([]Expression, 0)
 
-	// 3. Strict Check: If a comma follows, it's an error in Fox
-	if p.currentToken().Type == COMMA {
-		p.appendErrorf("multi-value return is not supported in Fox", p.currentToken().Line)
-		// Error recovery: skip until we find a statement end
-		p.synchronize()
+	// 2. قراءة التعبيرات المفصولة بفاصلة COMMA
+	for {
+		expr := p.parseExpr()
+		if expr == nil {
+			p.appendErrorf("expected expression after return", p.currentToken().Line)
+			break
+		}
+		results = append(results, expr)
+
+		// إذا وجدت فاصلة، نتجاوزها ونستمر في قراءة التعبير التالي
+		if p.currentToken().Type == COMMA {
+			p.pos++
+		} else {
+			// إذا لم تكن فاصلة، فهذا يعني انتهاء التعبيرات في جملة return
+			break
+		}
 	}
 
 	return &ReturnStmt{
-		Result: result,
-		Line:   line,
+		Results: results,
+		Line:    line,
 	}
 }
-
-func (p *Parser) parseRetSign() *ReturnSig {
+func (p *Parser) parseRetSign() *symbols.ReturnSig {
+	// 1. if  '{' then no returns. (the Void function)
 	if p.currentToken().Type == OPN_BRACE {
 		return nil
 	}
 
-	line := p.currentToken().Line
-	typ := p.parseType()
-
-	isErrorUnion := false
-	if p.currentToken().Type == EXCLAM {
-		p.pos++
-		isErrorUnion = true
+	retSig := &symbols.ReturnSig{
+		Fields:   make([]symbols.ReturnField, 0),
+		HasError: false,
+		Line:     p.currentToken().Line,
 	}
 
-	if p.currentToken().Type == COMMA {
-		p.appendErrorf("multi-value return types are not supported", p.currentToken().Line)
-		for p.pos < len(p.tokens) && p.currentToken().Type != OPN_BRACE {
+	// 2. read the returns list
+	for p.pos < len(p.tokens) && p.currentToken().Type != OPN_BRACE {
+		// check '!' mark And its consumption
+		if p.currentToken().Type == EXCLAM {
+			retSig.HasError = true
 			p.pos++
+			break
+		}
+
+		var fieldName string
+		line := p.currentToken().Line
+
+		// // check: ( x int) or just (int)?
+		if p.isNamedReturn() {
+			nameIdent := p.expectIdent()
+			if nameIdent.Type == ERROR {
+				p.synchronize()
+				return retSig
+			}
+
+			// 'err' name not allowed
+			if nameIdent.Lexeme == "err" {
+				p.appendErrorf("field name 'err' is reserved for automatic error handling", nameIdent.Line)
+			}
+			fieldName = nameIdent.Lexeme
+		} else {
+			// "" by defult for unnamed single return
+			fieldName = ""
+		}
+
+		// field type
+		fieldTyp := p.parseType()
+
+		retSig.Fields = append(retSig.Fields, symbols.ReturnField{
+			Name: fieldName,
+			Type: fieldTyp,
+			Line: line,
+		})
+
+		// consume ','
+		if p.currentToken().Type == COMMA {
+			p.pos++
+		} else if p.currentToken().Type != EXCLAM && p.currentToken().Type != OPN_BRACE {
+			p.appendErrorf("expected ',' or '!' or '{' in return signature", p.currentToken().Line)
+			break
 		}
 	}
 
-	return &ReturnSig{
-		Type:         &typ,
-		IsErrorUnion: isErrorUnion,
-		Line:         line,
+	// 3. if we have more than one reference, all fields must be named explicitly (Name != "")
+	if len(retSig.Fields) > 1 {
+		for _, f := range retSig.Fields {
+			if f.Name == "" {
+				p.appendErrorf("multi-value return signature requires named fields", f.Line)
+				break
+			}
+		}
 	}
+
+	return retSig
 }
 
 // Helper function to check if the return is named (e.g., 'res int')

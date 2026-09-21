@@ -422,8 +422,11 @@ func Lexer(input string) []Token {
 		Line:   ls.line,
 		Column: ls.col,
 	})
-
-	//for k, v := range tokens {fmt.Print(k, ": ", v.Lexeme, ", ")}
+	/*
+		for k, v := range ls.tokens {
+			fmt.Print(k, ") ", v.Type, ": ", v.Lexeme, ", ")
+		}
+	*/
 	return ls.tokens
 }
 

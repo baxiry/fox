@@ -1,0 +1,42 @@
+// invalid multi return cases
+
+struct User {
+    name string
+    age int
+}
+
+struct Obj {
+    class string
+    size int
+}
+
+// Error 1: Unnamed multi-value return signature (Parser must reject this)
+fn invalidMulti() User, Obj {
+    var u User
+    var o Obj
+    return u, o
+}
+
+// Error 2: Using reserved field name 'err'
+fn reservedName() err User, obj Obj {
+    var u User
+    var o Obj
+    return u, o
+}
+
+// Error 3: Returning more expressions than declared return fields
+fn tooManyReturns() user User {
+    var u User
+    var o Obj
+    return u, o
+}
+
+// Error 4: Type mismatch between return expressions and signature fields
+fn typeMismatch() user User, obj Obj {
+    return 123, "invalid"
+}
+
+// Error 5: Empty return statement in non-void function
+fn missingReturn() int {
+    return
+}

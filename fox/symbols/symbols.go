@@ -17,10 +17,16 @@ type Param struct {
 	Type *Type
 }
 
-// ReturnSig signature
+type ReturnField struct {
+	Name string
+	Type Type
+	Line int
+}
+
 type ReturnSig struct {
-	Type         *Type
-	IsErrorUnion bool
+	Fields   []ReturnField
+	HasError bool
+	Line     int
 }
 
 // StructField mirrors the verified field specs inside a struct type

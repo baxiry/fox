@@ -96,7 +96,7 @@ func (*FrameBlock) isStat() {}
 type Func struct {
 	FuncName string
 	Params   []Param
-	Return   *ReturnSig
+	Return   *symbols.ReturnSig
 	Body     *FrameBlock // BlockStmt
 	Line     int
 }
@@ -108,13 +108,6 @@ type Param struct {
 	Name string
 	Type *symbols.Type
 	Line int
-}
-
-type ReturnSig struct {
-	IsErrorUnion bool
-	Name         string
-	Type         *symbols.Type
-	Line         int
 }
 
 type FieldAccessExpr struct {

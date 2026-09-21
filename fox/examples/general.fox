@@ -7,16 +7,16 @@ import(
 )
 
 
-type X struct {
+struct X  {
     a int
     b int
 }
 
-type Obj struct {
+struct Obj  {
     value int
 }
 
-type User struct {
+struct User  {
     name string;
     age int;
     info string
@@ -24,7 +24,8 @@ type User struct {
 
 var Name string
 var Age int
-type Info struct {}
+
+struct Info  {}
 
 fn do() int, bool {}
 

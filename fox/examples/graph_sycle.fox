@@ -1,5 +1,5 @@
 
-type GNode struct {
+ struct GNode  {
     id int
     link *GNode
 }
@@ -8,7 +8,7 @@ fn main() {
     // A sharp, repetitive loop of stuffing and generating millions of dead circular networks in the hip
 
     var i int
-    for i = 0; i < 500000; i = i + 1 {
+    for i = 0; i < 10000000; i = i + 1 {
         
         // Building two independent nodes in memory
 
