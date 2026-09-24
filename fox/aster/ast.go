@@ -115,6 +115,13 @@ type FieldAccessExpr struct {
 	Field  string
 	Line   int
 }
+type TryExpr struct {
+	Expr Expression
+	Line int
+}
+
+func (*TryExpr) isExpr()        {}
+func (e *TryExpr) GetLine() int { return e.Line }
 
 // AliasDecl represents statements like: alias Name = string
 type AliasDecl struct {

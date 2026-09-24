@@ -9,6 +9,15 @@ type UnaryExpr struct {
 	// Col int later
 }
 
+// ZeroValueExpr represents an explicit zero/nil initialization expression during expansion
+type ZeroValueExpr struct {
+	Type *symbols.Type
+	Line int
+}
+
+func (*ZeroValueExpr) isExpr()        {}
+func (e *ZeroValueExpr) GetLine() int { return e.Line }
+
 // UnaryExpr
 func (e *UnaryExpr) GetLine() int { return e.Line }
 

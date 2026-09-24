@@ -11,15 +11,9 @@ type Type struct {
 	IsArray  bool
 }
 
-// Param tracks function parameter definitions context
-type Param struct {
-	Name string
-	Type *Type
-}
-
 type ReturnField struct {
 	Name string
-	Type Type
+	Type *Type
 	Line int
 }
 
@@ -27,6 +21,12 @@ type ReturnSig struct {
 	Fields   []ReturnField
 	HasError bool
 	Line     int
+}
+
+// Param tracks function parameter definitions context
+type Param struct {
+	Name string
+	Type *Type
 }
 
 // StructField mirrors the verified field specs inside a struct type
@@ -107,4 +107,20 @@ func (t *Type) IsSameAs(other *Type) bool {
 	return t.Name == other.Name &&
 		t.PtrDepth == other.PtrDepth &&
 		t.IsArray == other.IsArray
+}
+
+func (st *SymbolTable) InjectNamedReturns(retSig *ReturnSig) error {
+	if retSig == nil {
+		return nil
+	}
+	for _, field := range retSig.Fields {
+		if field.Name == "" || field.Type == nil {
+			continue
+		}
+		err := st.Define(field.Name, &Symbol{Name: field.Name, Type: field.Type, ScopeID: st.ScopeID, Kind: "var"})
+		if err != nil {
+			return fmt.Errorf("failed to inject named return variable '%s': %w", field.Name, err)
+		}
+	}
+	return nil
 }

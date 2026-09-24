@@ -388,7 +388,6 @@ func (p *Parser) parseReturn() Statement {
 	line := p.currentToken().Line
 	p.expectType(RETURN)
 
-	// 1. إذا كانت جملة return فارغة (مثل النهاية السطرية أو نهاية البلوك)
 	if p.currentToken().Type == SEMICOLON ||
 		p.currentToken().Type == NEW_LINE ||
 		p.currentToken().Type == CLS_BRACE {
@@ -400,7 +399,6 @@ func (p *Parser) parseReturn() Statement {
 
 	results := make([]Expression, 0)
 
-	// 2. قراءة التعبيرات المفصولة بفاصلة COMMA
 	for {
 		expr := p.parseExpr()
 		if expr == nil {
@@ -409,11 +407,9 @@ func (p *Parser) parseReturn() Statement {
 		}
 		results = append(results, expr)
 
-		// إذا وجدت فاصلة، نتجاوزها ونستمر في قراءة التعبير التالي
 		if p.currentToken().Type == COMMA {
 			p.pos++
 		} else {
-			// إذا لم تكن فاصلة، فهذا يعني انتهاء التعبيرات في جملة return
 			break
 		}
 	}
@@ -423,8 +419,9 @@ func (p *Parser) parseReturn() Statement {
 		Line:    line,
 	}
 }
+
 func (p *Parser) parseRetSign() *symbols.ReturnSig {
-	// 1. if  '{' then no returns. (the Void function)
+	// 1. if '{' then no returns (void function)
 	if p.currentToken().Type == OPN_BRACE {
 		return nil
 	}
@@ -435,75 +432,44 @@ func (p *Parser) parseRetSign() *symbols.ReturnSig {
 		Line:     p.currentToken().Line,
 	}
 
-	// 2. read the returns list
+	// 2. read the returns list (Types only)
 	for p.pos < len(p.tokens) && p.currentToken().Type != OPN_BRACE {
-		// check '!' mark And its consumption
+		// check '!' mark
 		if p.currentToken().Type == EXCLAM {
 			retSig.HasError = true
 			p.pos++
 			break
 		}
 
-		var fieldName string
 		line := p.currentToken().Line
 
-		// // check: ( x int) or just (int)?
-		if p.isNamedReturn() {
-			nameIdent := p.expectIdent()
-			if nameIdent.Type == ERROR {
-				p.synchronize()
-				return retSig
-			}
-
-			// 'err' name not allowed
-			if nameIdent.Lexeme == "err" {
-				p.appendErrorf("field name 'err' is reserved for automatic error handling", nameIdent.Line)
-			}
-			fieldName = nameIdent.Lexeme
-		} else {
-			// "" by defult for unnamed single return
-			fieldName = ""
-		}
-
-		// field type
+		// Read Type directly without checking for variable name
 		fieldTyp := p.parseType()
 
+		// Append field with empty Name (unnamed)
 		retSig.Fields = append(retSig.Fields, symbols.ReturnField{
-			Name: fieldName,
-			Type: fieldTyp,
+			Name: "",
+			Type: &fieldTyp,
 			Line: line,
 		})
+
+		// check for '!' immediately after type (e.g., fn do() Buffer, int!)
+		if p.currentToken().Type == EXCLAM {
+			retSig.HasError = true
+			p.pos++
+			break
+		}
 
 		// consume ','
 		if p.currentToken().Type == COMMA {
 			p.pos++
-		} else if p.currentToken().Type != EXCLAM && p.currentToken().Type != OPN_BRACE {
+		} else if p.currentToken().Type != OPN_BRACE {
 			p.appendErrorf("expected ',' or '!' or '{' in return signature", p.currentToken().Line)
 			break
 		}
 	}
 
-	// 3. if we have more than one reference, all fields must be named explicitly (Name != "")
-	if len(retSig.Fields) > 1 {
-		for _, f := range retSig.Fields {
-			if f.Name == "" {
-				p.appendErrorf("multi-value return signature requires named fields", f.Line)
-				break
-			}
-		}
-	}
-
 	return retSig
-}
-
-// Helper function to check if the return is named (e.g., 'res int')
-func (p *Parser) isNamedReturn() bool {
-	// A named return must have an identifier followed by a type start (IDENT, STAR, or OPN_BRACK)
-	if p.currentToken().Type == IDENT {
-		next := p.peekToken()
-		return next.Type == IDENT || next.Type == STAR || next.Type == OPN_BRACK
-	}
-	return false
 }
 
 func (p *Parser) parseExprStatement() Statement {

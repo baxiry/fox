@@ -1,0 +1,13 @@
+struct User {
+    name string
+}
+
+fn f() u User {
+    u.name = "adam"
+    return u
+}
+
+fn main() {
+   u := f()
+   printf(u.name)
+}

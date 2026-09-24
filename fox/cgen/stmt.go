@@ -1,11 +1,6 @@
 package cgen
 
-import (
-	"fmt"
-	"fox/aster"
-	"strings"
-)
-
+/*
 func (cg *Codegen) genStmt(stmt aster.Statement) {
 	switch s := stmt.(type) {
 	case *aster.IfStmt:
@@ -205,25 +200,20 @@ func (cg *Codegen) genDeclarStmt(s *aster.Declar) {
 	cg.writeIndent()
 	if ident, ok := s.Name.(*aster.IdentExpr); ok {
 		typeName := "int32_t"
-		if s.Value != nil {
-			isUnwrapped := false
-			if call, ok := s.Value.(*aster.CallExpr); ok && call.UnwrapPanic {
-				isUnwrapped = true
-			} else if bin, ok := s.Value.(*aster.BinaryExpr); ok {
-				if leftCall, ok := bin.Left.(*aster.CallExpr); ok && leftCall.UnwrapPanic {
-					isUnwrapped = true
-				}
-				if rightCall, ok := bin.Right.(*aster.CallExpr); ok && rightCall.UnwrapPanic {
-					isUnwrapped = true
-				}
-			}
 
-			if isUnwrapped {
-				typeName = "int32_t"
-			} else if call, ok := s.Value.(*aster.CallExpr); ok {
-				if callIdent, ok := call.Callee.(*aster.IdentExpr); ok && callIdent.Type != nil {
-					if strings.HasPrefix(callIdent.Type.Name, "_Result_") {
-						typeName = callIdent.Type.Name
+		// 1. Prioritize type set by TypeChecker / AST resolution
+		if ident.Type != nil && ident.Type.Name != "" && ident.Type.Name != "INVALID" && ident.Type.Name != "invalid" {
+			typeName = cg.mapType(ident.Type)
+		} else if s.Value != nil {
+			// Fallback checks
+			if call, ok := s.Value.(*aster.CallExpr); ok {
+				if callIdent, ok := call.Callee.(*aster.IdentExpr); ok {
+					// ابحث عن الدالة في الـ AST لتعرف ما إذا كانت ترجع أكثر من حقل
+					targetFunc := cg.findFunc(callIdent.Name)
+					if targetFunc != nil && targetFunc.Return != nil && len(targetFunc.Return.Fields) > 1 {
+						typeName = cg.getEnvelopeName(targetFunc.FuncName)
+					} else if callIdent.Type != nil {
+						typeName = cg.mapType(callIdent.Type)
 					}
 				}
 			} else if lit, ok := s.Value.(*aster.StructLiteral); ok && lit.Type != nil {
@@ -274,8 +264,10 @@ func (cg *Codegen) genExprStmt(s *aster.ExprStmt) {
 }
 
 func (cg *Codegen) genReturnStmt(s *aster.ReturnStmt) {
+	// إذا كانت الدالة تحتوي على مخرجات (Return Fields)
 	if cg.CurrentFunction != nil && cg.CurrentFunction.Return != nil && len(cg.CurrentFunction.Return.Fields) > 0 {
-		// 1. Simple singleton return without errors (Zero Overhead)
+
+		// 1. إرجاع قيمة واحدة عادية بدون أخطاء (Zero Overhead)
 		if len(cg.CurrentFunction.Return.Fields) == 1 && !cg.CurrentFunction.Return.HasError {
 			cg.builder.WriteString("return ")
 			if len(s.Results) > 0 {
@@ -285,30 +277,40 @@ func (cg *Codegen) genReturnStmt(s *aster.ReturnStmt) {
 			return
 		}
 
-		// 2. Multiple or possible return of an error (using flat envelope)
-		envelopeName := "_Fox_res_" + cg.CurrentFunction.FuncName
+		// 2. إرجاع متعدد (باستخدام Envelope Struct)
+		envelopeName := cg.getEnvelopeName(cg.CurrentFunction.FuncName)
+
+		// حالة خاصة: إذا كان التعبير المرجح هو استدعاء دالة أخرى ترجع نفس الـ Envelope مباشرة
+		// مثال: return getOtherUserAndObj();
+		if len(s.Results) == 1 && len(cg.CurrentFunction.Return.Fields) > 1 {
+			// يمكنك إرجاع النتيجة مباشرة بدون تعبئة غلاف جديد
+			cg.writeIndent()
+			cg.builder.WriteString("return ")
+			cg.genExpr(s.Results[0])
+			cg.builder.WriteString(";\n")
+			return
+		}
 
 		cg.writeIndent()
 		fmt.Fprintf(&cg.builder, "%s __ret_env = {0};\n", envelopeName)
 
-		if len(s.Results) > 0 {
-			// if the return is partial by name
-			if len(s.Results) < len(cg.CurrentFunction.Return.Fields) {
-				for _, expr := range s.Results {
+		if len(s.Results) == 0 {
+			// حالة الـ Named Returns الضمنية (مثال: return;)
+			for _, field := range cg.CurrentFunction.Return.Fields {
+				if field.Name != "" {
 					cg.writeIndent()
+					fmt.Fprintf(&cg.builder, "__ret_env.%s = %s;\n", field.Name, field.Name)
+				}
+			}
+		} else {
+			// إرجاع صريح مقترن بالترتيب (مثال: return user, obj;)
+			for i, expr := range s.Results {
+				if i < len(cg.CurrentFunction.Return.Fields) {
+					fieldName := cg.CurrentFunction.Return.Fields[i].Name
+					cg.writeIndent()
+					fmt.Fprintf(&cg.builder, "__ret_env.%s = ", fieldName)
 					cg.genExpr(expr)
 					cg.builder.WriteString(";\n")
-				}
-			} else {
-				// return my entire position
-				for i, expr := range s.Results {
-					if i < len(cg.CurrentFunction.Return.Fields) {
-						fieldName := cg.CurrentFunction.Return.Fields[i].Name
-						cg.writeIndent()
-						fmt.Fprintf(&cg.builder, "__ret_env.%s = ", fieldName)
-						cg.genExpr(expr)
-						cg.builder.WriteString(";\n")
-					}
 				}
 			}
 		}
@@ -317,10 +319,10 @@ func (cg *Codegen) genReturnStmt(s *aster.ReturnStmt) {
 		cg.builder.WriteString("return __ret_env;\n")
 	} else {
 		// void return
+		cg.writeIndent()
 		cg.builder.WriteString("return;\n")
 	}
 }
-
 func (cg *Codegen) genForStmt(s *aster.ForStmt) {
 	cg.writeIndent()
 	cg.builder.WriteString("for (")
@@ -354,3 +356,4 @@ func (cg *Codegen) genForStmt(s *aster.ForStmt) {
 	cg.builder.WriteString(") ")
 	cg.genBlock(s.Body)
 }
+*/

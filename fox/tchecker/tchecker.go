@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"fox/aster"
 	"fox/symbols"
+
 	"strings"
 )
 
@@ -56,7 +57,7 @@ func (tc *TypeChecker) injectBuiltIns() {
 			Fields: []symbols.ReturnField{
 				{
 					Name: "",
-					Type: symbols.Type{
+					Type: &symbols.Type{
 						Name:     "void",
 						PtrDepth: 0,
 						IsArray:  false,
@@ -81,6 +82,7 @@ func (tc *TypeChecker) inferType(expr aster.Expression) *symbols.Type {
 	}
 
 	switch e := expr.(type) {
+
 	case *aster.IntExpr:
 		return &symbols.Type{Name: "int", PtrDepth: 0, IsArray: false}
 
@@ -128,13 +130,18 @@ func (tc *TypeChecker) inferType(expr aster.Expression) *symbols.Type {
 			return retType
 		}
 
+		// If the function returns a multi-return envelope struct
+		if envelopeSym, found := tc.GlobalTable.Resolve("_res_" + callee.Name); found && envelopeSym != nil {
+			callee.Type = envelopeSym.Type
+			return callee.Type
+		}
+
 		callee.Type = &symbols.Type{
 			Name:     sym.Type.Name,
 			PtrDepth: sym.Type.PtrDepth,
 			IsArray:  sym.Type.IsArray,
 		}
 
-		// قراءة علم التقشير من العقدة e مباشرة لحل مشكلة عدم التعريف
 		if e.UnwrapPanic && strings.HasPrefix(callee.Type.Name, "_Result_") {
 			cleanName := strings.TrimPrefix(callee.Type.Name, "_Result_")
 			return &symbols.Type{
@@ -145,7 +152,6 @@ func (tc *TypeChecker) inferType(expr aster.Expression) *symbols.Type {
 		}
 
 		return callee.Type
-
 	case *aster.StructLiteral:
 		return tc.checkStructLiteral(e)
 
@@ -229,14 +235,12 @@ func (tc *TypeChecker) registerFunctions(ast *aster.AST) {
 			var returnSignature *symbols.ReturnSig = nil
 
 			if f.Return != nil && len(f.Return.Fields) > 0 {
-				// Construct the new ReturnSig matching the updated AST architecture
 				returnSignature = &symbols.ReturnSig{
 					Fields:   f.Return.Fields,
 					HasError: f.Return.HasError,
 					Line:     f.Return.Line,
 				}
 
-				// Single value return without error gets its direct type name
 				if len(f.Return.Fields) == 1 && !f.Return.HasError {
 					funcType = &symbols.Type{
 						Name:     f.Return.Fields[0].Type.Name,
@@ -245,15 +249,39 @@ func (tc *TypeChecker) registerFunctions(ast *aster.AST) {
 						Size:     f.Return.Fields[0].Type.Size,
 					}
 				} else {
-					// Multi-value or fallible return gets an implicit anonymous struct type
+					// إرجاع متعدد: إنشاء نوع الهيكل الضمني
+					envelopeName := "_res_" + f.FuncName
 					funcType = &symbols.Type{
-						Name:     "_Fox_res_" + f.FuncName,
+						Name:     envelopeName,
 						PtrDepth: 0,
 						IsArray:  false,
 					}
+
+					// *** الإصلاح الأساسي ***
+					// تسجيل الهيكل الضمني وحقوله في GlobalTable ليتعرف عليه checkFieldAccess
+					structSym := &symbols.Symbol{
+						Name:   envelopeName,
+						Kind:   "struct",
+						Fields: []symbols.StructField{},
+					}
+					for idx, field := range f.Return.Fields {
+						fieldName := field.Name
+						if fieldName == "" {
+							fieldName = fmt.Sprintf("f%d", idx)
+						}
+						structSym.Fields = append(structSym.Fields, symbols.StructField{
+							Name: fieldName,
+							Type: &symbols.Type{
+								Name:     field.Type.Name,
+								PtrDepth: field.Type.PtrDepth,
+								IsArray:  field.Type.IsArray,
+								Size:     field.Type.Size,
+							},
+						})
+					}
+					tc.GlobalTable.Define(envelopeName, structSym)
 				}
 			} else {
-				// Void return when no return signature is provided
 				funcType = &symbols.Type{
 					Name:     "void",
 					PtrDepth: 0,
@@ -264,7 +292,7 @@ func (tc *TypeChecker) registerFunctions(ast *aster.AST) {
 			sym := &symbols.Symbol{
 				Name:   f.FuncName,
 				Kind:   "func",
-				Type:   funcType, // Crucial for Resolve() during CallExpr inference
+				Type:   funcType,
 				RetTp:  returnSignature,
 				Params: mapParamsToSymbols(f.Params),
 			}
@@ -273,6 +301,7 @@ func (tc *TypeChecker) registerFunctions(ast *aster.AST) {
 		}
 	}
 }
+
 func (tc *TypeChecker) checkVarDeclar(decl *aster.VarDeclar) {
 	var finalType *symbols.Type
 
@@ -303,48 +332,75 @@ func (tc *TypeChecker) checkVarDeclar(decl *aster.VarDeclar) {
 }
 
 func (tc *TypeChecker) checkFieldAccess(expr *aster.FieldAccessExpr) *symbols.Type {
-	// 1. Trace entry and the object being accessed
 	objType := tc.inferType(expr.Object)
-	if objType == nil {
+	if objType == nil || objType.Name == "invalid" || objType.Name == "INVALID" {
 		return &symbols.Type{Name: "invalid", PtrDepth: 0, IsArray: false}
 	}
 
-	// 2. Decorating the target Object expression dynamically to clear nil gaps
-	// This covers nested expressions, call returns, and standalone identifiers
-	if ident, ok := expr.Object.(*aster.IdentExpr); ok {
-		ident.Type = &symbols.Type{
-			Name:     objType.Name,
-			PtrDepth: objType.PtrDepth,
-			IsArray:  objType.IsArray,
+	switch node := expr.Object.(type) {
+	case *aster.IdentExpr:
+		node.Type = objType
+	case *aster.CallExpr:
+		if calleeIdent, ok := node.Callee.(*aster.IdentExpr); ok {
+			calleeIdent.Type = objType
 		}
-	} else if call, ok := expr.Object.(*aster.CallExpr); ok {
-		if calleeIdent, ok := call.Callee.(*aster.IdentExpr); ok {
-			calleeIdent.Type = &symbols.Type{
-				Name:     objType.Name,
-				PtrDepth: objType.PtrDepth,
-				IsArray:  objType.IsArray,
+	}
+
+	// تنظيف البادئة '*' لضمان الحصول على الاسم الصريح للـ Struct حتى لو كان مؤشراً
+	targetTypeName := strings.TrimPrefix(objType.Name, "*")
+
+	// 1. البحث في جدول الرموز (منطقك الأساسي الممتاز للبحث عن الـ Envelope)
+	structSym, exists := tc.GlobalTable.Resolve(targetTypeName)
+
+	if !exists || structSym == nil {
+		possibleNames := []string{
+			"_res_" + targetTypeName,
+			"_Fox_res_" + targetTypeName,
+			strings.TrimPrefix(targetTypeName, "_res_"),
+		}
+		for _, name := range possibleNames {
+			if sym, ok := tc.GlobalTable.Resolve(name); ok && sym != nil {
+				structSym = sym
+				exists = true
+				break
 			}
 		}
 	}
 
-	// 3. Resolve the struct in the global table
-	structSym, exists := tc.GlobalTable.Resolve(objType.Name)
-	if !exists {
+	if !exists || structSym == nil {
+		tc.appendErrorf("unknown struct type %s", expr.Line, targetTypeName)
 		return &symbols.Type{Name: "invalid", PtrDepth: 0, IsArray: false}
 	}
 
-	// 4. Search for the field inside the struct fields slice
+	// 2. البحث عن الحقل واستخراج نوعه مع مطابقة دقيقة لنظام symbols.Type لديك
 	for _, field := range structSym.Fields {
 		if field.Name == expr.Field {
-			return &symbols.Type{
-				Name:     field.Type.Name,
-				PtrDepth: field.Type.PtrDepth,
+			// تأكيد أن field.Type محدد وغير nil
+			if field.Type == nil {
+				return &symbols.Type{Name: "invalid", PtrDepth: 0, IsArray: false}
+			}
+
+			fieldTypeName := field.Type.Name
+			fieldPtrDepth := field.Type.PtrDepth
+
+			if strings.HasPrefix(fieldTypeName, "*") {
+				if fieldPtrDepth == 0 {
+					fieldPtrDepth = 1
+				}
+				fieldTypeName = strings.TrimPrefix(fieldTypeName, "*")
+			}
+
+			resType := &symbols.Type{
+				Name:     fieldTypeName,
+				PtrDepth: fieldPtrDepth,
+				Size:     field.Type.Size,
 				IsArray:  field.Type.IsArray,
 			}
+			return resType
 		}
 	}
 
-	tc.appendErrorf("field %s not found in struct %s", expr.Line, expr.Field, objType.Name)
+	tc.appendErrorf("field %s not found in struct %s", expr.Line, expr.Field, targetTypeName)
 	return &symbols.Type{Name: "invalid", PtrDepth: 0, IsArray: false}
 }
 
@@ -355,31 +411,117 @@ func (tc *TypeChecker) checkFuncDecl(fn *aster.Func) {
 		return
 	}
 
+	// 1. إنشاء scope الدالة الداخلي
+	funcScope := symbols.NewSymbolTable(tc.CurrentTable)
+	funcScope.ScopeID = tc.CurrentTable.GenerateChildID()
+
+	previousTable := tc.CurrentTable
+	tc.CurrentTable = funcScope
+
+	// 2. تسجيل المعاملات (Parameters) داخل الدالة
+	for _, param := range fn.Params {
+		cleanTypeName := strings.TrimPrefix(param.Type.Name, "*")
+		ptrDepth := param.Type.PtrDepth
+		if strings.HasPrefix(param.Type.Name, "*") && ptrDepth == 0 {
+			ptrDepth = 1
+		}
+
+		paramSym := &symbols.Symbol{
+			Name:    param.Name,
+			Kind:    "var",
+			ScopeID: funcScope.ScopeID,
+			Type: &symbols.Type{
+				Name:     cleanTypeName,
+				PtrDepth: ptrDepth,
+				IsArray:  param.Type.IsArray,
+			},
+		}
+		tc.CurrentTable.Define(param.Name, paramSym)
+	}
+
+	// 3. حقن المخرجات المسمّاة كمتغيرات محلية داخل الدالة
 	if fn.Return != nil && len(fn.Return.Fields) > 0 {
-		// Verify that all return types exist in global scope or are built-ins
-		for _, field := range fn.Return.Fields {
-			typeName := field.Type.Name
-			isBuiltin := typeName == "int" || typeName == "string" || typeName == "bool" || typeName == "i32" || typeName == "f32" || typeName == "str"
-			if !isBuiltin {
-				if _, exists := tc.GlobalTable.Resolve(typeName); !exists {
-					tc.appendErrorf("undefined return type: %s in function %s", field.Line, typeName, fn.FuncName)
+		for _, retField := range fn.Return.Fields {
+			if retField.Name != "" {
+				cleanTypeName := strings.TrimPrefix(retField.Type.Name, "*")
+				ptrDepth := retField.Type.PtrDepth
+				if strings.HasPrefix(retField.Type.Name, "*") && ptrDepth == 0 {
+					ptrDepth = 1
 				}
+
+				retSym := &symbols.Symbol{
+					Name:    retField.Name,
+					Kind:    "var",
+					ScopeID: funcScope.ScopeID,
+					Type: &symbols.Type{
+						Name:     cleanTypeName,
+						PtrDepth: ptrDepth,
+						IsArray:  retField.Type.IsArray,
+					},
+				}
+				tc.CurrentTable.Define(retField.Name, retSym)
 			}
 		}
 
-		// Handle explicit return signature (single or multi-value / fallible)
+		// 4. تحديد نوع الدالة بالنسبة للخارج (المستدعي)
 		if len(fn.Return.Fields) == 1 && !fn.Return.HasError {
-			// Single return value without error handling
 			sym.Type = &symbols.Type{
-				Name:     fn.Return.Fields[0].Type.Name,
+				Name:     strings.TrimPrefix(fn.Return.Fields[0].Type.Name, "*"),
 				PtrDepth: fn.Return.Fields[0].Type.PtrDepth,
 				IsArray:  fn.Return.Fields[0].Type.IsArray,
 			}
 		} else {
-			// Anonymous return struct generated for multi-return or fallible returns
-			typeName := "_Fox_res_" + fn.FuncName
+			// حالة المخرجات المتعددة: توليد Struct Symbol مطابق تماماً لبنية symbols.Symbol لديكم
+			envelopeName := "_res_" + fn.FuncName
+
+			envelopeSym := &symbols.Symbol{
+				Name:    envelopeName,
+				Kind:    "struct",
+				ScopeID: tc.GlobalTable.ScopeID,
+				Type: &symbols.Type{
+					Name:     envelopeName,
+					PtrDepth: 0,
+					IsArray:  false,
+				},
+				Fields: make([]symbols.StructField, 0, len(fn.Return.Fields)),
+			}
+
+			// تعبئة حقول الـ Struct مستخدمين symbols.StructField
+			for _, retField := range fn.Return.Fields {
+				cleanTypeName := strings.TrimPrefix(retField.Type.Name, "*")
+				ptrDepth := retField.Type.PtrDepth
+				if strings.HasPrefix(retField.Type.Name, "*") && ptrDepth == 0 {
+					ptrDepth = 1
+				}
+
+				envelopeSym.Fields = append(envelopeSym.Fields, symbols.StructField{
+					Name: retField.Name,
+					Type: &symbols.Type{
+						Name:     cleanTypeName,
+						PtrDepth: ptrDepth,
+						IsArray:  retField.Type.IsArray,
+					},
+				})
+			}
+
+			// إضافة حقل الخطأ عند وجود HasError
+			if fn.Return.HasError {
+				envelopeSym.Fields = append(envelopeSym.Fields, symbols.StructField{
+					Name: "err",
+					Type: &symbols.Type{
+						Name:     "error",
+						PtrDepth: 0,
+						IsArray:  false,
+					},
+				})
+			}
+
+			// تسجيل الـ Struct Symbol في جدول الرموز العام
+			tc.GlobalTable.Define(envelopeName, envelopeSym)
+
+			// تعيين نوع إرجاع الدالة ليكون اسم هذا الـ Envelope Struct
 			sym.Type = &symbols.Type{
-				Name:     typeName,
+				Name:     envelopeName,
 				PtrDepth: 0,
 				IsArray:  false,
 			}
@@ -393,65 +535,7 @@ func (tc *TypeChecker) checkFuncDecl(fn *aster.Func) {
 
 	tc.CurrFn = sym
 
-	childScopeID := tc.CurrentTable.GenerateChildID()
-
-	childTable := &symbols.SymbolTable{
-		Symbols: make(map[string]*symbols.Symbol),
-		Parent:  tc.CurrentTable,
-		ScopeID: childScopeID,
-	}
-
-	previousTable := tc.CurrentTable
-	tc.CurrentTable = childTable
-
-	for _, param := range fn.Params {
-		typeName := param.Type.Name
-
-		isBuiltin := typeName == "int" || typeName == "string" || typeName == "bool" || typeName == "void" || typeName == "i32" || typeName == "f32" || typeName == "str"
-		if !isBuiltin {
-			if _, exists := tc.GlobalTable.Resolve(typeName); !exists {
-				tc.appendErrorf("undefined type: %s", param.Line, typeName)
-			}
-		}
-
-		paramSym := &symbols.Symbol{
-			Name:    param.Name,
-			Kind:    "var",
-			ScopeID: childScopeID,
-			Type: &symbols.Type{
-				Name:     param.Type.Name,
-				PtrDepth: param.Type.PtrDepth,
-				IsArray:  param.Type.IsArray,
-			},
-		}
-
-		if err := tc.CurrentTable.Define(param.Name, paramSym); err != nil {
-			tc.appendErrorf(err.Error(), param.Line)
-		}
-	}
-
-	// Define named return variables in the function scope
-	if fn.Return != nil && len(fn.Return.Fields) > 0 {
-		for _, retField := range fn.Return.Fields {
-			if retField.Name != "" {
-				retSym := &symbols.Symbol{
-					Name:    retField.Name,
-					Kind:    "var",
-					ScopeID: childScopeID,
-					Type: &symbols.Type{
-						Name:     retField.Type.Name,
-						PtrDepth: retField.Type.PtrDepth,
-						IsArray:  retField.Type.IsArray,
-					},
-				}
-
-				if err := tc.CurrentTable.Define(retField.Name, retSym); err != nil {
-					tc.appendErrorf(err.Error(), retField.Line)
-				}
-			}
-		}
-	}
-
+	// 5. فحص جسم الدالة
 	if fn.Body != nil {
 		tc.checkBlock(fn.Body)
 	}
@@ -476,68 +560,115 @@ func (tc *TypeChecker) checkReturnStmt(stmt *aster.ReturnStmt) {
 		return
 	}
 
-	expectedType := tc.CurrFn.Type
-	resultsCount := len(stmt.Results)
+	retSig := tc.CurrentRetTypes
+	if retSig == nil {
+		retSig = tc.CurrFn.RetTp
+	}
 
-	// handle void return case
-	if expectedType == nil || expectedType.Name == "void" {
-		if resultsCount > 0 {
-			tc.appendErrorf("too many arguments to return: expected 0, got %d", stmt.Line, resultsCount)
+	valuesCount := len(stmt.Results)
+
+	// 1. حالة الدالة التي لا ترجع شيئاً (Void Function)
+	if retSig == nil || len(retSig.Fields) == 0 {
+		if valuesCount > 0 {
+			tc.appendErrorf("too many arguments to return: expected 0, got %d", stmt.Line, valuesCount)
 		}
 		return
 	}
 
-	// 2. There are no return expressions in a function that requires a return
-	if resultsCount == 0 {
-		tc.appendErrorf("missing return value: expected %s", stmt.Line, expectedType.Name)
+	expectedFields := retSig.Fields
+	expectedCount := len(expectedFields)
+
+	// 2. حالة الإرجاع الفارغ (return)
+	if valuesCount == 0 {
+		hasNamedReturns := false
+		for _, f := range expectedFields {
+			if f.Name != "" {
+				hasNamedReturns = true
+				break
+			}
+		}
+
+		if !hasNamedReturns {
+			tc.appendErrorf("missing return values: expected %d values, got 0", stmt.Line, expectedCount)
+		}
 		return
 	}
 
-	// 3. Return simple singleton
-	if resultsCount == 1 {
+	// 3. حالة إرجاع قيمة واحدة في دالة تتوقع أكثر من قيمة (مثلاً return err أو return user)
+	if valuesCount == 1 {
 		actualExpr := stmt.Results[0]
 		actualType := tc.inferType(actualExpr)
 		if actualType == nil || actualType.Name == aster.INVALID.String() {
 			return
 		}
 
-		if strings.HasPrefix(expectedType.Name, "_Result_") || (tc.CurrentRetTypes != nil && tc.CurrentRetTypes.HasError) {
-			if actualType.Name == "Error" {
-				return
-			}
-
-			cleanExpectedName := strings.TrimPrefix(expectedType.Name, "_Result_")
-			if actualType.Name != cleanExpectedName ||
-				actualType.PtrDepth != expectedType.PtrDepth ||
-				actualType.IsArray != expectedType.IsArray {
-
-				tc.appendErrorf("cannot use %s (ptr %d) as success type %s (ptr %d) in error-union return argument",
-					stmt.Line,
-					actualType.Name, actualType.PtrDepth,
-					cleanExpectedName, expectedType.PtrDepth)
-			}
+		// إذا كانت القيمة المرجعة من نوع error/Error والدالة تنتهي بـ HasError
+		if (actualType.Name == "error" || actualType.Name == "Error") && retSig.HasError {
+			tc.expandReturnWithZeros(stmt, expectedFields, actualExpr, true)
 			return
 		}
 
-		if actualType.Name != expectedType.Name ||
-			actualType.PtrDepth != expectedType.PtrDepth ||
-			actualType.IsArray != expectedType.IsArray {
-
-			tc.appendErrorf("cannot use %s (ptr %d) as type %s (ptr %d) in return argument",
-				stmt.Line,
-				actualType.Name, actualType.PtrDepth,
-				expectedType.Name, expectedType.PtrDepth)
+		// إذا كانت القيمة المرجعة تطابق النوع الأول والدالة ترجع عدة قيم
+		if expectedCount > 1 && actualType.IsSameAs(expectedFields[0].Type) {
+			tc.expandReturnWithZeros(stmt, expectedFields, actualExpr, false)
+			return
 		}
+
+		// إذا كانت الدالة تتوقع قيمة واحدة فقط في الأصل
+		if expectedCount == 1 {
+			tc.checkTypeMatch(expectedFields[0].Type, actualType, stmt.Line)
+			return
+		}
+	}
+
+	// 4. مطابقة الأعداد في حالة الإرجاع المتعدد الكامل
+	if valuesCount > expectedCount {
+		tc.appendErrorf("too many arguments to return: expected %d, got %d", stmt.Line, expectedCount, valuesCount)
 		return
 	}
 
-	// 4. Multiple returns
-	for _, actualExpr := range stmt.Results {
+	if valuesCount < expectedCount {
+		tc.appendErrorf("not enough arguments to return: expected %d, got %d", stmt.Line, expectedCount, valuesCount)
+		return
+	}
+
+	// 5. فحص تطابق الأنواع 1:1 لكل عنصر في القائمة
+	for i, actualExpr := range stmt.Results {
 		actualType := tc.inferType(actualExpr)
 		if actualType == nil || actualType.Name == aster.INVALID.String() {
 			continue
 		}
+		expectedType := expectedFields[i].Type
+		tc.checkTypeMatch(expectedType, actualType, stmt.Line)
 	}
+}
+
+// دالة مساعدة لفحص تطابق الأنواع
+func (tc *TypeChecker) checkTypeMatch(expected, actual *symbols.Type, line int) {
+	if expected == nil || actual == nil {
+		return
+	}
+	if !expected.IsSameAs(actual) {
+		tc.appendErrorf("cannot use type %s (ptr %d) as expected type %s (ptr %d) in return argument",
+			line, actual.Name, actual.PtrDepth, expected.Name, expected.PtrDepth)
+	}
+}
+
+// دالة التوسيع التلقائي لملء بقية القائمة بالقيم الصفرية (ZeroValueExpr)
+func (tc *TypeChecker) expandReturnWithZeros(stmt *aster.ReturnStmt, fields []symbols.ReturnField, expr aster.Expression, isErrReturn bool) {
+	newValues := make([]aster.Expression, len(fields))
+
+	for i, field := range fields {
+		if isErrReturn && i == len(fields)-1 {
+			newValues[i] = expr
+		} else if !isErrReturn && i == 0 {
+			newValues[i] = expr
+		} else {
+			newValues[i] = &aster.ZeroValueExpr{Type: field.Type, Line: stmt.Line}
+		}
+	}
+
+	stmt.Results = newValues
 }
 
 func (tc *TypeChecker) checkDeclar(decl *aster.Declar) {
@@ -549,15 +680,16 @@ func (tc *TypeChecker) checkDeclar(decl *aster.Declar) {
 
 	// 2. Infer the type of the single value on the right
 	inferredType := tc.inferType(decl.Value)
-	if inferredType == nil || inferredType.Name == aster.INVALID.String() {
-		// Error already reported by inferType
-		return
-	}
 
 	// 3. Handle the single name on the left
 	ident, ok := decl.Name.(*aster.IdentExpr)
 	if !ok {
 		tc.appendErrorf("non-name on the left side of :=", decl.Line)
+		return
+	}
+
+	if inferredType == nil || inferredType.Name == aster.INVALID.String() {
+		ident.Type = &symbols.Type{Name: aster.INVALID.String()}
 		return
 	}
 
@@ -570,8 +702,12 @@ func (tc *TypeChecker) checkDeclar(decl *aster.Declar) {
 	// 4. Ensure we don't declare a variable with 'void' or 'invalid'
 	if inferredType.Name == "void" {
 		tc.appendErrorf("cannot assign void value to variable %s", decl.Line, varName)
+		ident.Type = &symbols.Type{Name: aster.INVALID.String()}
 		return
 	}
+
+	// تعيين النوع المباشر في عقدة ה-AST
+	ident.Type = inferredType
 
 	// 5. Register the symbol in the current table
 	sym := &symbols.Symbol{
@@ -585,7 +721,6 @@ func (tc *TypeChecker) checkDeclar(decl *aster.Declar) {
 		tc.appendErrorf("variable `%s` redeclared in this block", ident.Line, varName)
 	}
 }
-
 func (tc *TypeChecker) checkAssign(stmt *aster.Assign) {
 	// Step 1: Intercept completely undefined variables early using CurrentTable context
 	if ident, ok := stmt.Target.(*aster.IdentExpr); ok {
@@ -767,21 +902,17 @@ func (tc *TypeChecker) checkGlobalVarsAndStructs(ast *aster.AST) {
 	}
 }
 
-func (tc *TypeChecker) checkCallExpr(call *aster.CallExpr) string {
-	// 1. Assert that Callee is an IdentExpr to get the Name
+func (tc *TypeChecker) checkCallExpr(call *aster.CallExpr) *symbols.Type {
 	callee, ok := call.Callee.(*aster.IdentExpr)
 	if !ok {
 		tc.appendErrorf("invalid call: expected a function name", call.Line)
-		return aster.INVALID.String()
+		return &symbols.Type{Name: aster.INVALID.String()}
 	}
 
-	// 2. Resolve the function name in the SymbolTable
 	sym, exists := tc.CurrentTable.Resolve(callee.Name)
 	if !exists {
-		// 1. Report only once
 		tc.appendErrorf("undefined function: %s", callee.Line, callee.Name)
 
-		// 2. Silent Injection: Register as a "dummy" function to stop future errors
 		rootTable := tc.CurrentTable
 		for rootTable.Parent != nil {
 			rootTable = rootTable.Parent
@@ -790,70 +921,77 @@ func (tc *TypeChecker) checkCallExpr(call *aster.CallExpr) string {
 		rootTable.Define(callee.Name, &symbols.Symbol{
 			Name: callee.Name,
 			Kind: "func",
-			// We give it a special marker to avoid parameter count errors later
 			Type: &symbols.Type{Name: aster.INVALID.String()},
 		})
-		return aster.INVALID.String()
+		return &symbols.Type{Name: aster.INVALID.String()}
 	}
 
-	// 3. Early exit if it's a previously flagged invalid function
-	if sym.Type.Name == aster.INVALID.String() {
-		return aster.INVALID.String()
+	if sym.Type == nil || sym.Type.Name == aster.INVALID.String() {
+		return &symbols.Type{Name: aster.INVALID.String()}
 	}
-	// 3. Ensure the symbol is actually a function
+
 	if sym.Kind != "func" {
-		tc.appendErrorf(" %s is not a function", call.Line, callee.Name)
-		return aster.INVALID.String()
+		tc.appendErrorf("%s is not a function", call.Line, callee.Name)
+		return &symbols.Type{Name: aster.INVALID.String()}
 	}
 
-	// 4. Check arguments count
 	argCount := len(call.Args)
 	paramCount := len(sym.Params)
 	if sym.IsVariadic {
-
-		// For printf(fmt, ...), we need at least the fixed parameters (like 'fmt')
 		if argCount < paramCount {
 			tc.appendErrorf("too few arguments in call to %s", callee.Line, callee.Name)
 		}
 	} else {
-		// Normal exact matching
 		if argCount != paramCount {
 			tc.appendErrorf("too many or too few arguments in call to %s", callee.Line, callee.Name)
 		}
 	}
 
-	// 5. Validate each argument type against parameter type
-	// For variadic functions, we only perform strict type checking on the fixed parameters.
 	for i, arg := range call.Args {
 		providedType := tc.inferType(arg)
 
-		// Check if the current argument has a defined parameter (Fixed Parameter).
 		if i < len(sym.Params) {
-			// only retrieve the expected type if the index is within bounds.
 			expectedType := sym.Params[i].Type.Name
 
-			if expectedType != providedType.Name {
+			if providedType != nil && expectedType != providedType.Name {
 				tc.appendErrorf("cannot use %s as %s in argument to %s",
-					callee.Line, providedType, expectedType, callee.Name)
+					callee.Line, providedType.Name, expectedType, callee.Name)
 			}
 		} else if !sym.IsVariadic {
-			// we break here for safety.
 			break
 		}
 	}
 
-	// Ensure return signature and fields exist
-	if sym.RetTp == nil || len(sym.RetTp.Fields) == 0 {
-		return "void"
+	if sym.Type == nil {
+		return &symbols.Type{Name: "void"}
 	}
 
-	// If fallible or multi-value, return the implicit struct name
-	if sym.RetTp.HasError || len(sym.RetTp.Fields) > 1 {
-		return "_Fox_res_" + sym.Name
+	return sym.Type
+}
+
+func (tc *TypeChecker) inferFieldAccessExpr(fa *aster.FieldAccessExpr) *symbols.Type {
+	// 1. استنتاج نوع الطرف الأيسر (مثل res)
+	lhsType := tc.inferType(fa.Object)
+	if lhsType == nil || lhsType.Name == aster.INVALID.String() {
+		return &symbols.Type{Name: aster.INVALID.String()}
 	}
 
-	// Return the single available type name from the fields slice
-	return sym.RetTp.Fields[0].Type.Name
+	// 2. البحث عن الـ Struct Symbol الخاص به في جدول الرموز
+	structSym, exists := tc.CurrentTable.Resolve(lhsType.Name)
+	if !exists {
+		tc.appendErrorf("undefined type %s", fa.Line, lhsType.Name)
+		return &symbols.Type{Name: aster.INVALID.String()}
+	}
+
+	// 3. البحث عن الحقل المطلوب بداخل الـ Struct
+	for _, field := range structSym.Fields {
+		if field.Name == fa.Field {
+			return field.Type
+		}
+	}
+
+	tc.appendErrorf("type %s has no field %s", fa.Line, lhsType.Name, fa.Field)
+	return &symbols.Type{Name: aster.INVALID.String()}
 }
 
 func (tc *TypeChecker) checkStmt(stmt aster.Statement) {

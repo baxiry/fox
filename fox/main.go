@@ -39,13 +39,12 @@ func main() {
 		os.Exit(1)
 	}
 
-	// 2. Type Checking phase (CRITICAL: Must happen before Codegen)
+	// 2. Type Checking phase
 	tc := tchecker.NewTypeChecker()
 	tc.Check(ast)
 
 	// 3. Debugging: Print AST AFTER Type Checking to see the inferred types
 	fmt.Println("\nAST Structure:")
-
 	dump.Dump(ast)
 	fmt.Println()
 
@@ -59,7 +58,6 @@ func main() {
 	}
 
 	// 4. Prepare the Project structure for Codegen
-	// Now ast.Decls contains the inferred types (decl.Type = finalType)
 	project := &aster.Project{
 		Packages: []*aster.Package{
 			{
@@ -72,11 +70,8 @@ func main() {
 				},
 			},
 		},
-		//	SymbolTable: tc.GlobalTable.Symbols,
-
 		SymbolTable: tc.GlobalTable,
 	}
-	fmt.Println("symbols in projet", project.SymbolTable)
 
 	// 5. Code Generation phase
 	cg := cgen.NewCodegen(project)
