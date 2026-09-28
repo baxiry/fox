@@ -11,7 +11,7 @@ import (
 
 type Codegen struct {
 	symbolTable      *symbols.SymbolTable
-	sourceStream     bytes.Buffer // ينشئ main_gen.c الموحد بكافة التعاريف والمنطق
+	sourceStream     bytes.Buffer
 	unit             *aster.AST
 	project          *aster.Project
 	indent           int
@@ -119,9 +119,16 @@ func (cg *Codegen) genResultEnvelopes() {
 			cg.definedEnvelopes[envelopeName] = true
 
 			fmt.Fprintf(&cg.sourceStream, "typedef struct %s {\n", envelopeName)
-			for _, field := range f.Return.Fields {
+			for i, field := range f.Return.Fields {
 				cType := cg.mapType(field.Type)
-				fmt.Fprintf(&cg.sourceStream, "    %s %s;\n", cType, field.Name)
+
+				// gen default field name
+				fieldName := field.Name
+				if fieldName == "" {
+					fieldName = fmt.Sprintf("_%d", i)
+				}
+
+				fmt.Fprintf(&cg.sourceStream, "    %s %s;\n", cType, fieldName)
 			}
 			if f.Return.HasError {
 				fmt.Fprintf(&cg.sourceStream, "    char* err;\n")
@@ -354,39 +361,40 @@ func (cg *Codegen) genExpr(expr aster.Expression) {
 		cg.genExpr(e.Expr)
 
 	case *aster.Declar:
-		if ident, ok := e.Name.(*aster.IdentExpr); ok {
-			typeName := "int32_t"
-			if e.Value != nil {
-				isUnwrapped := false
-				if call, ok := e.Value.(*aster.CallExpr); ok && call.UnwrapPanic {
-					isUnwrapped = true
-				} else if bin, ok := e.Value.(*aster.BinaryExpr); ok {
-					if leftCall, ok := bin.Left.(*aster.CallExpr); ok && leftCall.UnwrapPanic {
+		if len(e.Targets) > 0 {
+			if ident, ok := e.Targets[0].(*aster.IdentExpr); ok {
+				typeName := "int32_t"
+				if e.Value != nil {
+					isUnwrapped := false
+					if call, ok := e.Value.(*aster.CallExpr); ok && call.UnwrapPanic {
 						isUnwrapped = true
-					}
-					if rightCall, ok := bin.Right.(*aster.CallExpr); ok && rightCall.UnwrapPanic {
-						isUnwrapped = true
-					}
-				}
-
-				if isUnwrapped {
-					typeName = "int32_t"
-				} else if call, ok := e.Value.(*aster.CallExpr); ok {
-					if callIdent, ok := call.Callee.(*aster.IdentExpr); ok && callIdent.Type != nil {
-						if strings.HasPrefix(callIdent.Type.Name, "_Result_") {
-							typeName = callIdent.Type.Name
+					} else if bin, ok := e.Value.(*aster.BinaryExpr); ok {
+						if leftCall, ok := bin.Left.(*aster.CallExpr); ok && leftCall.UnwrapPanic {
+							isUnwrapped = true
+						}
+						if rightCall, ok := bin.Right.(*aster.CallExpr); ok && rightCall.UnwrapPanic {
+							isUnwrapped = true
 						}
 					}
-				} else if lit, ok := e.Value.(*aster.StructLiteral); ok && lit.Type != nil {
-					typeName = lit.Type.Name
+
+					if isUnwrapped {
+						typeName = "int32_t"
+					} else if call, ok := e.Value.(*aster.CallExpr); ok {
+						if callIdent, ok := call.Callee.(*aster.IdentExpr); ok && callIdent.Type != nil {
+							if strings.HasPrefix(callIdent.Type.Name, "_Result_") {
+								typeName = callIdent.Type.Name
+							}
+						}
+					} else if lit, ok := e.Value.(*aster.StructLiteral); ok && lit.Type != nil {
+						typeName = lit.Type.Name
+					}
 				}
+
+				fmt.Fprintf(&cg.sourceStream, "%s %s = ", typeName, ident.Name)
+				cg.genExpr(e.Value)
+				cg.sourceStream.WriteString(";\n")
 			}
-
-			fmt.Fprintf(&cg.sourceStream, "%s %s = ", typeName, ident.Name)
-			cg.genExpr(e.Value)
-			cg.sourceStream.WriteString(";\n")
 		}
-
 	case *aster.StructLiteral:
 		fmt.Fprintf(&cg.sourceStream, "(%s){", e.Type.Name)
 		for i, field := range e.Fields {
@@ -704,8 +712,46 @@ func (cg *Codegen) genMatchStmt(s *aster.MatchStmt) {
 }
 
 func (cg *Codegen) genDeclarStmt(s *aster.Declar) {
+	// Ensure there is at least one target in the slice
+	if len(s.Targets) == 0 {
+		return
+	}
+
+	// 1. التعامل مع التفكيك والإسناد المتعدد (Multi-Return Unpacking)
+	if callExpr, ok := s.Value.(*aster.CallExpr); ok && len(s.Targets) > 1 {
+		funcName := ""
+		if callIdent, ok := callExpr.Callee.(*aster.IdentExpr); ok {
+			funcName = callIdent.Name
+		}
+
+		envelopeName := cg.getEnvelopeName(funcName)
+		tmpVar := fmt.Sprintf("_tmp_ret_%d", s.Line)
+
+		//  Struct المساعد الناتج عن الاستدعاء
+		cg.writeIndent()
+		fmt.Fprintf(&cg.sourceStream, "%s %s = ", envelopeName, tmpVar)
+		cg.genExpr(callExpr)
+		cg.sourceStream.WriteString(";\n")
+
+		// تفكيك القيم وإسنادها للمتغيرات Target
+		for i, target := range s.Targets {
+			if ident, ok := target.(*aster.IdentExpr); ok {
+				cType := "int32_t"
+				if ident.Type != nil && ident.Type.Name != "" && ident.Type.Name != "INVALID" && ident.Type.Name != "invalid" {
+					cType = cg.mapType(ident.Type)
+				}
+
+				cg.writeIndent()
+				fmt.Fprintf(&cg.sourceStream, "%s %s = %s._%d;\n", cType, ident.Name, tmpVar, i)
+			}
+		}
+		return
+	}
+
+	// 2. التعامل مع الإعلان والإنشاء المفرد العادي (Single Target Declaration)
 	cg.writeIndent()
-	if ident, ok := s.Name.(*aster.IdentExpr); ok {
+
+	if ident, ok := s.Targets[0].(*aster.IdentExpr); ok {
 		typeName := "int32_t"
 
 		if ident.Type != nil && ident.Type.Name != "" && ident.Type.Name != "INVALID" && ident.Type.Name != "invalid" {
@@ -726,9 +772,9 @@ func (cg *Codegen) genDeclarStmt(s *aster.Declar) {
 					typeName = val.Type.Name
 				}
 			case *aster.FieldAccessExpr:
-				// الاستفادة من فحص الحقل مباشرة دون الحاجة لمتغير objIdent أو المرجع غير الموجود cg.ast
-				if val.Field != "" {
-					// فحص الوظائف أو التصريحات المتاحة في المولد لإيجاد نوع الحقل المطابق
+				// Direct field access check without requiring objIdent or unmapped AST references
+				if val.Field != "" && cg.CurrentFunction != nil && cg.CurrentFunction.Return != nil {
+					// Check available function return fields for matching field type
 					for _, f := range cg.CurrentFunction.Return.Fields {
 						if f.Name == val.Field {
 							typeName = cg.mapType(f.Type)
@@ -744,6 +790,7 @@ func (cg *Codegen) genDeclarStmt(s *aster.Declar) {
 		cg.sourceStream.WriteString(";\n")
 	}
 }
+
 func (cg *Codegen) genVarDeclarStmt(s *aster.VarDeclar) {
 	cg.writeIndent()
 	cType := cg.mapType(s.Type)
@@ -765,13 +812,32 @@ func (cg *Codegen) genVarDeclarStmt(s *aster.VarDeclar) {
 }
 
 func (cg *Codegen) genAssignStmt(s *aster.Assign) {
-	cg.writeIndent()
-	cg.genExpr(s.Target)
-	cg.sourceStream.WriteString(" = ")
-	cg.genExpr(s.Value)
-	cg.sourceStream.WriteString(";\n")
-}
+	if len(s.Targets) == 0 {
+		return
+	}
 
+	// 1. If single target, generate simple assignment directly
+	if len(s.Targets) == 1 {
+		cg.writeIndent()
+		cg.genExpr(s.Targets[0])
+		cg.sourceStream.WriteString(" = ")
+		cg.genExpr(s.Value)
+		cg.sourceStream.WriteString(";\n")
+		return
+	}
+
+	// 2. If multiple targets, handle multi-assignment by iterating over all targets
+	// (Assumes RHS evaluates to a multi-return struct/envelope or tuple extraction)
+	for i, target := range s.Targets {
+		cg.writeIndent()
+		cg.genExpr(target)
+		cg.sourceStream.WriteString(" = ")
+
+		// If RHS is a function call or tuple, extract the corresponding field ._0, ._1, etc.
+		cg.genExpr(s.Value)
+		fmt.Fprintf(&cg.sourceStream, "._%d;\n", i)
+	}
+}
 func (cg *Codegen) genExprStmt(s *aster.ExprStmt) {
 	cg.writeIndent()
 	cg.genExpr(s.Expr)
@@ -784,6 +850,7 @@ func (cg *Codegen) genReturnStmt(s *aster.ReturnStmt) {
 	if cg.CurrentFunction != nil && cg.CurrentFunction.Return != nil && len(cg.CurrentFunction.Return.Fields) > 0 {
 
 		if len(cg.CurrentFunction.Return.Fields) == 1 && !cg.CurrentFunction.Return.HasError {
+			cg.writeIndent()
 			cg.sourceStream.WriteString("return ")
 			if len(s.Results) > 0 {
 				cg.genExpr(s.Results[0])
@@ -806,16 +873,21 @@ func (cg *Codegen) genReturnStmt(s *aster.ReturnStmt) {
 		fmt.Fprintf(&cg.sourceStream, "%s __ret_env = {0};\n", envelopeName)
 
 		if len(s.Results) == 0 {
-			for _, field := range cg.CurrentFunction.Return.Fields {
-				if field.Name != "" {
-					cg.writeIndent()
-					fmt.Fprintf(&cg.sourceStream, "__ret_env.%s = %s;\n", field.Name, field.Name)
+			for i, field := range cg.CurrentFunction.Return.Fields {
+				fieldName := field.Name
+				if fieldName == "" {
+					fieldName = fmt.Sprintf("_%d", i)
 				}
+				cg.writeIndent()
+				fmt.Fprintf(&cg.sourceStream, "__ret_env.%s = %s;\n", fieldName, fieldName)
 			}
 		} else {
 			for i, expr := range s.Results {
 				if i < len(cg.CurrentFunction.Return.Fields) {
 					fieldName := cg.CurrentFunction.Return.Fields[i].Name
+					if fieldName == "" {
+						fieldName = fmt.Sprintf("_%d", i)
+					}
 					cg.writeIndent()
 					fmt.Fprintf(&cg.sourceStream, "__ret_env.%s = ", fieldName)
 					cg.genExpr(expr)
@@ -839,14 +911,18 @@ func (cg *Codegen) genForStmt(s *aster.ForStmt) {
 	if s.Init != nil {
 		switch initStmt := s.Init.(type) {
 		case *aster.Assign:
-			cg.genExpr(initStmt.Target)
-			cg.sourceStream.WriteString(" = ")
-			cg.genExpr(initStmt.Value)
+			if len(initStmt.Targets) > 0 {
+				cg.genExpr(initStmt.Targets[0])
+				cg.sourceStream.WriteString(" = ")
+				cg.genExpr(initStmt.Value)
+			}
 		case *aster.Declar:
-			cg.sourceStream.WriteString("int32_t ")
-			cg.genExpr(initStmt.Name)
-			cg.sourceStream.WriteString(" = ")
-			cg.genExpr(initStmt.Value)
+			if len(initStmt.Targets) > 0 {
+				cg.sourceStream.WriteString("int32_t ")
+				cg.genExpr(initStmt.Targets[0])
+				cg.sourceStream.WriteString(" = ")
+				cg.genExpr(initStmt.Value)
+			}
 		}
 	}
 
@@ -857,119 +933,13 @@ func (cg *Codegen) genForStmt(s *aster.ForStmt) {
 	cg.sourceStream.WriteString("; ")
 	if s.Post != nil {
 		if assign, ok := s.Post.(*aster.Assign); ok {
-			cg.genExpr(assign.Target)
-			cg.sourceStream.WriteString(" = ")
-			cg.genExpr(assign.Value)
+			if len(assign.Targets) > 0 {
+				cg.genExpr(assign.Targets[0])
+				cg.sourceStream.WriteString(" = ")
+				cg.genExpr(assign.Value)
+			}
 		}
 	}
 	cg.sourceStream.WriteString(") ")
 	cg.genBlock(s.Body)
-}
-
-func (cg *Codegen) findFunc(name string) *aster.Func {
-	for _, decl := range cg.unit.Decls {
-		if fn, ok := decl.(*aster.Func); ok && fn.FuncName == name {
-			return fn
-		}
-	}
-	return nil
-}
-
-func (cg *Codegen) writeIndent() {
-	for i := 0; i < cg.indent; i++ {
-		cg.sourceStream.WriteString("    ")
-	}
-}
-
-func (cg *Codegen) structHasPointers(sName string) int {
-	structSym, exists := cg.symbolTable.Resolve(sName)
-	if !exists || structSym == nil {
-		return 0
-	}
-
-	for _, field := range structSym.Fields {
-		if field.Type.PtrDepth > 0 || field.Type.Name == "string" {
-			return 1
-		}
-	}
-
-	return 0
-}
-
-func (cg *Codegen) calculateClassIndex(sName string) int {
-	structSym, exists := cg.symbolTable.Resolve(sName)
-	if !exists || structSym == nil {
-		return 0
-	}
-
-	totalSize := 0
-	for _, field := range structSym.Fields {
-		fieldSize := 0
-
-		if field.Type.PtrDepth > 0 || field.Type.Name == "string" {
-			fieldSize = 8
-		} else if field.Type.Name == "int" {
-			fieldSize = 4
-		} else if field.Type.Name == "bool" {
-			fieldSize = 1
-		} else {
-			fieldSize = 8
-		}
-
-		if field.Type.IsArray && field.Type.Size > 0 {
-			fieldSize = fieldSize * field.Type.Size
-		}
-
-		totalSize += fieldSize
-	}
-
-	if totalSize%8 != 0 {
-		totalSize = ((totalSize / 8) + 1) * 8
-	}
-
-	totalNeeded := totalSize + 8
-
-	configurations := []int{32, 64, 128, 256, 512, 1024, 2048, 4096}
-	for idx, maxCapacity := range configurations {
-		if totalNeeded <= maxCapacity {
-			return idx
-		}
-	}
-
-	return 8
-}
-
-func (cg *Codegen) mapType(foxType *symbols.Type) string {
-	if foxType == nil {
-		return "int32_t"
-	}
-
-	var cType string
-	typeName := foxType.Name
-
-	if strings.Contains(typeName, ".") {
-		parts := strings.Split(typeName, ".")
-		typeName = parts[0]
-	}
-
-	if strings.HasPrefix(typeName, "_Result_") {
-		cType = typeName
-	} else {
-		switch typeName {
-		case "int":
-			cType = "int32_t"
-		case "string":
-			cType = "char*"
-		case "bool":
-			cType = "bool"
-		default:
-			cType = typeName
-		}
-	}
-
-	for i := 0; i < foxType.PtrDepth; i++ {
-		cType += "*"
-	}
-
-	return cType
 }

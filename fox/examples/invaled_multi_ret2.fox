@@ -1,0 +1,14 @@
+struct User {
+    name string
+}
+
+// err: named return (u User)
+fn getUser() u User, err {
+    var user User
+    user.name = "Fox"
+    return user, nil
+}
+
+fn main() {
+    user, e := getUser()
+}

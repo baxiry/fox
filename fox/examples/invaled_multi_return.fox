@@ -1,0 +1,13 @@
+struct Config {
+    port int
+}
+
+// err: ignore comma btween Config & int
+fn loadConfig() Config int {
+    var cfg Config
+    return cfg, 8080
+}
+
+fn main() {
+    cfg, port := loadConfig()
+}

@@ -1,0 +1,19 @@
+struct User {
+    id int
+}
+
+fn processUser(u *User) *User, int, bool {
+    if u == nil {
+        var dummy User
+        return &dummy, 0, false
+    }
+
+    return u, u.id, true
+}
+
+fn main() {
+    var user User
+    user.id = 100
+
+    ptr, id, ok := processUser(&user)
+}

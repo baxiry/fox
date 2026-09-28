@@ -9,6 +9,7 @@ type Type struct {
 	PtrDepth int
 	Size     int
 	IsArray  bool
+	Fields   []StructField
 }
 
 type ReturnField struct {
@@ -42,7 +43,7 @@ type Symbol struct {
 	ScopeID    string
 	Kind       string        // "var", "func", "struct"
 	Params     []Param       // Allocated for functions tracking context
-	RetTp      *ReturnSig    // Multi-return tracking signature
+	RetSig     *ReturnSig    // Multi-return tracking signature
 	Fields     []StructField // Static structure members dimensions layout
 	IsShared   bool
 	IsBuiltIn  bool

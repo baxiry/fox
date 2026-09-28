@@ -186,19 +186,20 @@ func (p *Parser) parseExprOrAssign() Statement {
 			}
 
 			return &Declar{
-				Name:  expr, // Now a single expression
-				Op:    tok.Lexeme,
-				Value: value, // Now a single expression
-				Line:  tok.Line,
+
+				Targets: []Expression{expr},
+				Op:      tok.Lexeme,
+				Value:   value, // Now a single expression
+				Line:    tok.Line,
 			}
 		}
 
 		// 5. Handle Normal Assignment (=)
 		return &Assign{
-			Target: expr, // Now a single expression
-			Op:     tok.Lexeme,
-			Value:  value, // Now a single expression
-			Line:   tok.Line,
+			Targets: []Expression{expr},
+			Op:      tok.Lexeme,
+			Value:   value, // Now a single expression
+			Line:    tok.Line,
 		}
 	}
 
@@ -207,20 +208,4 @@ func (p *Parser) parseExprOrAssign() Statement {
 		Expr: expr,
 		Line: tok.Line,
 	}
-}
-
-func lookAheadIsAssign(tokens []Token, pos int) bool {
-
-	if pos+1 >= len(tokens) {
-		return false
-	}
-	// IDENT = expr
-	if tokens[pos].Type == IDENT && tokens[pos+1].Type == ASSIGN {
-		return true
-	}
-	// IDENT := expr
-	if tokens[pos].Type == IDENT && tokens[pos+1].Type == DEFINE {
-		return true
-	}
-	return false
 }

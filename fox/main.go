@@ -44,8 +44,8 @@ func main() {
 	tc.Check(ast)
 
 	// 3. Debugging: Print AST AFTER Type Checking to see the inferred types
-	fmt.Println("\nAST Structure:")
-	dump.Dump(ast)
+	fmt.Println("\nAST Structure:\n ")
+	DumpAST(ast, "    ")
 	fmt.Println()
 
 	// Check for Type Errors

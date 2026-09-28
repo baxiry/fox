@@ -209,4 +209,64 @@ func (p *Parser) makeType(name string, ptrDepth int) *symbols.Type {
 	}
 }
 
+func lookAheadIsAssign(tokens []Token, pos int) bool {
+	if pos >= len(tokens) {
+		return false
+	}
+
+	i := pos
+	// Skip chain of IDENT, COMMA
+	for i < len(tokens) && (tokens[i].Type == IDENT || tokens[i].Type == COMMA) {
+		i++
+	}
+
+	if i < len(tokens) {
+		if tokens[i].Type == ASSIGN || tokens[i].Type == DEFINE {
+			return true
+		}
+	}
+	return false
+}
+
+// ???
+func isExprStart(tok Token) bool {
+	switch tok.Type {
+
+	case IDENT,
+		INT, FLOAT, STRING,
+		TRUE, FALSE,
+		OPN_PAREN, // (a + b)
+		AMP,       // &a
+		STAR,      // *a
+		EXCLAM,    // !a
+		MINUS:     // -a
+
+		return true
+	}
+
+	return false
+}
+
+// isValidDefineTarget checks if the expression is a valid identifier for ':='
+func (p *Parser) isValidDefineTarget(expr Expression) bool {
+	switch expr.(type) {
+	case *IdentExpr:
+		// Only plain identifiers (like 'x' or '_') are allowed for definition
+		return true
+	default:
+		// Complex expressions like FieldAccess (x.y) are not allowed for ':='
+		return false
+	}
+}
+
+func (t Token) IsOperator() bool {
+	switch t.Type {
+	case PLUS, MINUS, STAR, SLASH, ASSIGN, DEFINE,
+		EQ, NEQ, LT, GT, LTE, GTE, AND, OR, EXCLAM, DOT:
+		return true
+	default:
+		return false
+	}
+}
+
 // end

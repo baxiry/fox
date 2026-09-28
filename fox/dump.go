@@ -4,17 +4,7 @@ import (
 	"fmt"
 	"fox/aster"
 	"strings"
-
-	"github.com/davecgh/go-spew/spew"
 )
-
-var dump = spew.ConfigState{
-	Indent:                  "    ",
-	MaxDepth:                8,
-	DisablePointerAddresses: true,
-	DisableCapacities:       true,
-	ContinueOnMethod:        true,
-}
 
 func DumpAST(node any, indent string) {
 	if node == nil {
@@ -25,101 +15,91 @@ func DumpAST(node any, indent string) {
 	case *aster.AST:
 		fmt.Printf("%sAST:\n", indent)
 		for _, decl := range n.Decls {
-			DumpAST(decl, indent+"    ")
+			DumpAST(decl, indent+"  ")
 		}
 
 	case *aster.Struct:
 		fmt.Printf("%sStruct: %s\n", indent, n.Name)
 		for _, field := range n.Fields {
-			fmt.Printf("%s    Field: %s (Type: %s)\n", indent, field.Name, field.Type.Name)
+			fmt.Printf("%s  field: %s", indent, field.Name)
+			if field.Type != nil {
+				fmt.Printf(" (type: %s)", field.Type.Name)
+			}
+			fmt.Printf("\n")
 		}
 
 	case *aster.Func:
-		retName := "void"
+		fmt.Printf("%sFunc: %s\n", indent, n.FuncName)
 		if n.Return != nil && len(n.Return.Fields) > 0 {
 			var fields []string
 			for _, field := range n.Return.Fields {
-				fields = append(fields, field.Name+" "+field.Type.Name)
+				if field.Name != "" {
+					fields = append(fields, field.Name+" "+field.Type.Name)
+				} else if field.Type != nil {
+					fields = append(fields, field.Type.Name)
+				}
 			}
-			retName = strings.Join(fields, ", ")
+			retStr := strings.Join(fields, ", ")
 			if n.Return.HasError {
-				retName += " !"
+				retStr += " !"
 			}
+			fmt.Printf("%s  returns: %s\n", indent, retStr)
 		}
-		fmt.Printf("%sFunc: %s() %s\n", indent, n.FuncName, retName)
-		if n.Body != nil {
+		if n.Body != nil && len(n.Body.Stmts) > 0 {
+			fmt.Printf("%s  body:\n", indent)
 			for _, stmt := range n.Body.Stmts {
 				DumpAST(stmt, indent+"    ")
 			}
 		}
-	case *aster.IfStmt:
-		fmt.Printf("%sIfStmt (Cond: ", indent)
-		DumpAST(n.Cond, "")
-		fmt.Printf(")\n")
-		if n.Then != nil {
-			fmt.Printf("%s    Then:\n", indent)
-			for _, stmt := range n.Then.Stmts {
-				DumpAST(stmt, indent+"        ")
-			}
-		}
-		if n.Else != nil {
-			fmt.Printf("%s    Else:\n", indent)
-			if block, ok := n.Else.(*aster.FrameBlock); ok {
-				for _, stmt := range block.Stmts {
-					DumpAST(stmt, indent+"        ")
-				}
-			} else {
-				DumpAST(n.Else, indent+"        ")
-			}
-		}
 
-	case *aster.ReturnStmt:
-		fmt.Printf("%sReturnStmt: ", indent)
-		if n.Results != nil {
-			DumpAST(n.Results, "")
-		} else {
-			fmt.Printf("void")
+	case *aster.VarDeclar:
+		fmt.Printf("%sVarDecl: %s", indent, n.Name)
+		if n.Type != nil {
+			fmt.Printf(" (type: %s)", n.Type.Name)
 		}
 		fmt.Printf("\n")
 
-	case *aster.MatchStmt:
-		fmt.Printf("%sMatchStmt (Object: ", indent)
-		DumpAST(n.Object, "")
-		fmt.Printf(")\n")
-		for _, c := range n.Cases {
-			fmt.Printf("%s    Case: ", indent)
-			for i, cond := range c.Conditions {
-				DumpAST(cond, "")
-				if i < len(c.Conditions)-1 {
-					fmt.Printf(", ")
-				}
-			}
-			fmt.Printf("\n")
-			if c.Body != nil {
-				for _, stmt := range c.Body.Stmts {
-					DumpAST(stmt, indent+"        ")
-				}
-			}
-		}
-		if n.Else != nil {
-			fmt.Printf("%s    Else:\n", indent)
-			for _, stmt := range n.Else.Stmts {
-				DumpAST(stmt, indent+"        ")
-			}
-		}
-
 	case *aster.Declar:
-		fmt.Printf("%sDeclar: ", indent)
-		DumpAST(n.Name, "")
-		fmt.Printf(" %s ", n.Op)
+		fmt.Printf("%sDeclar (%s):\n", indent, n.Op)
+		fmt.Printf("%s  targets:\n", indent)
+		for _, target := range n.Targets {
+			fmt.Printf("%s    - ", indent)
+			DumpAST(target, "")
+			fmt.Printf("\n")
+		}
+		fmt.Printf("%s  value: ", indent)
+		DumpAST(n.Value, "")
+		fmt.Printf("\n")
+
+	case *aster.Assign:
+		fmt.Printf("%sAssign (%s):\n", indent, n.Op)
+		fmt.Printf("%s  targets:\n", indent)
+		for _, target := range n.Targets {
+			fmt.Printf("%s    - ", indent)
+			DumpAST(target, "")
+			fmt.Printf("\n")
+		}
+		fmt.Printf("%s  value: ", indent)
 		DumpAST(n.Value, "")
 		fmt.Printf("\n")
 
 	case *aster.ExprStmt:
-		DumpAST(n.Expr, indent)
+		fmt.Printf("%sExprStmt: ", indent)
+		DumpAST(n.Expr, "")
 		fmt.Printf("\n")
 
-	// تفكيك التعبيرات الفرعية المتداخلة لطباعة محتواها بدقة خطية
+	case *aster.ReturnStmt:
+		fmt.Printf("%sReturn:\n", indent)
+		if n.Results != nil {
+			for _, res := range n.Results {
+				fmt.Printf("%s  - ", indent)
+				DumpAST(res, "")
+				fmt.Printf("\n")
+			}
+		} else {
+			fmt.Printf("%s  value: void\n", indent)
+		}
+
 	case *aster.BinaryExpr:
 		DumpAST(n.Left, "")
 		fmt.Printf(" %s ", n.Op)
@@ -128,36 +108,35 @@ func DumpAST(node any, indent string) {
 	case *aster.IdentExpr:
 		fmt.Printf("%s", n.Name)
 
+		if n.Type != nil {
+			fmt.Printf("[:%s]", n.Type.Name)
+		}
+
 	case *aster.IntExpr:
 		fmt.Printf("%d", n.Value)
 
 	case *aster.StringExpr:
 		fmt.Printf("\"%s\"", n.Literal)
 
-	case *aster.CallExpr:
-		DumpAST(n.Callee, indent)
-		fmt.Printf("(")
-		for i, arg := range n.Args {
-			DumpAST(arg, "")
-			if i < len(n.Args)-1 {
-				fmt.Printf(", ")
-			}
-		}
-		fmt.Printf(")")
+	case *aster.FieldAccessExpr:
+		DumpAST(n.Object, "")
+		fmt.Printf(".%s", n.Field)
 
-	case *aster.StructLiteral:
-		typeName := "Unknown"
-		if n.Type != nil {
-			typeName = n.Type.Name
-		}
-		fmt.Printf("%s{", typeName)
-		for i, f := range n.Fields {
-			fmt.Printf("%s: ", f.Name)
-			DumpAST(f.Value, "")
-			if i < len(n.Fields)-1 {
-				fmt.Printf(", ")
+	case *aster.CallExpr:
+		DumpAST(n.Callee, "")
+		if len(n.Args) > 0 {
+			fmt.Printf(" args: ")
+			for i, arg := range n.Args {
+				DumpAST(arg, "")
+				if i < len(n.Args)-1 {
+					fmt.Printf(", ")
+				}
 			}
+		} else {
+			fmt.Printf(" args: none")
 		}
-		fmt.Printf("}")
+
+	default:
+		fmt.Printf("%sUnknownNode: %T\n", indent, n)
 	}
 }

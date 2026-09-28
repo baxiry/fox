@@ -88,16 +88,16 @@ func (p *Parser) parseUnary() Expression {
 func (p *Parser) parsePostfix() Expression {
 	p.skip()
 
-	// IMPORTANT: start from primary ONLY (no unary call here)
+	// البدء دائماً بالتعابير الأولية Primary
 	expr := p.parsePrimary()
 
 	for p.pos < len(p.tokens) {
 		switch p.tokens[p.pos].Type {
 
-		case OPN_BRACK: // [
-			p.pos++ // consume '['
+		case OPN_BRACK: // التعامل مع الوصول للمصفوفات [index]
+			p.pos++ // استهلاك '['
 			index := p.parseExpr()
-			p.expectType(CLS_BRACK) // expect and consume ']'
+			p.expectType(CLS_BRACK) // استهلاك ']'
 
 			expr = &IndexExpr{
 				Target: expr,
@@ -105,22 +105,19 @@ func (p *Parser) parsePostfix() Expression {
 				Line:   p.tokens[p.pos-1].Line,
 			}
 
-		case DOT:
+		case DOT: // التعامل مع الوصول للحقول object.field
 			p.pos++
 			p.skip()
 			field := p.expectIdent()
 
 			if field.Type == ERROR {
-				p.synchronize() // Jump to the next safe statement
-
+				p.synchronize()
 				return &BadStmt{Line: p.currentToken().Line}
 			}
 			expr = &FieldAccessExpr{Object: expr, Field: field.Lexeme, Line: field.Line}
 
 		case OPN_BRACE:
-
-			// Follow Go's rule: Struct literals must start the brace on the same line.
-			// If the brace is on a new line, it belongs to a new block (if, for, etc.)
+			// قاعدة Go: Struct literal يجب أن تبدأ { في نفس السطر
 			if p.inCondition {
 				return expr
 			}
@@ -129,18 +126,16 @@ func (p *Parser) parsePostfix() Expression {
 				return expr
 			}
 
-			// Struct literals are only valid if the preceding expression is an identifier (the type name)
+			// التحقق مما إذا كان المعرف عبارة عن اسم Struct Literal
 			if ident, ok := expr.(*IdentExpr); ok {
 				peekPos := p.pos + 1
 				isStructLiteral := true
 				if peekPos < len(p.tokens) {
 					peekTok := p.tokens[peekPos]
-					// If we see a keyword inside the brace immediately, it's likely a block, not a struct
 					if peekTok.Type == IF || peekTok.Type == FOR || peekTok.Type == RETURN ||
 						peekTok.Type == BREAK || peekTok.Type == CONTINUE {
 						isStructLiteral = false
 					}
-					// Empty braces 'A{}' are valid struct literals
 					if peekTok.Type == CLS_BRACE {
 						isStructLiteral = true
 					}
@@ -148,13 +143,12 @@ func (p *Parser) parsePostfix() Expression {
 				if isStructLiteral {
 					expr = p.parseStructLiteral(ident.Name)
 				} else {
-					// It's a block, let the calling function (like parseIf) handle it
 					return expr
 				}
 			} else {
-				// Expression is not an identifier, so '{' must be a block
 				return expr
 			}
+
 		default:
 			return expr
 		}
@@ -687,7 +681,6 @@ func (p *Parser) parseStructLiteral(typeName string) Expression {
 
 // AST Builder
 
-// AST Builder
 func (p *Parser) Builder(data []byte) *AST {
 	p.tokens = Lexer(string(data))
 

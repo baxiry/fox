@@ -53,7 +53,7 @@ func (tc *TypeChecker) injectBuiltIns() {
 			PtrDepth: 0,
 			IsArray:  false,
 		},
-		RetTp: &symbols.ReturnSig{
+		RetSig: &symbols.ReturnSig{
 			Fields: []symbols.ReturnField{
 				{
 					Name: "",
@@ -144,14 +144,16 @@ func (tc *TypeChecker) inferType(expr aster.Expression) *symbols.Type {
 
 		if e.UnwrapPanic && strings.HasPrefix(callee.Type.Name, "_Result_") {
 			cleanName := strings.TrimPrefix(callee.Type.Name, "_Result_")
-			return &symbols.Type{
+			callee.Type = &symbols.Type{
 				Name:     cleanName,
 				PtrDepth: callee.Type.PtrDepth,
 				IsArray:  callee.Type.IsArray,
 			}
+			return callee.Type
 		}
 
 		return callee.Type
+
 	case *aster.StructLiteral:
 		return tc.checkStructLiteral(e)
 
@@ -293,7 +295,7 @@ func (tc *TypeChecker) registerFunctions(ast *aster.AST) {
 				Name:   f.FuncName,
 				Kind:   "func",
 				Type:   funcType,
-				RetTp:  returnSignature,
+				RetSig: returnSignature,
 				Params: mapParamsToSymbols(f.Params),
 			}
 
@@ -562,7 +564,7 @@ func (tc *TypeChecker) checkReturnStmt(stmt *aster.ReturnStmt) {
 
 	retSig := tc.CurrentRetTypes
 	if retSig == nil {
-		retSig = tc.CurrFn.RetTp
+		retSig = tc.CurrFn.RetSig
 	}
 
 	valuesCount := len(stmt.Results)
@@ -678,93 +680,165 @@ func (tc *TypeChecker) checkDeclar(decl *aster.Declar) {
 		return
 	}
 
-	// 2. Infer the type of the single value on the right
-	inferredType := tc.inferType(decl.Value)
+	// 2. Infer the return types directly as a slice []*symbols.Type
+	returnTypes := tc.inferReturnTypes(decl.Value)
 
-	// 3. Handle the single name on the left
-	ident, ok := decl.Name.(*aster.IdentExpr)
-	if !ok {
-		tc.appendErrorf("non-name on the left side of :=", decl.Line)
+	if len(returnTypes) == 0 {
+		for _, target := range decl.Targets {
+			if ident, ok := target.(*aster.IdentExpr); ok {
+				ident.Type = &symbols.Type{Name: "INVALID"}
+			}
+		}
 		return
 	}
 
-	if inferredType == nil || inferredType.Name == aster.INVALID.String() {
-		ident.Type = &symbols.Type{Name: aster.INVALID.String()}
+	// 3. Ensure targets count matches returned values count
+	if len(decl.Targets) != len(returnTypes) {
+		tc.appendErrorf("assignment mismatch: %d variables but right side provides %d values", decl.Line, len(decl.Targets), len(returnTypes))
 		return
 	}
 
-	varName := ident.Name
-	// Skip registration if it's the blank identifier "_"
-	if varName == "_" {
-		return
-	}
+	// 4. Iterate over targets slice and bind types to identifiers
+	for i, target := range decl.Targets {
+		ident, ok := target.(*aster.IdentExpr)
+		if !ok {
+			tc.appendErrorf("non-name on the left side of :=", decl.Line)
+			continue
+		}
 
-	// 4. Ensure we don't declare a variable with 'void' or 'invalid'
-	if inferredType.Name == "void" {
-		tc.appendErrorf("cannot assign void value to variable %s", decl.Line, varName)
-		ident.Type = &symbols.Type{Name: aster.INVALID.String()}
-		return
-	}
+		targetType := returnTypes[i]
+		varName := ident.Name
 
-	// تعيين النوع المباشر في عقدة ה-AST
-	ident.Type = inferredType
+		// Skip registration if it's the blank identifier "_"
+		if varName == "_" {
+			continue
+		}
 
-	// 5. Register the symbol in the current table
-	sym := &symbols.Symbol{
-		Name:    varName,
-		Type:    inferredType,
-		ScopeID: tc.CurrentTable.ScopeID,
-	}
+		// Ensure we don't declare a variable with 'void'
+		if targetType.Name == "void" {
+			tc.appendErrorf("cannot assign void value to variable %s", decl.Line, varName)
+			ident.Type = &symbols.Type{Name: "INVALID"}
+			continue
+		}
 
-	if err := tc.CurrentTable.Define(varName, sym); err != nil {
-		// Handle redeclaration error
-		tc.appendErrorf("variable `%s` redeclared in this block", ident.Line, varName)
+		// Assign type to identifier AST node
+		ident.Type = targetType
+
+		// Register the symbol in the current table
+		sym := &symbols.Symbol{
+			Name:    varName,
+			Type:    targetType,
+			ScopeID: tc.CurrentTable.ScopeID,
+		}
+
+		if err := tc.CurrentTable.Define(varName, sym); err != nil {
+			tc.appendErrorf("variable `%s` redeclared in this block", decl.Line, varName)
+		}
 	}
 }
-func (tc *TypeChecker) checkAssign(stmt *aster.Assign) {
-	// Step 1: Intercept completely undefined variables early using CurrentTable context
-	if ident, ok := stmt.Target.(*aster.IdentExpr); ok {
-		_, exists := tc.CurrentTable.Resolve(ident.Name)
-		if !exists {
-			// Log the true root cause directly, EXACTLY ONCE
-			tc.appendErrorf("at checkAssign func: variable '%s' is undefined before assignment", stmt.Line, ident.Name)
 
-			// Inject a ghost Symbol into the Symbols map to silence subsequent blind duplicate calls
-			ghostType := &symbols.Type{Name: "INVALID", PtrDepth: 0, Size: 0, IsArray: false}
-			ghostSymbol := &symbols.Symbol{
-				Name: ident.Name,
-				Type: ghostType,
+func (tc *TypeChecker) checkAssign(stmt *aster.Assign) {
+	// 1. Safety check for missing right-hand side value
+	if stmt.Value == nil {
+		tc.appendErrorf("syntax error: assignment must have a value on the right", stmt.Line)
+		return
+	}
+
+	// 2. Infer return types for RHS
+	rhsTypes := tc.inferReturnTypes(stmt.Value)
+	if len(rhsTypes) == 0 {
+		return
+	}
+
+	// 3. Validate target count vs RHS values count
+	if len(stmt.Targets) != len(rhsTypes) {
+		tc.appendErrorf("assignment mismatch: %d targets but right side provides %d values", stmt.Line, len(stmt.Targets), len(rhsTypes))
+		return
+	}
+
+	// 4. Iterate over targets slice and validate each target assignment
+	for i, target := range stmt.Targets {
+		// Handle identifier-based targets directly
+		if ident, ok := target.(*aster.IdentExpr); ok {
+			// Skip blank identifier "_"
+			if ident.Name == "_" {
+				continue
 			}
 
-			tc.CurrentTable.Define(ident.Name, ghostSymbol)
-			return // Short-circuit instantly, skipping inferType entirely
+			// Intercept undefined variables before attempting type inference
+			_, exists := tc.CurrentTable.Resolve(ident.Name)
+			if !exists {
+				tc.appendErrorf("at checkAssign func: variable '%s' is undefined before assignment", stmt.Line, ident.Name)
+
+				// Inject a ghost symbol to prevent duplicate cascading errors
+				ghostType := &symbols.Type{Name: "INVALID", PtrDepth: 0, Size: 0, IsArray: false}
+				ghostSymbol := &symbols.Symbol{
+					Name: ident.Name,
+					Type: ghostType,
+				}
+				tc.CurrentTable.Define(ident.Name, ghostSymbol)
+				continue
+			}
+		}
+
+		// Infer type for LHS target
+		lhsType := tc.inferType(target)
+		targetRhsType := rhsTypes[i]
+
+		// Skip type compatibility checks if either side failed type inference
+		if lhsType == nil || targetRhsType == nil ||
+			lhsType.Name == "INVALID" ||
+			targetRhsType.Name == "INVALID" {
+			continue
+		}
+
+		// Ensure we cannot assign a void expression
+		if targetRhsType.Name == "void" {
+			tc.appendErrorf("cannot assign void value on line %d", stmt.Line)
+			continue
+		}
+
+		// Validate type compatibility
+		if lhsType.Name != targetRhsType.Name ||
+			lhsType.PtrDepth != targetRhsType.PtrDepth ||
+			lhsType.IsArray != targetRhsType.IsArray {
+
+			tc.appendErrorf("cannot assign %s (ptr %d) to %s (ptr %d)",
+				stmt.Line,
+				targetRhsType.Name, targetRhsType.PtrDepth,
+				lhsType.Name, lhsType.PtrDepth)
+		}
+	}
+}
+
+func (tc *TypeChecker) inferReturnTypes(expr aster.Expression) []*symbols.Type {
+	if expr == nil {
+		return nil
+	}
+
+	// إذا كان التعبير استدعاء دالة CallExpr
+	if call, ok := expr.(*aster.CallExpr); ok {
+		if ident, ok := call.Callee.(*aster.IdentExpr); ok {
+			// البحث عن الدالة في جدول الرموز
+			if funcSym, found := tc.CurrentTable.Resolve(ident.Name); found && funcSym != nil {
+				// الاستخراج من حقل RetTp كائن التوقيع المرجع لديك
+				if funcSym.RetSig != nil && len(funcSym.RetSig.Fields) > 0 {
+					var types []*symbols.Type
+					for _, field := range funcSym.RetSig.Fields {
+						types = append(types, field.Type)
+					}
+					return types
+				}
+			}
 		}
 	}
 
-	// 2. Infer types safely only for symbols known to exist
-	lhsType := tc.inferType(stmt.Target)
-	rhsType := tc.inferType(stmt.Value)
-
-	// 3. Immediate safety check for nil types
-	if lhsType == nil || rhsType == nil {
-		return
+	// للتعبيرات العادية التي ترجع قيمة واحدة
+	t := tc.inferType(expr)
+	if t == nil {
+		return []*symbols.Type{{Name: "INVALID"}}
 	}
-
-	// 4. Skip validation for the blank identifier "_"
-	if ident, ok := stmt.Target.(*aster.IdentExpr); ok && ident.Name == "_" {
-		return
-	}
-
-	// 5. Validate type compatibility including Name, PtrDepth, and IsArray
-	if lhsType.Name != rhsType.Name ||
-		lhsType.PtrDepth != rhsType.PtrDepth ||
-		lhsType.IsArray != rhsType.IsArray {
-
-		tc.appendErrorf("cannot assign %s (ptr %d) to %s (ptr %d)",
-			stmt.Line,
-			rhsType.Name, rhsType.PtrDepth,
-			lhsType.Name, lhsType.PtrDepth)
-	}
+	return []*symbols.Type{t}
 }
 
 func (tc *TypeChecker) checkStructLiteral(lit *aster.StructLiteral) *symbols.Type {
@@ -1017,7 +1091,7 @@ func (tc *TypeChecker) checkStmt(stmt aster.Statement) {
 			if call, ok := s.Expr.(*aster.CallExpr); ok && exprType != nil {
 				if strings.HasPrefix(exprType.Name, "_Result_") {
 					if call.UnwrapPanic {
-						if tc.CurrFn == nil || tc.CurrFn.RetTp == nil || !tc.CurrFn.RetTp.HasError {
+						if tc.CurrFn == nil || tc.CurrFn.RetSig == nil || !tc.CurrFn.RetSig.HasError {
 							tc.appendErrorf("cannot use early-return modifier '!' in a function that does not return an error union", call.Line)
 						}
 					} else {
@@ -1192,8 +1266,11 @@ func (tc *TypeChecker) checkMultiAssignment(left []aster.Expression, right []ast
 
 	var expandedRightTypes []*symbols.Type
 	for _, expr := range right {
-		retType := tc.inferType(expr)                            // inferRetTps(expr)
-		expandedRightTypes = append(expandedRightTypes, retType) //retTypes...)
+
+		// استخدام inferReturnTypes لفك القيم المرجعة إذا كانت الدالة ترجع أكثر من قيمة
+
+		retTypes := tc.inferReturnTypes(expr)
+		expandedRightTypes = append(expandedRightTypes, retTypes...)
 	}
 
 	if len(left) != len(expandedRightTypes) {
@@ -1203,7 +1280,7 @@ func (tc *TypeChecker) checkMultiAssignment(left []aster.Expression, right []ast
 	}
 
 	for i, leftExpr := range left {
-		rightTypeName := expandedRightTypes[i]
+		rightType := expandedRightTypes[i]
 
 		ident, isIdent := leftExpr.(*aster.IdentExpr)
 		if isIdent && ident.Name == "_" {
@@ -1211,16 +1288,20 @@ func (tc *TypeChecker) checkMultiAssignment(left []aster.Expression, right []ast
 		}
 
 		if isDefine && isIdent {
-			// Create a Symbol pointer as required by your Define method
+			// إسناد النوع لعقدة الـ AST حتى يراها الـ Dumper والـ Codegen
+			ident.Type = rightType
+
+			// إنشاء الرمز وتسجيله في الجدول الحالي (CurrentTable أو GlobalTable)
 			newSymbol := &symbols.Symbol{
 				Name: ident.Name,
-				Type: rightTypeName,
+				Type: rightType,
 			}
-			tc.GlobalTable.Define(ident.Name, newSymbol)
+			tc.CurrentTable.Define(ident.Name, newSymbol)
 		} else {
-			leftTypeName := tc.inferType(leftExpr)
-			if leftTypeName != rightTypeName {
-				tc.appendErrorf("line %d: cannot assign %s to %s", line, rightTypeName, leftTypeName)
+			leftType := tc.inferType(leftExpr)
+			// مقارنة أسماء الأنواع أو كائن النوع
+			if leftType == nil || rightType == nil || leftType.Name != rightType.Name {
+				tc.appendErrorf("line %d: cannot assign %s to %s", line, rightType.Name, leftType.Name)
 			}
 		}
 	}

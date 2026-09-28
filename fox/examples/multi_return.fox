@@ -1,0 +1,23 @@
+struct User {
+    name string
+}
+
+struct State {
+    count int
+}
+
+fn getUserAndStats() User, State {
+    var u User
+    var s State
+
+    u.name = "Adam"
+    s.count = 42
+
+    return u, s
+}
+
+fn main() {
+    u, s := getUserAndStats()
+    printf("%s\n", u.name)
+    printf("%d\n", s.count)
+}

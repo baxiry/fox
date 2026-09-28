@@ -39,17 +39,17 @@ type ForStmt struct {
 }
 
 type Assign struct {
-	Target Expression
-	Op     string
-	Value  Expression
-	Line   int
+	Targets []Expression
+	Op      string
+	Value   Expression
+	Line    int
 }
 
 type Declar struct {
-	Name  Expression
-	Op    string
-	Value Expression
-	Line  int
+	Targets []Expression
+	Op      string
+	Value   Expression
+	Line    int
 }
 
 type ExprStmt struct {
@@ -227,27 +227,6 @@ func (p *Parser) parseIf() Statement {
 	}
 }
 
-func (p *Parser) parseExprUntil(stop string) Expression {
-	expr := p.parseExpr()
-
-	for p.pos < len(p.tokens) && p.tokens[p.pos].Lexeme != stop {
-		op := p.tokens[p.pos]
-		if !op.IsOperator() {
-			break
-		}
-		p.pos++
-
-		right := p.parseExpr()
-		expr = &BinaryExpr{
-			Op:    op.Lexeme,
-			Left:  expr,
-			Right: right,
-			Line:  expr.GetLine(),
-		}
-	}
-	return expr
-}
-
 func (p *Parser) parseFor() Statement {
 	p.expectType(FOR)
 
@@ -326,8 +305,8 @@ func (p *Parser) parseFor() Statement {
 
 			/* Inject the structural sugar directly, transforming it into a standard i = i + 1 node */
 			forStmt.Post = &Assign{
-				Target: targetIdent,
-				Op:     "=",
+				Targets: []Expression{targetIdent},
+				Op:      "=",
 				Value: &BinaryExpr{
 					Op:    "+",
 					Left:  targetIdent,
@@ -365,25 +344,6 @@ func (p *Parser) parseFor() Statement {
 	return &forStmt
 }
 
-// .
-func isExprStart(tok Token) bool {
-	switch tok.Type {
-
-	case IDENT,
-		INT, FLOAT, STRING,
-		TRUE, FALSE,
-		OPN_PAREN, // (a + b)
-		AMP,       // &a
-		STAR,      // *a
-		EXCLAM,    // !a
-		MINUS:     // -a
-
-		return true
-	}
-
-	return false
-}
-
 func (p *Parser) parseReturn() Statement {
 	line := p.currentToken().Line
 	p.expectType(RETURN)
@@ -408,7 +368,7 @@ func (p *Parser) parseReturn() Statement {
 		results = append(results, expr)
 
 		if p.currentToken().Type == COMMA {
-			p.pos++
+			p.advanceToken()
 		} else {
 			break
 		}
@@ -487,28 +447,49 @@ func (p *Parser) parseExprStatement() Statement {
 // ParseDefOrAssign processes variable initialization or inline target value mutations.
 // It acts as a static syntactic transformer for shorthand arithmetic increment steps.
 func (p *Parser) parseDefOrAssign() Statement {
-	// 1. Parse exactly one target on the left-hand side
-	target := p.parsePostfix()
+	var targets []Expression
 
-	// Strict Check: Ensure no multiple targets are attempted
-	if p.currentToken().Type == COMMA {
-		p.appendErrorf("multiple assignment is not supported in Fox", p.currentToken().Line)
-		p.synchronize()
+	// 1. قراءة الهدف الأول على اليسار
+	firstTarget := p.parsePostfix()
+	if firstTarget == nil {
 		return nil
 	}
 
-	// 🔍 2. Check if this is a shorthand postfix increment operator (e.g., i++)
-	if p.currentToken().Type == PLUS_PLUS {
-		opTok := p.currentToken()
-		p.pos++ // Consume the "++" token cleanly
+	// 🔍 فحص استباقي: إذا لم يتبع التعبير فاصلة ولا معامل تعيين ولا ++
+	// وكان التعبير عبارة عن استدعاء دالة (أو تعبير قائم بذاته)
+	currTok := p.currentToken().Type
+	if currTok != COMMA && currTok != ASSIGN && currTok != DEFINE && currTok != PLUS_PLUS {
+		// إذا انتهى السطر أو وجد فاصلة منقوطة، فهذه عبارة تعبيرية بسيطة (مثل printf)
+		return &ExprStmt{
+			Expr: firstTarget,
+			Line: firstTarget.GetLine(), // أو السطر الخاص بالتعبير
+		}
+	}
 
-		// Transform the shortcut operation internally into a standard semantic representation (i = i + 1)
+	targets = append(targets, firstTarget)
+
+	// 2. قراءة بقية الأهداف إن وجدت فواصل (مثل u, s)
+	for p.currentToken().Type == COMMA {
+		p.pos++ // استهلاك الفاصلة ','
+		nextTarget := p.parsePostfix()
+		if nextTarget == nil {
+			p.appendErrorf("expected expression after ','", p.currentToken().Line)
+			return nil
+		}
+		targets = append(targets, nextTarget)
+	}
+
+	// 3. التعامل مع عامل الزيادة المباشر (مثل i++)
+	if len(targets) == 1 && p.currentToken().Type == PLUS_PLUS {
+		opTok := p.currentToken()
+		p.pos++ // استهلاك "++"
+
 		return &Assign{
-			Target: target,
-			Op:     "=",
+			Targets: targets,
+			Op:      "=",
 			Value: &BinaryExpr{
 				Op:    "+",
-				Left:  target,
+				Left:  firstTarget,
 				Right: &IntExpr{Literal: "1", Value: 1, Line: opTok.Line},
 				Line:  opTok.Line,
 			},
@@ -516,69 +497,43 @@ func (p *Parser) parseDefOrAssign() Statement {
 		}
 	}
 
-	// 3. Standard Path: Identify the operator (must be '=' or ':=')
+	// 4. التحقق من وجود عامل التعيين ('=' أو ':=')
 	opTok := p.currentToken()
 	if opTok.Type != ASSIGN && opTok.Type != DEFINE {
 		p.appendErrorf("expected '=' or ':=' after expression, but found %q", opTok.Line, opTok.Lexeme)
 		p.synchronize()
 		return nil
 	}
-	p.pos++ // consume the operator
+	p.pos++ // استهلاك العامل ('=' أو ':=')
 
-	// 4. Parse exactly one expression on the right-hand side
+	// 5. قراءة تعبير القيمة على اليمين (مثل استدعاء الدالة getUserAndStats())
 	value := p.parseExpr()
 	if value == nil {
 		p.appendErrorf("expected expression on the right side of %s", opTok.Line, opTok.Lexeme)
 		return nil
 	}
 
-	// Double Check: Ensure no multiple values follow
-	if p.currentToken().Type == COMMA {
-		p.appendErrorf("multiple values in assignment are not supported in Fox", p.currentToken().Line)
-		p.synchronize()
-	}
-
-	// 5. Return the appropriate node based on the operator type
+	// 6. التعيين المباشر ':='
 	if opTok.Type == DEFINE {
-		if !p.isValidDefineTarget(target) {
-			p.appendErrorf("non-name on left side of :=", opTok.Line)
+		for _, target := range targets {
+			if !p.isValidDefineTarget(target) {
+				p.appendErrorf("non-name on left side of :=", opTok.Line)
+			}
 		}
 		return &Declar{
-			Name:  target,
-			Op:    opTok.Lexeme,
-			Value: value,
-			Line:  opTok.Line,
+			Targets: targets,
+			Op:      opTok.Lexeme,
+			Value:   value,
+			Line:    opTok.Line,
 		}
 	}
 
-	// Default to a standard Assignment node (=)
+	// 7. التعيين العادي '='
 	return &Assign{
-		Target: target,
-		Op:     opTok.Lexeme,
-		Value:  value,
-		Line:   opTok.Line,
-	}
-}
-
-// isValidDefineTarget checks if the expression is a valid identifier for ':='
-func (p *Parser) isValidDefineTarget(expr Expression) bool {
-	switch expr.(type) {
-	case *IdentExpr:
-		// Only plain identifiers (like 'x' or '_') are allowed for definition
-		return true
-	default:
-		// Complex expressions like FieldAccess (x.y) are not allowed for ':='
-		return false
-	}
-}
-
-func (t Token) IsOperator() bool {
-	switch t.Type {
-	case PLUS, MINUS, STAR, SLASH, ASSIGN, DEFINE,
-		EQ, NEQ, LT, GT, LTE, GTE, AND, OR, EXCLAM, DOT:
-		return true
-	default:
-		return false
+		Targets: targets,
+		Op:      opTok.Lexeme,
+		Value:   value,
+		Line:    opTok.Line,
 	}
 }
 
@@ -621,7 +576,7 @@ func (p *Parser) parseStatement() Statement {
 		stmt = p.parseSpawn()
 
 	default:
-		stmt = p.parseExprOrAssign()
+		stmt = p.parseDefOrAssign()
 	}
 
 	if p.currentToken().Type == SEMICOLON {
