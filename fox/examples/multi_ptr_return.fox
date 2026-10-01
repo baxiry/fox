@@ -15,5 +15,6 @@ fn main() {
     var user User
     user.id = 100
 
-    ptr, id, ok := processUser(&user)
+    ptr, i, ok := processUser(&user)
+    printf("%p, %d, %d", &user.id, i, ok)
 }

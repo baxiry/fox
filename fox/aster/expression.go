@@ -6,8 +6,11 @@ type UnaryExpr struct {
 	Op   string // like "*", "&"
 	Expr Expression
 	Line int
-	// Col int later
 }
+
+// UnaryExpr
+func (*UnaryExpr) isExpr()        {}
+func (e *UnaryExpr) GetLine() int { return e.Line }
 
 // ZeroValueExpr represents an explicit zero/nil initialization expression during expansion
 type ZeroValueExpr struct {
@@ -17,18 +20,6 @@ type ZeroValueExpr struct {
 
 func (*ZeroValueExpr) isExpr()        {}
 func (e *ZeroValueExpr) GetLine() int { return e.Line }
-
-// UnaryExpr
-func (e *UnaryExpr) GetLine() int { return e.Line }
-
-// CallExpr
-func (e *CallExpr) GetLine() int { return e.Line }
-
-// StringExpr
-func (e *StringExpr) GetLine() int { return e.Line }
-
-// StructLiteral
-func (e *StructLiteral) GetLine() int { return e.Line }
 
 // IdentExpr (Don't forget this one)
 func (e *IdentExpr) GetLine() int { return e.Line }
@@ -46,16 +37,20 @@ type StringExpr struct {
 	Line    int
 }
 
-func (*StringExpr) isExpr() {}
+func (e *StringExpr) GetLine() int { return e.Line }
+func (*StringExpr) isExpr()        {}
 
+// int expression
 type IntExpr struct {
 	Literal string
 	Value   int
 	Line    int
 }
 
-func (*IntExpr) isExpr()        {}
-func (n *IntExpr) GetLine() int { return n.Line }
+func (*IntExpr) isExpr() {}
+func (n *IntExpr) GetLine() int {
+	return n.Line
+}
 
 type FloatExpr struct {
 	Literal string
@@ -63,19 +58,22 @@ type FloatExpr struct {
 	Line    int
 }
 
-func (e *FloatExpr) GetLine() int { return e.Line }
-
 func (*FloatExpr) isExpr() {}
+func (e *FloatExpr) GetLine() int {
+	return e.Line
+}
 
+// BoolExpr
 type BoolExpr struct {
 	Literal string
-	value   bool
+	Value   bool
 	Line    int
 }
 
-func (e *BoolExpr) GetLine() int { return e.Line }
-
 func (*BoolExpr) isExpr() {}
+func (e *BoolExpr) GetLine() int {
+	return e.Line
+}
 
 type LiteralExpr struct {
 	Value string
@@ -100,8 +98,10 @@ type BinaryExpr struct {
 	Line  int
 }
 
-func (*BinaryExpr) isExpr()        {}
-func (e *BinaryExpr) GetLine() int { return e.Line }
+func (*BinaryExpr) isExpr() {}
+func (e *BinaryExpr) GetLine() int {
+	return e.Line
+}
 
 // Callee Expression
 type CallExpr struct {
@@ -111,10 +111,12 @@ type CallExpr struct {
 	UnwrapPanic bool
 }
 
-func (*UnaryExpr) isExpr() {}
-
 func (*CallExpr) isExpr() {}
+func (e *CallExpr) GetLine() int {
+	return e.Line
+}
 
+// Struct Literal
 type StructLiteral struct {
 	Type   *symbols.Type
 	Fields []FieldInit
@@ -122,7 +124,11 @@ type StructLiteral struct {
 }
 
 func (*StructLiteral) isExpr() {}
+func (e *StructLiteral) GetLine() int {
+	return e.Line
+}
 
+// Field Init
 type FieldInit struct {
 	Name  string
 	Value Expression

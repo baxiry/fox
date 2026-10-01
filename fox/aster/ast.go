@@ -66,7 +66,6 @@ type Node interface {
 
 // Stmt represents executable statements (e.g., assignments, if-statements, returns).
 type Statement interface {
-	//GetLine() int
 	Node
 	isStmt()
 }
@@ -115,6 +114,7 @@ type FieldAccessExpr struct {
 	Field  string
 	Line   int
 }
+
 type TryExpr struct {
 	Expr Expression
 	Line int

@@ -447,6 +447,13 @@ func (cg *Codegen) genExpr(expr aster.Expression) {
 		}
 		fmt.Fprintf(&cg.sourceStream, "%s%s", separator, e.Field)
 
+	case *aster.BoolExpr:
+		if e.Literal == "true" || e.Value {
+			cg.sourceStream.WriteString("true")
+		} else {
+			cg.sourceStream.WriteString("false")
+		}
+
 	case *aster.IntExpr:
 		fmt.Fprintf(&cg.sourceStream, "%d", e.Value)
 
@@ -454,7 +461,12 @@ func (cg *Codegen) genExpr(expr aster.Expression) {
 		fmt.Fprintf(&cg.sourceStream, "\"%s\"", e.Literal)
 
 	case *aster.IdentExpr:
-		cg.sourceStream.WriteString(e.Name)
+		// Translate Fox 'nil' identifier into C 'NULL'
+		if e.Name == "nil" {
+			cg.sourceStream.WriteString("NULL")
+		} else {
+			cg.sourceStream.WriteString(e.Name)
+		}
 
 	case *aster.BinaryExpr:
 		cg.sourceStream.WriteString("(")
