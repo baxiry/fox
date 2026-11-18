@@ -296,7 +296,7 @@ func (cg *Codegen) genBlock(block *aster.FrameBlock) {
 	cg.indent++
 
 	for _, stmt := range block.Stmts {
-		cg.writeIndent()
+		// cg.writeIndent()
 		cg.genStmt(stmt)
 	}
 
@@ -546,14 +546,32 @@ func (cg *Codegen) genStmt(stmt aster.Statement) {
 		cg.genReturnStmt(s)
 	case *aster.ForStmt:
 		cg.genForStmt(s)
+
+		// TODO rename: stmt vs node
+	case *aster.BreakNode:
+		cg.writeIndent()
+		cg.sourceStream.WriteString("break;\n")
+
+	case *aster.ContinueNode:
+		cg.writeIndent()
+		cg.sourceStream.WriteString("continue;\n")
 	}
 }
 
 func (cg *Codegen) genIfStmt(s *aster.IfStmt) {
 	cg.writeIndent()
-	cg.sourceStream.WriteString("if (")
-	cg.genExpr(s.Cond)
-	cg.sourceStream.WriteString(") ")
+	cg.sourceStream.WriteString("if ")
+
+	// Avoid double parentheses when Cond is a BinaryExpr (which already wraps itself)
+	if _, isBinary := s.Cond.(*aster.BinaryExpr); isBinary {
+		cg.genExpr(s.Cond)
+	} else {
+		cg.sourceStream.WriteString("(")
+		cg.genExpr(s.Cond)
+		cg.sourceStream.WriteString(")")
+	}
+
+	cg.sourceStream.WriteString(" ")
 
 	savedFunc := cg.CurrentFunction
 

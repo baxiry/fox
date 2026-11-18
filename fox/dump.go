@@ -136,6 +136,59 @@ func DumpAST(node any, indent string) {
 			fmt.Printf(" args: none")
 		}
 
+	case *aster.FrameBlock:
+		for _, stmt := range n.Stmts {
+			DumpAST(stmt, indent)
+		}
+
+	case *aster.IfStmt:
+		fmt.Printf("%sIf (", indent)
+		DumpAST(n.Cond, "")
+		fmt.Printf("):\n")
+		if n.Then != nil {
+			fmt.Printf("%s  Then:\n", indent)
+			DumpAST(n.Then, indent+"    ")
+		}
+		if n.Else != nil {
+			fmt.Printf("%s  Else:\n", indent)
+			DumpAST(n.Else, indent+"    ")
+		}
+
+	case *aster.BoolExpr:
+		if n.Literal != "" {
+			fmt.Printf("%s", n.Literal)
+		} else {
+			fmt.Printf("bool")
+		}
+
+	case *aster.UnaryExpr:
+		fmt.Printf("%s", n.Op)
+		DumpAST(n.Expr, "")
+
+	case *aster.ForStmt:
+		fmt.Printf("%sFor:\n", indent)
+		if n.Init != nil {
+			fmt.Printf("%s  Init:\n", indent)
+			DumpAST(n.Init, indent+"    ")
+		}
+		if n.Cond != nil {
+			fmt.Printf("%s  Cond: ", indent)
+			DumpAST(n.Cond, "")
+			fmt.Printf("\n")
+		}
+		if n.Post != nil {
+			fmt.Printf("%s  Post:\n", indent)
+			DumpAST(n.Post, indent+"    ")
+		}
+		if n.Body != nil {
+			fmt.Printf("%s  Body:\n", indent)
+			DumpAST(n.Body, indent+"    ")
+		}
+	case *aster.BreakNode:
+		fmt.Printf("%sBreak\n", indent)
+
+	case *aster.ContinueNode:
+		fmt.Printf("%sContinue\n", indent)
 	default:
 		fmt.Printf("%sUnknownNode: %T\n", indent, n)
 	}
